@@ -1,0 +1,123 @@
+[
+  {
+    "id": "1786649496473-qjyj90",
+    "timestamp": "2026-08-13T19:31:36.473Z",
+    "lat": 36.1584286,
+    "lon": -115.2953191,
+    "addressLabel": "West Charleston Boulevard, Peccole Ranch, Peccole Ranch and The Lakes, Las Vegas",
+    "placeType": "ambiguous",
+    "confidence": 2,
+    "formType": "category",
+    "category": "amazon_locker",
+    "questions": [
+      "Is the unit indoors or outdoors",
+      "Kiosk screen or touchpad only",
+      "Unit code entry method",
+      "Locker unit brand or model, if visible",
+      "Any visible tampering or physical damage",
+      "Cell signal strength at this location",
+      "Is the unit shaded or exposed to direct sun",
+      "Is the unit lit at night"
+    ],
+    "answers": [],
+    "context": "This is Avondale apartments and I service the Amazon Lockers in the back and restored the functionality to the PCB board after doing a reboot",
+    "icon": "📦",
+    "photo": ""
+  },
+  {
+    "id": "1786634325190-nnsdx0",
+    "timestamp": "2026-08-13T15:18:45.190Z",
+    "lat": 35.9760561,
+    "lon": -114.8439701,
+    "addressLabel": "Fir Street, Boulder City",
+    "placeType": "ambiguous",
+    "confidence": 2,
+    "formType": "category",
+    "category": "fast_food",
+    "questions": [
+      "Is a kitchen display system visible",
+      "How many self order kiosks",
+      "Is shade available at the drive thru or entrance",
+      "How many staff are visible on site",
+      "Is network equipment visible, like a router or switch",
+      "Estimated drive thru wait right now",
+      "Is third party delivery pickup signage present",
+      "Is the drive thru menu board digital"
+    ],
+    "answers": [],
+    "context": "This is Carl's no it's not it's Jack in the box I'm getting two breakfast jacks and a large coffee.",
+    "icon": "🍔",
+    "photo": ""
+  },
+  {
+    "id": "1786577488973-hga1tf",
+    "timestamp": "2026-08-12T23:31:28.973Z",
+    "lat": 36.1374344,
+    "lon": -115.0656755,
+    "addressLabel": "South Nellis Boulevard",
+    "placeType": "ambiguous",
+    "confidence": 2,
+    "formType": "full",
+    "category": null,
+    "questions": [
+      "Purpose of this stop",
+      "Planned or unplanned",
+      "Who else is present",
+      "Expected duration",
+      "Concern level about this location",
+      "Should this stay off the record",
+      "Anything else worth noting"
+    ],
+    "answers": [],
+    "context": "This is an Albertsons but I'm servicing the Amazon locker inside the Albertsons",
+    "icon": "🛒"
+  },
+  {
+    "id": "1786575054835-vjg8zi",
+    "timestamp": "2026-08-12T22:50:54.835Z",
+    "lat": 36.0838898,
+    "lon": -115.03247,
+    "addressLabel": "Boulder Highway, Whitney",
+    "placeType": "gas station",
+    "confidence": 5,
+    "formType": "category",
+    "category": "gas_station",
+    "questions": [
+      "Payment terminal brand on the pumps",
+      "Parking congestion right now",
+      "POS terminal brand at the register",
+      "Is an air or water station available",
+      "Canopy lighting condition",
+      "Any visible signs of card skimmer tampering",
+      "Is shade available at the pumps",
+      "How many pumps are on site"
+    ],
+    "answers": [],
+    "context": "I'm here to work on Amazon locker cilantro this one has a network issue and it keeps having network issues this is also a hotspot for folks that like to do smokable drugs that are not weed.",
+    "icon": "⛽"
+  },
+  {
+    "id": "1786569722786-knzxzi",
+    "timestamp": "2026-08-12T21:22:02.786Z",
+    "lat": 36.2642126,
+    "lon": -115.1165578,
+    "addressLabel": "Losee Road, North Las Vegas",
+    "placeType": "fast food restaurant",
+    "confidence": 5,
+    "formType": "category",
+    "category": "fast_food",
+    "questions": [
+      "Is network equipment visible, like a router or switch",
+      "Is the drive thru menu board digital",
+      "Parking congestion right now",
+      "How many drive thru lanes",
+      "How many self order kiosks",
+      "Is dine in seating available",
+      "Is guest wifi available",
+      "Is shade available at the drive thru or entrance"
+    ],
+    "answers": [],
+    "context": "At KFC getting five pieces of chicken with three biscuits. They have a car registers to kiosk to front counter and presumably two in the Drive-Thru one order taker and one cash taker.",
+    "icon": "🍔"
+  }
+]

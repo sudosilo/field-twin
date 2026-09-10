@@ -1,0 +1,76 @@
+{
+  "format": "field-twin",
+  "version": 1,
+  "twinId": "twin-zkrg1o8m82qj",
+  "exportedAt": "2026-08-14T21:03:01.656Z",
+  "stats": {
+    "total": 108,
+    "entryCount": 2,
+    "siteCount": 2,
+    "firstVisits": 2,
+    "photos": 0,
+    "completedSites": 0,
+    "categoryCounts": {
+      "amazon_locker": 1,
+      "coffee_shop": 1
+    },
+    "siteFields": {
+      "36.129,-115.292": 3,
+      "36.056,-115.085": 3
+    }
+  },
+  "entries": [
+    {
+      "id": "1786733743977-i95p5p",
+      "timestamp": "2026-08-14T18:55:43.977Z",
+      "lat": 36.0562563,
+      "lon": -115.0845794,
+      "addressLabel": "West Warm Springs Road, Green Valley, Henderson",
+      "placeType": "ambiguous",
+      "confidence": 2,
+      "formType": "category",
+      "category": "coffee_shop",
+      "questions": [
+        "Is there a mobile order pickup area",
+        "Visible camera count",
+        "POS terminal brand at the counter",
+        "Power outlets available for customers",
+        "Is there a drive thru window",
+        "Is a kitchen or barista display system visible",
+        "How many staff are visible",
+        "Estimated wait right now"
+      ],
+      "answers": [],
+      "context": "At Starbucks to do some information security training. I've only got two days to finish so using my Friday time for this",
+      "icon": "☕",
+      "twinId": "twin-zkrg1o8m82qj",
+      "photo": ""
+    },
+    {
+      "id": "1786659020885-79mkws",
+      "timestamp": "2026-08-13T22:10:20.885Z",
+      "lat": 36.1289821,
+      "lon": -115.2924559,
+      "addressLabel": "Erva Street, Summerlin South",
+      "placeType": "ambiguous",
+      "confidence": 2,
+      "formType": "category",
+      "category": "amazon_locker",
+      "questions": [
+        "Kiosk screen or touchpad only",
+        "Is there a camera on or near the unit",
+        "Any visible tampering or physical damage",
+        "Cell signal strength at this location",
+        "Is the unit lit at night",
+        "Is the unit shaded or exposed to direct sun",
+        "Approximate compartment count",
+        "Is the unit indoors or outdoors"
+      ],
+      "answers": [],
+      "context": "This is an apartment complex with Amazon lockers.",
+      "icon": "📦",
+      "twinId": "twin-zkrg1o8m82qj",
+      "photo": ""
+    }
+  ]
+}

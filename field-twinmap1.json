@@ -1,0 +1,25 @@
+[
+  {
+    "id": "1786509964996-u313uy",
+    "timestamp": "2026-08-12T04:46:04.996Z",
+    "lat": 35.510362,
+    "lon": -114.3617614,
+    "addressLabel": "Ash Road",
+    "placeType": "ambiguous",
+    "confidence": 2,
+    "formType": "full",
+    "category": null,
+    "questions": [
+      "Purpose of this stop",
+      "Planned or unplanned",
+      "Who else is present",
+      "Expected duration",
+      "Concern level about this location",
+      "Should this stay off the record",
+      "Anything else worth noting"
+    ],
+    "answers": [],
+    "context": "Test test meow meow",
+    "icon": "🏪"
+  }
+]

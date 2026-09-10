@@ -1,0 +1,49 @@
+[
+  {
+    "id": "1786569722786-knzxzi",
+    "timestamp": "2026-08-12T21:22:02.786Z",
+    "lat": 36.2642126,
+    "lon": -115.1165578,
+    "addressLabel": "Losee Road, North Las Vegas",
+    "placeType": "fast food restaurant",
+    "confidence": 5,
+    "formType": "category",
+    "category": "fast_food",
+    "questions": [
+      "Is network equipment visible, like a router or switch",
+      "Is the drive thru menu board digital",
+      "Parking congestion right now",
+      "How many drive thru lanes",
+      "How many self order kiosks",
+      "Is dine in seating available",
+      "Is guest wifi available",
+      "Is shade available at the drive thru or entrance"
+    ],
+    "answers": [],
+    "context": "At KFC getting five pieces of chicken with three biscuits. They have a car registers to kiosk to front counter and presumably two in the Drive-Thru one order taker and one cash taker.",
+    "icon": "🍔"
+  },
+  {
+    "id": "1786509964996-u313uy",
+    "timestamp": "2026-08-12T04:46:04.996Z",
+    "lat": 35.510362,
+    "lon": -114.3617614,
+    "addressLabel": "Ash Road",
+    "placeType": "ambiguous",
+    "confidence": 2,
+    "formType": "full",
+    "category": null,
+    "questions": [
+      "Purpose of this stop",
+      "Planned or unplanned",
+      "Who else is present",
+      "Expected duration",
+      "Concern level about this location",
+      "Should this stay off the record",
+      "Anything else worth noting"
+    ],
+    "answers": [],
+    "context": "Test test meow meow",
+    "icon": "🏪"
+  }
+]

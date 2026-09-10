@@ -1,0 +1,103 @@
+{
+  "format": "field-twin",
+  "version": 1,
+  "twinId": "twin-zkrg1o8m82qj",
+  "exportedAt": "2026-08-14T22:24:13.494Z",
+  "stats": {
+    "total": 162,
+    "entryCount": 3,
+    "siteCount": 3,
+    "firstVisits": 3,
+    "photos": 0,
+    "completedSites": 0,
+    "categoryCounts": {
+      "coffee_shop": 1,
+      "amazon_locker": 2
+    },
+    "siteFields": {
+      "36.056,-115.085": 3,
+      "36.174,-115.277": 3,
+      "36.263,-115.181": 3
+    }
+  },
+  "entries": [
+    {
+      "id": "1786746180263-qlkhq9",
+      "timestamp": "2026-08-14T22:23:00.263Z",
+      "lat": 36.26280211,
+      "lon": -115.18131273,
+      "addressLabel": "West Ann Road, North Las Vegas",
+      "placeType": "Grocery store",
+      "confidence": 5,
+      "formType": "category",
+      "category": "amazon_locker",
+      "questions": [
+        "Unit code entry method",
+        "Cell signal strength at this location",
+        "Is the unit indoors or outdoors",
+        "Locker unit brand or model, if visible",
+        "Is a network cable or antenna visible on the unit",
+        "Is there a camera on or near the unit",
+        "Any visible tampering or physical damage",
+        "Approximate compartment count"
+      ],
+      "answers": [],
+      "context": "At locker Natalie in front of Albertsons.",
+      "icon": "📦",
+      "twinId": "twin-zkrg1o8m82qj",
+      "photo": ""
+    },
+    {
+      "id": "1786741412768-upi04w",
+      "timestamp": "2026-08-14T21:03:32.768Z",
+      "lat": 36.17442,
+      "lon": -115.2767483,
+      "addressLabel": "Angel Park Lindell, Las Vegas",
+      "placeType": "ambiguous",
+      "confidence": 2,
+      "formType": "category",
+      "category": "amazon_locker",
+      "questions": [
+        "Is nearby parking available for a service stop",
+        "Is there a camera on or near the unit",
+        "Is the unit indoors or outdoors",
+        "Approximate compartment count",
+        "Unit code entry method",
+        "Kiosk screen or touchpad only",
+        "Cell signal strength at this location",
+        "Any visible tampering or physical damage"
+      ],
+      "answers": [],
+      "context": "This is locker Parc West. Seems like it has boxes that are not responsive yet it passed health check and sweep",
+      "icon": "📦",
+      "twinId": "twin-zkrg1o8m82qj",
+      "photo": ""
+    },
+    {
+      "id": "1786733743977-i95p5p",
+      "timestamp": "2026-08-14T18:55:43.977Z",
+      "lat": 36.0562563,
+      "lon": -115.0845794,
+      "addressLabel": "West Warm Springs Road, Green Valley, Henderson",
+      "placeType": "ambiguous",
+      "confidence": 2,
+      "formType": "category",
+      "category": "coffee_shop",
+      "questions": [
+        "Is there a mobile order pickup area",
+        "Visible camera count",
+        "POS terminal brand at the counter",
+        "Power outlets available for customers",
+        "Is there a drive thru window",
+        "Is a kitchen or barista display system visible",
+        "How many staff are visible",
+        "Estimated wait right now"
+      ],
+      "answers": [],
+      "context": "At Starbucks to do some information security training. I've only got two days to finish so using my Friday time for this",
+      "icon": "☕",
+      "twinId": "twin-zkrg1o8m82qj",
+      "photo": ""
+    }
+  ]
+}

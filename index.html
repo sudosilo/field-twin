@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Field Twin</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --line: #d5dce4;
+    --accent: #1265c9;
+    --accent-dim: #7fa8d6;
+    --text: #14202e;
+    --text-dim: #5c6c7d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    overflow: hidden;
+  }
+  #map {
+    position: absolute;
+    top: 140px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+  header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 84px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    z-index: 1000;
+  }
+  .header-center {
+    flex: 1;
+    text-align: center;
+    overflow: hidden;
+    padding: 0 10px;
+  }
+  #infoBtn {
+    background: transparent;
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    padding: 10px 15px;
+    font-size: 15px;
+    line-height: 1;
+    font-style: italic;
+  }
+  #actionBar {
+    position: absolute;
+    top: 84px;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 0 14px;
+    z-index: 1000;
+  }
+  .title {
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--accent);
+  }
+  .status {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .radar {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 20px;
+  }
+  .radar div {
+    width: 4px;
+    background: var(--accent-dim);
+  }
+  .radar div.on {
+    background: var(--accent);
+  }
+  button {
+    background: var(--accent);
+    color: #ffffff;
+    border: none;
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 1px;
+    font-weight: bold;
+  }
+  button.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+  }
+  button:disabled {
+    opacity: 0.5;
+  }
+  #panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 62%;
+    background: var(--panel);
+    border-top: 1px solid var(--accent-dim);
+    z-index: 1000;
+    overflow-y: auto;
+    padding: 16px;
+    display: none;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+  }
+  #panel.open {
+    display: block;
+  }
+  #panel h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: var(--accent);
+    margin: 0 0 10px 0;
+  }
+  .meta-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 3px;
+  }
+  .question {
+    margin: 14px 0 6px 0;
+    font-size: 14px;
+  }
+  input[type=text], textarea {
+    width: 100%;
+    background: #f9fafb;
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    margin-top: 4px;
+  }
+  textarea {
+    min-height: 60px;
+    resize: vertical;
+  }
+  .panel-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+  }
+  #importInput { display: none; }
+  #menuBtn {
+    background: transparent;
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    padding: 10px 12px;
+    font-size: 16px;
+    line-height: 1;
+  }
+  #sideMenu {
+    position: absolute;
+    top: 0;
+    right: -260px;
+    bottom: 0;
+    width: 240px;
+    background: var(--panel);
+    border-left: 1px solid var(--accent-dim);
+    z-index: 1200;
+    padding: 16px;
+    transition: right 0.2s ease;
+    overflow-y: auto;
+  }
+  #sideMenu.open {
+    right: 0;
+  }
+  #sideMenu h3 {
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--accent);
+    margin: 18px 0 8px 0;
+  }
+  #sideMenu h3:first-child {
+    margin-top: 0;
+  }
+  .legend-row {
+    font-size: 11px;
+    line-height: 22px;
+    color: var(--text);
+  }
+  .legend-row span.dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  #sideMenu button {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  #menuOverlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1100;
+    display: none;
+  }
+  #menuOverlay.open {
+    display: block;
+  }
+  .icon-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .icon-choice {
+    flex: 0 0 auto;
+    width: calc(25% - 6px);
+    background: #f9fafb;
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px 2px;
+    font-size: 18px;
+    text-align: center;
+  }
+  .icon-choice.active {
+    border-color: var(--accent);
+    background: #e4eefb;
+  }
+  .icon-choice.qopt {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 70px;
+    padding: 10px 8px;
+  }
+  select {
+    width: 100%;
+    background: #f9fafb;
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    margin-top: 4px;
+  }
+  .marker-emoji-tooltip {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-size: 15px !important;
+    padding: 0 !important;
+    pointer-events: none;
+  }
+  .marker-emoji-tooltip::before {
+    display: none !important;
+  }
+  .field-twin-badge {
+    background: transparent !important;
+    border: none !important;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <button id="menuBtn">&#9776;</button>
+  <div class="header-center">
+    <div class="title">[ FIELD TWIN ]</div>
+    <div class="status" id="statusLine">idle</div>
+  </div>
+  <button id="infoBtn">i</button>
+</header>
+
+<div id="actionBar">
+  <div class="radar" id="radar">
+    <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+  <button id="updateBtn">FORCE UPDATE</button>
+</div>
+
+<div id="map"></div>
+
+<div id="menuOverlay"></div>
+<div id="sideMenu">
+  <h3>COLOR KEY</h3>
+  <div id="legendRows"></div>
+  <h3>DATA</h3>
+  <button class="secondary" id="profileBtn">PROFILE</button>
+  <button class="secondary" id="camerasBtn">CAMERAS</button>
+  <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
+  <button class="secondary" id="historyBtn">HISTORY</button>
+  <button class="secondary" id="exportBtn">EXPORT</button>
+  <button class="secondary" id="importBtn">IMPORT</button>
+  <input type="file" id="importInput" accept="application/json">
+</div>
+
+<div id="panel"></div>
+
+<script>
+const STORAGE_KEY = 'entries';
+const TWIN_KEY = 'twinId';
+
+function getTwinId() {
+  try {
+    let id = localStorage.getItem(TWIN_KEY);
+    if (!id) {
+      id = 'twin-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      localStorage.setItem(TWIN_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    return 'twin-session';
+  }
+}
+
+const TWIN_ID = getTwinId();
+
+let map, markersLayer;
+let entries = [];
+let pendingEntry = null;
+const CATEGORIES = {
+  gas_station:   { label: 'Gas station',    icon: '\u{26FD}',   color: '#0f9d58' },
+  grocery:       { label: 'Grocery store',  icon: '\u{1F6D2}',  color: '#8e24aa' },
+  fast_food:     { label: 'Fast food',      icon: '\u{1F354}',  color: '#d81b60' },
+  amazon_locker: { label: 'Parcel locker',  icon: '\u{1F4E6}',  color: '#e07b00' },
+  coffee_shop:   { label: 'Coffee shop',    icon: '\u{2615}',   color: '#795548' },
+  dispensary:    { label: 'Dispensary',     icon: '\u{1F33F}',  color: '#2e7d32' },
+  pharmacy:      { label: 'Pharmacy',       icon: '\u{1F48A}',  color: '#00838f' },
+  bank:          { label: 'Bank or ATM',    icon: '\u{1F3E7}',  color: '#455a64' },
+  hotel:         { label: 'Hotel or motel', icon: '\u{1F6CF}',  color: '#5e35b1' },
+  car_wash:      { label: 'Car wash',       icon: '\u{1F697}',  color: '#0277bd' },
+  laundromat:    { label: 'Laundromat',     icon: '\u{1F9FA}',  color: '#00695c' },
+  restaurant:    { label: 'Sit down dining',icon: '\u{1F37D}',  color: '#c62828' },
+  retail:        { label: 'Retail store',   icon: '\u{1F3EA}',  color: '#6d4c41' },
+  warehouse:     { label: 'Warehouse',      icon: '\u{1F3ED}',  color: '#37474f' },
+  printer_site:  { label: 'Printer service',icon: '\u{1F5A8}',  color: '#1565c0' },
+  memorial:      { label: 'Roadside memorial', icon: '\u{1F56F}', color: '#6a1b9a' },
+  airstrip:      { label: 'Airstrip',       icon: '\u{1F6E9}',  color: '#00acc1' },
+  airport:       { label: 'Airport',        icon: '\u{2708}',   color: '#0288d1' },
+  govt_building: { label: 'Government',     icon: '\u{1F3DB}',  color: '#546e7a' },
+  mall:          { label: 'Mall',           icon: '\u{1F6CD}',  color: '#ad1457' },
+  general:       { label: 'Other stop',     icon: '\u{1F4CD}',  color: '#1265c9' },
+  none:          { label: 'Silent log',     icon: '\u{1F319}',  color: '#5c6c7d' }
+};
+
+const ICON_CHOICES = Object.keys(CATEGORIES).filter(k => k !== 'none');
+const FALLBACK_ICON = CATEGORIES.general.icon;
+let selectedIcon = FALLBACK_ICON;
+const MIN_SAVE_INTERVAL_MS = 30000;
+let lastSaveTime = 0;
+let lastSaveSignature = '';
+
+function setStatus(text) {
+  document.getElementById('statusLine').textContent = text;
+}
+
+function setRadar(level) {
+  const bars = document.querySelectorAll('#radar div');
+  bars.forEach((b, i) => {
+    b.style.height = (6 + i * 2) + 'px';
+    b.classList.toggle('on', i < level);
+  });
+}
+
+const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+const PHOTO_DB = 'fieldTwinPhotos';
+const PHOTO_STORE = 'photos';
+let photoDbPromise = null;
+
+function openPhotoDb() {
+  if (photoDbPromise) return photoDbPromise;
+  photoDbPromise = new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error('no indexeddb')); return; }
+    const req = indexedDB.open(PHOTO_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PHOTO_STORE)) {
+        db.createObjectStore(PHOTO_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return photoDbPromise;
+}
+
+function photoPut(id, dataUrl) {
+  return openPhotoDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_STORE, 'readwrite');
+    tx.objectStore(PHOTO_STORE).put(dataUrl, id);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+function photoGet(id) {
+  return openPhotoDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_STORE, 'readonly');
+    const req = tx.objectStore(PHOTO_STORE).get(id);
+    req.onsuccess = () => resolve(req.result || '');
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+function photoDelete(id) {
+  return openPhotoDb().then(db => new Promise((resolve) => {
+    const tx = db.transaction(PHOTO_STORE, 'readwrite');
+    tx.objectStore(PHOTO_STORE).delete(id);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+  }));
+}
+
+function pruneToRetention(list) {
+  const cutoff = Date.now() - RETENTION_MS;
+  return list.filter(e => new Date(e.timestamp).getTime() >= cutoff);
+}
+
+async function loadEntries() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const stored = raw ? JSON.parse(raw) : [];
+    const pruned = pruneToRetention(stored);
+    entries = pruned;
+    if (pruned.length !== stored.length) {
+      const dropped = stored.filter(e => pruned.indexOf(e) === -1);
+      dropped.forEach(e => { if (e.id) photoDelete(e.id); });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
+    }
+    await Promise.all(entries.map(e => {
+      if (!e.id || e.photo) return Promise.resolve();
+      return photoGet(e.id).then(d => { if (d) e.photo = d; }).catch(() => {});
+    }));
+  } catch (e) {
+    entries = [];
+  }
+}
+
+async function saveEntries() {
+  const persisted = pruneToRetention(entries);
+  await Promise.all(persisted.map(e => {
+    if (!e.id || !e.photo) return Promise.resolve();
+    return photoPut(e.id, e.photo).catch(() => {});
+  }));
+  const light = persisted.map(e => {
+    const copy = Object.assign({}, e);
+    delete copy.photo;
+    return copy;
+  });
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(light));
+  } catch (e) {
+    setStatus('storage write failed, entry kept in this session only');
+  }
+}
+
+function initMap() {
+  map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([36.1, -113.9], 9);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: 'OpenStreetMap contributors',
+    maxZoom: 19,
+    crossOrigin: true
+  }).addTo(map);
+  markersLayer = L.layerGroup().addTo(map);
+  map.on('zoomend', () => { if (camerasVisible) renderCameras(); });
+  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => { map.invalidateSize(); renderMarkers(); }, 800);
+}
+
+function siteKey(e) {
+  return Number(e.lat).toFixed(3) + ',' + Number(e.lon).toFixed(3);
+}
+
+function answeredCount(e) {
+  if (e.context) return 3;
+  if (!e.answers) return 0;
+  return e.answers.filter(a => a && String(a).trim() !== '').length;
+}
+
+function scoreEntries(list) {
+  const seenSites = {};
+  const siteFields = {};
+  const categoryCounts = {};
+  let total = 0;
+  let firstVisits = 0;
+  let photos = 0;
+
+  const chrono = list.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  chrono.forEach(e => {
+    const key = siteKey(e);
+    const cat = e.category || 'general';
+    const fields = answeredCount(e);
+
+    let points = 5 + fields * 3;
+    if (e.photo) { points += 15; photos++; }
+    if (!seenSites[key]) {
+      points += 40;
+      seenSites[key] = true;
+      firstVisits++;
+    } else {
+      points = Math.round(points * 0.5);
+    }
+    if (['airstrip', 'memorial', 'airport', 'govt_building'].indexOf(cat) !== -1) {
+      points = Math.round(points * 1.5);
+    }
+
+    total += points;
+    siteFields[key] = (siteFields[key] || 0) + fields;
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  });
+
+  const siteCount = Object.keys(seenSites).length;
+  const completedSites = Object.keys(siteFields).filter(k => siteFields[k] >= 24).length;
+  total += completedSites * 60;
+
+  return { total, entryCount: list.length, siteCount, firstVisits, photos, completedSites, categoryCounts, siteFields };
+}
+
+function territorySpan(list) {
+  if (!list.length) return 0;
+  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+  list.forEach(e => {
+    minLat = Math.min(minLat, e.lat); maxLat = Math.max(maxLat, e.lat);
+    minLon = Math.min(minLon, e.lon); maxLon = Math.max(maxLon, e.lon);
+  });
+  const latMiles = (maxLat - minLat) * 69;
+  const lonMiles = (maxLon - minLon) * 55;
+  return Math.round(Math.sqrt(latMiles * latMiles + lonMiles * lonMiles));
+}
+
+function computeTrophies(stats, list) {
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none');
+  const distinctCats = catKeys.filter(k => stats.categoryCounts[k]).length;
+  const span = territorySpan(list);
+  return [
+    { name: 'First contact', desc: 'Log your first stop', earned: stats.entryCount >= 1 },
+    { name: 'Ten down', desc: 'Log ten stops', earned: stats.entryCount >= 10 },
+    { name: 'Century', desc: 'Log one hundred stops', earned: stats.entryCount >= 100 },
+    { name: 'Documentarian', desc: 'Attach ten photos', earned: stats.photos >= 10 },
+    { name: 'Thorough', desc: 'Fully document five sites', earned: stats.completedSites >= 5 },
+    { name: 'Scout', desc: 'Reach twenty five distinct sites', earned: stats.siteCount >= 25 },
+    { name: 'Cartographer', desc: 'Cover fifty miles of ground', earned: span >= 50 },
+    { name: 'Range rider', desc: 'Cover two hundred miles of ground', earned: span >= 200 },
+    { name: 'Bush pilot', desc: 'Document three airstrips', earned: (stats.categoryCounts.airstrip || 0) >= 3 },
+    { name: 'Keeper', desc: 'Record five roadside memorials', earned: (stats.categoryCounts.memorial || 0) >= 5 },
+    { name: 'Civic duty', desc: 'Document five government buildings', earned: (stats.categoryCounts.govt_building || 0) >= 5 },
+    { name: 'Full spectrum', desc: 'Log every category at least once', earned: distinctCats >= catKeys.length }
+  ];
+}
+
+function renderMarkers() {
+  if (!map || !markersLayer) return;
+  markersLayer.clearLayers();
+  let renderError = null;
+  let drawn = 0;
+  entries.forEach(e => {
+    const lat = Number(e.lat);
+    const lon = Number(e.lon);
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    try {
+      const key = e.formType === 'none' ? 'none' : (e.category || 'general');
+      const meta = CATEGORIES[key] || CATEGORIES.general;
+      const fill = meta.color;
+      const iconChar = e.icon || meta.icon;
+
+      const dot = L.circleMarker([lat, lon], {
+        radius: 14,
+        color: '#ffffff',
+        weight: 3,
+        fillColor: fill,
+        fillOpacity: 1
+      });
+      dot.on('click', () => showEntry(e));
+      dot.addTo(markersLayer);
+
+      const badge = L.marker([lat, lon], {
+        icon: L.divIcon({
+          html: '<div style="width:32px;height:32px;line-height:32px;text-align:center;font-size:16px;">' + iconChar + '</div>',
+          className: 'field-twin-badge',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        }),
+        interactive: true,
+        zIndexOffset: 2000
+      });
+      badge.on('click', () => showEntry(e));
+      badge.addTo(markersLayer);
+
+      drawn++;
+    } catch (err) {
+      renderError = err.message;
+    }
+  });
+  setTimeout(() => map.invalidateSize(), 50);
+  if (renderError) {
+    setStatus('marker render error: ' + renderError);
+  }
+}
+
+function timeOfDay(date) {
+  const h = date.getHours();
+  if (h >= 22 || h < 6) return 'late';
+  if (h >= 6 && h < 18) return 'work';
+  return 'evening';
+}
+
+function detectCategory(geo) {
+  const type = (geo.type || '').toLowerCase();
+  const name = (geo.name || geo.display_name || '').toLowerCase();
+  const addr = geo.address || {};
+  const shop = (addr.shop || '').toLowerCase();
+  const amenity = (addr.amenity || '').toLowerCase();
+  const tourism = (addr.tourism || '').toLowerCase();
+  const office = (addr.office || '').toLowerCase();
+  const all = [type, shop, amenity, tourism, office];
+  const has = (v) => all.indexOf(v) !== -1;
+
+  if (has('parcel_locker') || name.includes('amazon hub') || name.includes('amazon locker')) return 'amazon_locker';
+  if (has('fuel')) return 'gas_station';
+  if (has('cafe') || has('coffee')) return 'coffee_shop';
+  if (has('cannabis') || name.includes('dispensary')) return 'dispensary';
+  if (has('pharmacy') || has('chemist')) return 'pharmacy';
+  if (has('bank') || has('atm')) return 'bank';
+  if (has('car_wash')) return 'car_wash';
+  if (has('laundry') || has('dry_cleaning') || name.includes('laundromat')) return 'laundromat';
+  if (has('fast_food')) return 'fast_food';
+  if (has('restaurant') || has('food_court')) return 'restaurant';
+  if (has('supermarket') || has('grocery') || has('convenience')) return 'grocery';
+  if (has('hotel') || has('motel') || has('lodging') || has('guest_house')) return 'hotel';
+  if (has('warehouse') || has('industrial') || has('distribution')) return 'warehouse';
+  if (has('copyshop') || name.includes('print')) return 'printer_site';
+  if (has('aerodrome') || has('airport') || name.includes('airport')) {
+    return (name.includes('airstrip') || name.includes('airfield') || name.includes('landing')) ? 'airstrip' : 'airport';
+  }
+  if (has('runway') || has('airstrip') || name.includes('airstrip') || name.includes('airfield')) return 'airstrip';
+  if (has('mall') || has('shopping_centre') || has('shopping_center') || name.includes('mall')) return 'mall';
+  if (has('police') || has('fire_station') || has('library') || has('courthouse') ||
+      has('townhall') || has('post_office') || has('government') || has('public_building') ||
+      has('social_facility') || has('prison') || has('ranger_station')) return 'govt_building';
+  if (shop || has('department_store') || has('marketplace')) return 'retail';
+  return null;
+}
+
+function classify(geo, hasMilitary, tod) {
+  const tags = geo.address || {};
+  const isCommercial = !!(tags.shop || tags.amenity || tags.office || tags.industrial);
+  const isLodging = !!(tags.tourism === 'hotel' || tags.building === 'hotel' || tags.amenity === 'lodging');
+
+  if (tod === 'late' && isLodging) {
+    return { placeType: 'lodging', confidence: 3, formType: 'none', questions: [], category: null };
+  }
+  if (hasMilitary) {
+    return {
+      placeType: 'restricted proximity',
+      confidence: 1,
+      formType: 'full',
+      questions: fullQuestions(),
+      category: null
+    };
+  }
+
+  const category = detectCategory(geo);
+  if (category) {
+    return {
+      placeType: categoryLabel(category),
+      confidence: 5,
+      formType: 'category',
+      questions: categoryQuestions(category),
+      category: category
+    };
+  }
+
+  if (isCommercial && tod === 'work') {
+    return {
+      placeType: 'commercial, work hours',
+      confidence: 4,
+      formType: 'short',
+      questions: shortQuestions(),
+      category: null
+    };
+  }
+  if (isLodging && tod === 'work') {
+    return {
+      placeType: 'lodging, work hours',
+      confidence: 3,
+      formType: 'short',
+      questions: shortQuestions(),
+      category: null
+    };
+  }
+  return {
+    placeType: 'ambiguous',
+    confidence: 2,
+    formType: 'full',
+    questions: fullQuestions(),
+    category: null
+  };
+}
+
+function categoryLabel(category) {
+  return CATEGORIES[category] ? CATEGORIES[category].label : category;
+}
+
+function pickSubset(pool, n) {
+  const copy = pool.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, Math.min(n, copy.length));
+}
+
+function bq(id, text, options) {
+  return { id, text, type: 'buttons', options };
+}
+function sq(id, text, options) {
+  return { id, text, type: 'select', options };
+}
+function tq(id, text) {
+  return { id, text, type: 'text' };
+}
+
+function categoryQuestions(category) {
+  const pools = {
+    amazon_locker: [
+      sq('brandModel', 'Locker unit brand or model, if visible', ['Amazon Hub Locker', 'Amazon Hub Counter', 'Unbranded', 'Unknown']),
+      sq('compartments', 'Approximate compartment count', ['Under 20', '20-50', '50-100', 'Over 100']),
+      bq('camera', 'Is there a camera on or near the unit', ['Yes', 'No']),
+      bq('networkVisible', 'Is a network cable or antenna visible on the unit', ['Yes', 'No']),
+      sq('signal', 'Cell signal strength at this location', ['Poor', 'Fair', 'Good', 'Excellent']),
+      bq('indoor', 'Is the unit indoors or outdoors', ['Indoors', 'Outdoors']),
+      bq('screen', 'Kiosk screen or touchpad only', ['Screen', 'Touchpad only', 'Neither']),
+      bq('litAtNight', 'Is the unit lit at night', ['Yes', 'No']),
+      bq('staffNearby', 'Is staff present nearby or is the unit unattended', ['Staff nearby', 'Unattended']),
+      bq('tampering', 'Any visible tampering or physical damage', ['Yes', 'No']),
+      bq('shade', 'Is the unit shaded or exposed to direct sun', ['Shaded', 'Exposed']),
+      bq('parking', 'Is nearby parking available for a service stop', ['Yes', 'No']),
+      sq('accessCode', 'Unit code entry method', ['Keypad', 'App scan', 'Both', 'Unknown'])
+    ],
+    gas_station: [
+      sq('pumps', 'How many pumps are on site', ['1-2', '3-4', '5-6', '7-8', '9 or more']),
+      bq('shade', 'Is shade available at the pumps', ['Yes', 'No']),
+      bq('sunReady', 'Are you equipped to work in direct sun today', ['Yes', 'No']),
+      sq('posBrand', 'POS terminal brand at the register', ['Verifone', 'Gilbarco', 'NCR', 'Wayne', 'Other', 'Unknown']),
+      sq('pumpTerminal', 'Payment terminal brand on the pumps', ['Verifone', 'Gilbarco', 'Ingenico', 'Wayne', 'Other', 'Unknown']),
+      bq('canopyLight', 'Canopy lighting condition', ['Bright', 'Dim', 'Off']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('backoffice', 'Is a backoffice or office visible from the counter', ['Yes', 'No']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('skimmer', 'Any visible signs of card skimmer tampering', ['Yes', 'No']),
+      sq('staffCount', 'How many staff are visible on site', ['1', '2', '3', '4 or more']),
+      sq('security', 'Security system brand, if visible', ['ADT', 'Diebold', 'Other', 'Unknown']),
+      bq('restroom', 'Restroom access', ['Customer only', 'Public', 'None']),
+      bq('airWater', 'Is an air or water station available', ['Yes', 'No']),
+      bq('diesel', 'Is diesel available', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('nightLight', 'Overall lighting at night', ['Bright', 'Moderate', 'Dim'])
+    ],
+    fast_food: [
+      sq('posBrand', 'POS terminal brand at the counter', ['NCR', 'Toast', 'Micros', 'Square', 'Other', 'Unknown']),
+      sq('kiosk', 'How many self order kiosks', ['0', '1', '2', '3 or more']),
+      bq('kds', 'Is a kitchen display system visible', ['Yes', 'No']),
+      bq('driveThruMenu', 'Is the drive thru menu board digital', ['Yes', 'No']),
+      sq('lanes', 'How many drive thru lanes', ['0', '1', '2', '3 or more']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('networkGear', 'Is network equipment visible, like a router or switch', ['Yes', 'No']),
+      bq('thirdParty', 'Is third party delivery pickup signage present', ['Yes', 'No']),
+      sq('staffCount', 'How many staff are visible on site', ['1-2', '3-4', '5-6', '7 or more']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('seating', 'Is dine in seating available', ['Yes', 'No']),
+      bq('printer', 'Is a receipt or kitchen printer visibly down or jammed', ['Yes', 'No', 'Not visible']),
+      bq('shade', 'Is shade available at the drive thru or entrance', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('restroom', 'Restroom access', ['Customer only', 'Public', 'None']),
+      sq('waitEstimate', 'Estimated drive thru wait right now', ['Under 2 min', '2-5 min', '5-10 min', 'Over 10 min'])
+    ],
+    grocery: [
+      sq('selfCheckout', 'Self checkout brand in use', ['NCR', 'Toshiba', 'Diebold', 'Other', 'None on site', 'Unknown']),
+      sq('posBrand', 'POS terminal brand at staffed registers', ['NCR', 'Toshiba', 'Oracle Micros', 'Other', 'Unknown']),
+      sq('registerCount', 'How many staffed registers are open', ['0', '1-2', '3-4', '5 or more']),
+      sq('selfCheckoutLanes', 'How many self checkout lanes', ['0', '1-2', '3-4', '5 or more']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('easGates', 'Are EAS or RFID security gates present at the exits', ['Yes', 'No']),
+      bq('digitalTags', 'Are digital shelf price tags in use', ['Yes', 'No']),
+      bq('pharmacy', 'Is a pharmacy present with its own POS', ['Yes', 'No', 'No pharmacy']),
+      bq('networkCloset', 'Is a server or network closet visible anywhere in store', ['Yes', 'No']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('loyaltyKiosk', 'Is a loyalty program kiosk or sign up point visible', ['Yes', 'No']),
+      bq('lossPrevention', 'Is loss prevention tech visible, like mirrors or tag readers', ['Yes', 'No']),
+      bq('carts', 'Are shopping carts readily available', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('printer', 'Is a receipt printer visibly down at any register', ['Yes', 'No', 'Not visible']),
+      bq('restroom', 'Restroom access', ['Customer only', 'Public', 'None'])
+    ],
+    coffee_shop: [
+      sq('posBrand', 'POS terminal brand at the counter', ['Square', 'Toast', 'Clover', 'NCR', 'Other', 'Unknown']),
+      bq('driveThru', 'Is there a drive thru window', ['Yes', 'No']),
+      bq('mobileOrder', 'Is there a mobile order pickup area', ['Yes', 'No']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      sq('outlets', 'Power outlets available for customers', ['None', 'A few', 'Many']),
+      sq('seating', 'Seating capacity', ['None', 'Under 10', '10-25', 'Over 25']),
+      bq('kds', 'Is a kitchen or barista display system visible', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      sq('staffCount', 'How many staff are visible', ['1', '2-3', '4-5', '6 or more']),
+      bq('printer', 'Is a receipt or label printer visibly down', ['Yes', 'No', 'Not visible']),
+      bq('shade', 'Is shaded outdoor seating available', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('restroom', 'Restroom access', ['Customer only', 'Public', 'None']),
+      sq('waitEstimate', 'Estimated wait right now', ['Under 2 min', '2-5 min', '5-10 min', 'Over 10 min'])
+    ],
+    dispensary: [
+      bq('idCheck', 'Is there an ID check point at the entrance', ['Yes', 'No']),
+      sq('posBrand', 'POS terminal brand in use', ['Dutchie', 'Flowhub', 'Treez', 'Other', 'Unknown']),
+      bq('security', 'Is a security guard present', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-5', '6 or more']),
+      bq('cashOnly', 'Payment methods accepted', ['Cash only', 'Cash and debit', 'Cards accepted']),
+      bq('atm', 'Is an ATM on site', ['Yes', 'No']),
+      bq('waitingRoom', 'Is there a separate waiting or check in room', ['Yes', 'No']),
+      bq('kiosk', 'Are self service ordering kiosks present', ['Yes', 'No']),
+      sq('staffCount', 'How many staff are visible', ['1-2', '3-4', '5-6', '7 or more']),
+      bq('deliveryPickup', 'Is there an online order pickup counter', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('signage', 'Is exterior signage clearly visible from the road', ['Yes', 'No'])
+    ],
+    pharmacy: [
+      bq('standalone', 'Standalone pharmacy or inside a larger store', ['Standalone', 'Inside store']),
+      sq('posBrand', 'POS terminal brand at the pharmacy counter', ['NCR', 'Toshiba', 'Other', 'Unknown']),
+      bq('driveThru', 'Is there a drive thru window', ['Yes', 'No']),
+      bq('consultWindow', 'Is there a separate consultation window', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('kiosk', 'Is a prescription pickup kiosk present', ['Yes', 'No']),
+      sq('staffCount', 'How many staff are visible behind the counter', ['1', '2-3', '4-5', '6 or more']),
+      bq('printer', 'Is a label printer visibly down or jammed', ['Yes', 'No', 'Not visible']),
+      sq('waitEstimate', 'Estimated wait at the counter', ['No wait', 'Under 5 min', '5-15 min', 'Over 15 min']),
+      bq('secureStorage', 'Is a locked or secured storage area visible', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full'])
+    ],
+    bank: [
+      bq('branchType', 'Is this a full branch or ATM only', ['Full branch', 'ATM only']),
+      sq('atmCount', 'How many ATMs on site', ['1', '2', '3', '4 or more']),
+      bq('driveThru', 'Is there a drive thru lane', ['Yes', 'No']),
+      sq('atmBrand', 'ATM manufacturer, if visible', ['NCR', 'Diebold', 'Hyosung', 'Other', 'Unknown']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-5', '6 or more']),
+      bq('vestibule', 'Is there a card access vestibule', ['Yes', 'No']),
+      bq('skimmer', 'Any visible signs of ATM tampering', ['Yes', 'No']),
+      bq('lighting', 'Lighting quality at the ATM', ['Bright', 'Moderate', 'Dim']),
+      sq('staffCount', 'How many staff are visible inside', ['0', '1-2', '3-4', '5 or more']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('shade', 'Is the ATM shaded or exposed to direct sun', ['Shaded', 'Exposed'])
+    ],
+    hotel: [
+      sq('propertyType', 'Property type', ['Motel', 'Budget hotel', 'Mid range', 'Upscale']),
+      sq('floors', 'How many floors', ['1', '2', '3-4', '5 or more']),
+      bq('exteriorEntry', 'Room entry style', ['Exterior doors', 'Interior corridors']),
+      sq('posBrand', 'Front desk system brand, if visible', ['Opera', 'Choice Advantage', 'Other', 'Unknown']),
+      bq('keyType', 'Room key type', ['Magstripe card', 'RFID card', 'Physical key']),
+      sq('cameraCount', 'Visible camera count in the lobby', ['0', '1-2', '3-4', '5 or more']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('breakfast', 'Is breakfast service offered', ['Yes', 'No']),
+      bq('deskStaffed', 'Is the front desk staffed right now', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('lighting', 'Exterior lighting at night', ['Bright', 'Moderate', 'Dim'])
+    ],
+    car_wash: [
+      bq('washType', 'Wash type', ['Automatic tunnel', 'In bay automatic', 'Self serve bays', 'Hand wash']),
+      sq('bayCount', 'How many bays or lanes', ['1', '2-3', '4-5', '6 or more']),
+      sq('paymentKiosk', 'Payment kiosk brand, if visible', ['Unitec', 'Innovative Control', 'Other', 'Unknown']),
+      bq('cardReader', 'Does the kiosk accept cards', ['Yes', 'No']),
+      bq('vacuums', 'Are free vacuum stations available', ['Yes', 'No']),
+      bq('attendant', 'Is an attendant on site', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('outOfOrder', 'Are any bays marked out of order', ['Yes', 'No']),
+      bq('shade', 'Is shade available while waiting', ['Yes', 'No']),
+      bq('lighting', 'Lighting at night', ['Bright', 'Moderate', 'Dim']),
+      bq('parking', 'Queue length right now', ['Empty', 'Moderate', 'Long'])
+    ],
+    laundromat: [
+      sq('washerCount', 'Approximate washer count', ['Under 10', '10-20', '20-40', 'Over 40']),
+      sq('dryerCount', 'Approximate dryer count', ['Under 10', '10-20', '20-40', 'Over 40']),
+      bq('paymentType', 'Payment method', ['Coin', 'Card', 'App', 'Mixed']),
+      sq('kioskBrand', 'Payment kiosk or card system brand', ['CCI', 'ESD', 'Laundroworks', 'Other', 'Unknown']),
+      bq('attendant', 'Is an attendant on site', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('outOfOrder', 'Are any machines marked out of order', ['Yes', 'No']),
+      bq('airConditioned', 'Is the space air conditioned', ['Yes', 'No']),
+      bq('restroom', 'Restroom access', ['Customer only', 'Public', 'None']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full'])
+    ],
+    restaurant: [
+      sq('posBrand', 'POS terminal brand in use', ['Toast', 'Micros', 'Aloha', 'Square', 'Other', 'Unknown']),
+      bq('handheld', 'Are servers using handheld ordering devices', ['Yes', 'No']),
+      bq('kds', 'Is a kitchen display system visible', ['Yes', 'No']),
+      bq('payAtTable', 'Is pay at table technology in use', ['Yes', 'No']),
+      sq('seating', 'Approximate seating capacity', ['Under 30', '30-60', '60-100', 'Over 100']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-4', '5 or more']),
+      bq('bar', 'Is there a full bar', ['Yes', 'No']),
+      bq('printer', 'Is a receipt or kitchen printer visibly down', ['Yes', 'No', 'Not visible']),
+      sq('staffCount', 'How many staff are visible', ['1-3', '4-6', '7-10', 'Over 10']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      sq('waitEstimate', 'Estimated wait for a table', ['No wait', 'Under 10 min', '10-30 min', 'Over 30 min'])
+    ],
+    retail: [
+      sq('posBrand', 'POS terminal brand at the registers', ['NCR', 'Toshiba', 'Square', 'Clover', 'Other', 'Unknown']),
+      sq('registerCount', 'How many registers are open', ['1', '2-3', '4-6', '7 or more']),
+      bq('selfCheckout', 'Is self checkout available', ['Yes', 'No']),
+      bq('easGates', 'Are security gates present at the exits', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-2', '3-5', '6 or more']),
+      bq('networkGear', 'Is network equipment visible', ['Yes', 'No']),
+      bq('digitalSignage', 'Is digital signage in use', ['Yes', 'No']),
+      bq('printer', 'Is a receipt or label printer visibly down', ['Yes', 'No', 'Not visible']),
+      sq('staffCount', 'How many staff are visible', ['1-2', '3-5', '6-10', 'Over 10']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('backRoom', 'Is a stock room or back office accessible from the floor', ['Yes', 'No'])
+    ],
+    warehouse: [
+      sq('dockDoors', 'How many dock doors', ['1-4', '5-10', '11-20', 'Over 20']),
+      bq('gated', 'Is the property gated', ['Yes', 'No']),
+      bq('guardShack', 'Is there a guard shack or check in point', ['Yes', 'No']),
+      bq('badgeAccess', 'Is badge or card access required to enter', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-5', '6-15', 'Over 15']),
+      bq('networkCloset', 'Is a network or server closet visible', ['Yes', 'No']),
+      bq('forkliftTraffic', 'Is there active forklift traffic', ['Yes', 'No']),
+      bq('scanners', 'Are handheld scanners in use', ['Yes', 'No']),
+      bq('shade', 'Is shaded staging area available', ['Yes', 'No']),
+      bq('sunReady', 'Are you equipped to work in direct sun today', ['Yes', 'No']),
+      sq('staffCount', 'How many staff are visible', ['1-5', '6-15', '16-30', 'Over 30']),
+      bq('parking', 'Is visitor parking available', ['Yes', 'No'])
+    ],
+    printer_site: [
+      sq('printerBrand', 'Printer brand on site', ['HP', 'Zebra', 'Epson', 'Brother', 'Star', 'Other', 'Unknown']),
+      sq('printerCount', 'How many printers on site', ['1', '2-3', '4-6', '7 or more']),
+      bq('connection', 'Printer connection type', ['USB', 'Ethernet', 'Wifi', 'Bluetooth', 'Unknown']),
+      bq('errorState', 'Is the printer showing an error state', ['Yes', 'No']),
+      bq('paperStocked', 'Is paper or label stock available on site', ['Yes', 'No']),
+      bq('powerAccess', 'Is a power outlet accessible at the printer', ['Yes', 'No']),
+      bq('networkGear', 'Is a router or switch accessible', ['Yes', 'No']),
+      bq('spaceToWork', 'Is there room to work at the unit', ['Yes', 'No']),
+      sq('staffContact', 'Is a site contact available', ['Yes', 'No', 'Unknown']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('shade', 'Is the work area climate controlled', ['Yes', 'No'])
+    ],
+    memorial: [
+      sq('peopleCount', 'How many people is this memorial for', ['1', '2', '3', '4 or more', 'Not stated']),
+      tq('names', 'Names shown, if any'),
+      tq('dateShown', 'Date shown, if any'),
+      sq('condition', 'Overall condition', ['Well kept', 'Weathered', 'Damaged', 'Overgrown']),
+      sq('memorialType', 'Type of marker', ['Cross', 'Plaque', 'Stone', 'Sign', 'Informal', 'Mixed']),
+      sq('recentVisit', 'Signs of recent visits', ['Fresh flowers', 'Older offerings', 'None visible']),
+      bq('roadside', 'Position relative to the road', ['Shoulder', 'Median', 'Off road', 'Fence line']),
+      sq('materials', 'Main materials', ['Wood', 'Metal', 'Stone', 'Plastic', 'Mixed']),
+      tq('inscription', 'Inscription or message, if legible'),
+      tq('observations', 'Anything else worth recording')
+    ],
+    airstrip: [
+      sq('surface', 'Runway surface', ['Paved', 'Gravel', 'Dirt', 'Grass', 'Salt or playa']),
+      sq('lengthEstimate', 'Estimated usable length', ['Under 2000 ft', '2000-3000 ft', '3000-5000 ft', 'Over 5000 ft']),
+      sq('condition', 'Surface condition', ['Good', 'Rough', 'Rutted', 'Overgrown', 'Unusable']),
+      bq('markings', 'Are runway markings present', ['Yes', 'No', 'Faded']),
+      bq('windsock', 'Is a windsock present', ['Yes', 'No']),
+      bq('lighting', 'Is runway lighting present', ['Yes', 'No']),
+      bq('obstructions', 'Obstructions on approach', ['None', 'Powerlines', 'Trees', 'Terrain', 'Fencing']),
+      bq('accessRoad', 'Is there vehicle access to the strip', ['Yes', 'No']),
+      bq('hangars', 'Are hangars or structures present', ['Yes', 'No']),
+      bq('fuel', 'Is fuel available on site', ['Yes', 'No', 'Unknown']),
+      sq('aircraftPresent', 'Aircraft visible on site', ['0', '1-2', '3-5', '6 or more']),
+      bq('active', 'Does the strip appear active', ['Yes', 'No', 'Unclear']),
+      bq('gated', 'Is the property gated or posted', ['Yes', 'No']),
+      tq('identifier', 'Field identifier or name, if posted')
+    ],
+    airport: [
+      sq('sizeClass', 'Airport size', ['Regional', 'Medium hub', 'Large hub', 'International']),
+      sq('terminalCount', 'How many terminals', ['1', '2', '3', '4 or more']),
+      sq('restaurantCount', 'How many restaurants past security', ['0', '1-3', '4-8', '9 or more']),
+      sq('restroomCondition', 'Restroom condition', ['Clean', 'Acceptable', 'Poor']),
+      bq('restroomFamily', 'Is a family or companion restroom available', ['Yes', 'No']),
+      sq('kioskCount', 'Self service check in kiosks', ['0', '1-5', '6-15', 'Over 15']),
+      bq('wifi', 'Is free guest wifi available', ['Yes', 'No']),
+      sq('outlets', 'Power outlets at gate seating', ['None', 'A few', 'Many']),
+      bq('chargingStations', 'Are dedicated charging stations present', ['Yes', 'No']),
+      bq('rentalCars', 'Is on site car rental available', ['Yes', 'No']),
+      sq('parkingType', 'Parking options', ['Surface only', 'Garage', 'Both']),
+      bq('rideshare', 'Is there a marked rideshare pickup area', ['Yes', 'No']),
+      sq('securityWait', 'Security line length right now', ['None', 'Short', 'Moderate', 'Long']),
+      bq('baggageCarousels', 'Are baggage carousels visible from arrivals', ['Yes', 'No']),
+      bq('shade', 'Is covered walkway access available outside', ['Yes', 'No'])
+    ],
+    govt_building: [
+      sq('buildingType', 'Type of facility', ['Police', 'Fire', 'Library', 'Courthouse', 'Post office', 'Social services', 'City or county', 'Other']),
+      bq('publicAccess', 'Is the building open to the public right now', ['Yes', 'No', 'By appointment']),
+      bq('securityScreening', 'Is there security screening at the entrance', ['Yes', 'No']),
+      bq('metalDetector', 'Is a metal detector in use', ['Yes', 'No']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-3', '4-8', '9 or more']),
+      bq('badgeAccess', 'Is badge access required past the lobby', ['Yes', 'No']),
+      bq('publicWifi', 'Is public wifi available', ['Yes', 'No']),
+      bq('publicComputers', 'Are public computers available', ['Yes', 'No']),
+      bq('kiosk', 'Is a self service kiosk present', ['Yes', 'No']),
+      sq('staffVisible', 'How many staff are visible at the counter', ['0', '1-2', '3-5', '6 or more']),
+      sq('waitEstimate', 'Estimated wait to be helped', ['No wait', 'Under 15 min', '15-45 min', 'Over 45 min']),
+      bq('restroom', 'Restroom access', ['Public', 'Staff only', 'None']),
+      bq('parking', 'Visitor parking availability', ['Empty', 'Moderate', 'Full', 'None on site']),
+      bq('accessibility', 'Is step free access available', ['Yes', 'No']),
+      tq('hoursPosted', 'Posted hours, if visible')
+    ],
+    mall: [
+      sq('anchorCount', 'How many anchor stores', ['0', '1', '2', '3', '4 or more']),
+      sq('occupancy', 'Approximate storefront occupancy', ['Under 25 percent', '25-50 percent', '50-75 percent', 'Over 75 percent']),
+      sq('floors', 'How many floors', ['1', '2', '3 or more']),
+      bq('foodCourt', 'Is there a food court', ['Yes', 'No']),
+      sq('foodVendors', 'How many food vendors are open', ['0', '1-3', '4-8', '9 or more']),
+      sq('restroomCondition', 'Restroom condition', ['Clean', 'Acceptable', 'Poor']),
+      sq('cameraCount', 'Visible camera count', ['0', '1-5', '6-15', 'Over 15']),
+      bq('security', 'Is mall security visible', ['Yes', 'No']),
+      bq('directory', 'Is a directory kiosk present', ['Digital', 'Static', 'None']),
+      bq('wifi', 'Is guest wifi available', ['Yes', 'No']),
+      bq('kiosksCarts', 'Are center aisle kiosks or carts in use', ['Yes', 'No']),
+      sq('footTraffic', 'Foot traffic right now', ['Empty', 'Light', 'Moderate', 'Busy']),
+      bq('parking', 'Parking congestion right now', ['Empty', 'Moderate', 'Full']),
+      bq('vacantAnchor', 'Is any anchor space visibly vacant', ['Yes', 'No']),
+      bq('climateControl', 'Is the common area climate controlled', ['Yes', 'No'])
+    ]
+  };
+  const pool = pools[category];
+  if (!pool) return fullQuestions();
+  if (category === 'memorial') return pool;
+  return pickSubset(pool, 8);
+}
+
+function shortQuestions() {
+  return [
+    bq('purpose', 'Purpose of this stop', ['Work', 'Personal', 'Unplanned']),
+    sq('duration', 'Expected duration', ['Under 15 min', '15-30 min', '30-60 min', 'Over 1 hour']),
+    bq('shade', 'Is shade or shelter available', ['Yes', 'No']),
+    tq('flag', 'Anything to flag about this stop')
+  ];
+}
+
+function fullQuestions() {
+  return [
+    bq('purpose', 'Purpose of this stop', ['Work', 'Personal', 'Unplanned']),
+    bq('planned', 'Planned or unplanned', ['Planned', 'Unplanned']),
+    bq('others', 'Who else is present', ['Alone', 'Coworker', 'Public', 'Unknown']),
+    sq('duration', 'Expected duration', ['Under 15 min', '15-30 min', '30-60 min', 'Over 1 hour']),
+    sq('concern', 'Concern level about this location', ['None', 'Mild', 'Moderate', 'High']),
+    bq('offRecord', 'Should this stay off the record', ['Yes', 'No']),
+    tq('note', 'Anything else worth noting')
+  ];
+}
+
+async function reverseGeocode(lat, lon) {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&namedetails=1`;
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) throw new Error('reverse geocode failed');
+  const data = await res.json();
+  return data || {};
+}
+
+async function checkMilitary(lat, lon) {
+  const query = `[out:json][timeout:15];(way(around:400,${lat},${lon})[landuse=military];relation(around:400,${lat},${lon})[landuse=military];);out count;`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: query
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const count = data.elements && data.elements[0] && data.elements[0].tags
+      ? parseInt(data.elements[0].tags.total || '0', 10)
+      : 0;
+    return count > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 15000
+    });
+  });
+}
+
+async function forceUpdate() {
+  const btn = document.getElementById('updateBtn');
+  btn.disabled = true;
+  try {
+    setStatus('acquiring position');
+    setRadar(1);
+    const pos = await getPosition();
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+
+    setStatus('resolving address');
+    setRadar(3);
+    const geo = await reverseGeocode(lat, lon).catch(() => ({}));
+
+    setStatus('checking proximity');
+    setRadar(5);
+    const hasMilitary = await checkMilitary(lat, lon);
+
+    const now = new Date();
+    const tod = timeOfDay(now);
+    const cls = classify(geo, hasMilitary, tod);
+
+    setRadar(8);
+    setStatus('stop identified');
+
+    const entry = {
+      id: now.getTime() + '-' + Math.random().toString(36).slice(2, 8),
+      timestamp: now.toISOString(),
+      lat, lon,
+      addressLabel: formatAddress(geo.address || {}),
+      placeType: cls.placeType,
+      confidence: cls.confidence,
+      formType: cls.formType,
+      category: cls.category,
+      questions: cls.questions,
+      answers: [],
+      context: '',
+      icon: (CATEGORIES[cls.category] || CATEGORIES.general).icon,
+      twinId: TWIN_ID
+    };
+
+    if (cls.formType === 'none') {
+      entries.unshift(entry);
+      await saveEntries();
+      renderMarkers();
+      map.setView([lat, lon], 14);
+      setRadar(0);
+    } else {
+      pendingEntry = entry;
+      showForm(entry);
+      map.setView([lat, lon], 14);
+    }
+  } catch (err) {
+    setStatus('update failed, ' + (err.message || 'unknown error'));
+    setRadar(0);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function formatAddress(address) {
+  const parts = [address.road, address.neighbourhood, address.suburb, address.city, address.town, address.village];
+  return parts.filter(Boolean).join(', ') || 'unresolved address';
+}
+
+function showForm(entry) {
+  const questionObjs = entry.questions;
+  const formAnswers = {};
+  selectedIcon = (CATEGORIES[entry.category] || CATEGORIES.general).icon;
+  const panel = document.getElementById('panel');
+  const label = entry.category ? entry.category.toUpperCase().replace('_', ' ') : 'LOG ENTRY';
+  let html = '<h2>' + label + '</h2>';
+  html += '<div class="meta-line">' + entry.addressLabel + '</div>';
+  html += '<div class="question">Stop type, changes the form below</div>';
+  html += '<div class="icon-picker" id="iconPicker">';
+  ICON_CHOICES.forEach((key) => {
+    const meta = CATEGORIES[key];
+    const active = (entry.category || 'general') === key ? ' active' : '';
+    html += '<div class="icon-choice' + active + '" data-catkey="' + key + '">';
+    html += '<div style="font-size:20px;line-height:24px;">' + meta.icon + '</div>';
+    html += '<div style="font-size:10px;line-height:13px;">' + meta.label + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '<div class="question">Photo, optional</div>';
+  html += '<input type="file" id="photoInput" accept="image/*" capture="environment" style="width:100%;font-size:13px;">';
+  html += '<div id="photoPreview"></div>';
+  html += '<div class="question">Context, optional, overrides the questions below</div>';
+  html += '<textarea id="contextInput" placeholder="a single line here can replace the full form"></textarea>';
+  questionObjs.forEach((q) => {
+    html += '<div class="question">' + q.text + '</div>';
+    if (q.type === 'buttons') {
+      html += '<div class="icon-picker" data-qid="' + q.id + '">';
+      q.options.forEach((opt) => {
+        html += '<div class="icon-choice qopt" data-qid="' + q.id + '" data-value="' + opt + '" style="font-size:12px;">' + opt + '</div>';
+      });
+      html += '</div>';
+    } else if (q.type === 'select') {
+      html += '<select id="q_' + q.id + '" data-qid="' + q.id + '">';
+      html += '<option value="">Select</option>';
+      q.options.forEach((opt) => {
+        html += '<option value="' + opt + '">' + opt + '</option>';
+      });
+      html += '</select>';
+    } else {
+      html += '<input type="text" id="q_' + q.id + '" data-qid="' + q.id + '" />';
+    }
+  });
+  html += '<div class="panel-actions">';
+  html += '<button id="saveEntryBtn">SAVE ENTRY</button>';
+  html += '<button class="secondary" id="skipEntryBtn">LOG WITHOUT ANSWERS</button>';
+  html += '</div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+
+  let photoData = entry.photo || '';
+  const photoInput = document.getElementById('photoInput');
+  const photoPreview = document.getElementById('photoPreview');
+  if (photoData) {
+    photoPreview.innerHTML = '<img src="' + photoData + '" style="max-width:100%;margin-top:6px;">';
+  }
+  photoInput.addEventListener('change', () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 900;
+        let w = img.width;
+        let h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        photoData = canvas.toDataURL('image/jpeg', 0.7);
+        photoPreview.innerHTML = '<img src="' + photoData + '" style="max-width:100%;margin-top:6px;">';
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('iconPicker').querySelectorAll('.icon-choice').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.getAttribute('data-catkey');
+      if ((entry.category || 'general') === key) return;
+      entry.photo = photoData;
+      entry.category = key === 'general' ? null : key;
+      entry.icon = CATEGORIES[key].icon;
+      entry.formType = key === 'general' ? 'full' : 'category';
+      entry.questions = key === 'general' ? fullQuestions() : categoryQuestions(key);
+      showForm(entry);
+    });
+  });
+
+  panel.querySelectorAll('.qopt').forEach(el => {
+    el.addEventListener('click', () => {
+      const qid = el.getAttribute('data-qid');
+      panel.querySelectorAll('.qopt[data-qid="' + qid + '"]').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      formAnswers[qid] = el.getAttribute('data-value');
+    });
+  });
+
+  panel.querySelectorAll('select[data-qid]').forEach(el => {
+    el.addEventListener('change', () => {
+      formAnswers[el.getAttribute('data-qid')] = el.value;
+    });
+  });
+
+  panel.querySelectorAll('input[data-qid]').forEach(el => {
+    el.addEventListener('input', () => {
+      formAnswers[el.getAttribute('data-qid')] = el.value.trim();
+    });
+  });
+
+  function finalizeEntry(withAnswers) {
+    const context = document.getElementById('contextInput').value.trim();
+    entry.context = context;
+    if (context) {
+      entry.answers = [];
+      entry.questions = questionObjs.map(q => q.text);
+    } else if (withAnswers) {
+      entry.answers = questionObjs.map(q => formAnswers[q.id] || '');
+      entry.questions = questionObjs.map(q => q.text);
+    } else {
+      entry.answers = [];
+      entry.questions = questionObjs.map(q => q.text);
+    }
+    entry.icon = selectedIcon;
+    entry.photo = photoData;
+  }
+
+  function entrySignature(e) {
+    return e.lat.toFixed(4) + '|' + e.lon.toFixed(4) + '|' + e.context + '|' + e.answers.join('~');
+  }
+
+  function commitEntry(saveBtn, skipBtn, statusMessage) {
+    const signature = entrySignature(entry);
+    const now = Date.now();
+    if (now - lastSaveTime < MIN_SAVE_INTERVAL_MS && signature === lastSaveSignature) {
+      setStatus('duplicate ignored, same info at this spot within the last 30 seconds');
+      closePanel();
+      return;
+    }
+    lastSaveTime = now;
+    lastSaveSignature = signature;
+    const beforeScore = scoreEntries(entries).total;
+    entries.unshift(entry);
+    saveEntries().catch(() => {}).then(() => {
+      renderMarkers();
+      map.setView([entry.lat, entry.lon], 15);
+      setRadar(0);
+      const after = scoreEntries(entries).total;
+      const gained = after - beforeScore;
+      setStatus('saved, plus ' + gained + ' points, ' + after + ' total');
+      setTimeout(closePanel, 500);
+    });
+  }
+
+  document.getElementById('saveEntryBtn').addEventListener('click', function () {
+    const saveBtn = this;
+    const skipBtn = document.getElementById('skipEntryBtn');
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    skipBtn.disabled = true;
+    saveBtn.textContent = 'SAVED';
+    finalizeEntry(true);
+    commitEntry(saveBtn, skipBtn, 'entry saved');
+  });
+
+  document.getElementById('skipEntryBtn').addEventListener('click', function () {
+    const skipBtn = this;
+    const saveBtn = document.getElementById('saveEntryBtn');
+    if (skipBtn.disabled) return;
+    skipBtn.disabled = true;
+    saveBtn.disabled = true;
+    skipBtn.textContent = 'LOGGED';
+    finalizeEntry(false);
+    commitEntry(saveBtn, skipBtn, 'entry logged without answers');
+  });
+}
+
+const API_BASE_KEY = 'apiBase';
+const CAM_CACHE = 'ndotCameras';
+let cameraLayer = null;
+let cameras = [];
+let camerasVisible = false;
+
+function getApiBase() {
+  try { return localStorage.getItem(API_BASE_KEY) || ''; } catch (e) { return ''; }
+}
+
+function setApiBase(v) {
+  try { localStorage.setItem(API_BASE_KEY, v); } catch (e) {}
+}
+
+function milesBetween(lat1, lon1, lat2, lon2) {
+  const dLat = (lat2 - lat1) * 69;
+  const dLon = (lon2 - lon1) * 55;
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+async function loadCameras(force) {
+  const base = getApiBase();
+  if (!base) { setStatus('no api address set, add one in the menu'); return false; }
+  if (!force) {
+    try {
+      const cached = localStorage.getItem(CAM_CACHE);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Date.now() - parsed.at < 7 * 24 * 60 * 60 * 1000) {
+          cameras = parsed.list;
+          return true;
+        }
+      }
+    } catch (e) {}
+  }
+  setStatus('loading cameras');
+  try {
+    const root = base.replace(/\/+$/, '');
+    const res = await fetch(root + '/cameras');
+    if (!res.ok) throw new Error('http ' + res.status);
+    const payload = await res.json();
+    const list = payload.cameras || [];
+    cameras = list.filter(c => isFinite(c.lat) && isFinite(c.lon));
+    try {
+      localStorage.setItem(CAM_CACHE, JSON.stringify({ at: Date.now(), list: cameras }));
+    } catch (e) {}
+    setStatus(cameras.length + ' cameras loaded');
+    return true;
+  } catch (e) {
+    setStatus('camera load failed, service unreachable at ' + getApiBase().replace(/^https?:\/\//, ''));
+    return false;
+  }
+}
+
+function renderCameras() {
+  if (!cameraLayer) cameraLayer = L.layerGroup();
+  cameraLayer.clearLayers();
+  const zoom = map.getZoom();
+  const showLabels = zoom >= 14;
+  cameras.forEach(c => {
+    const marker = L.marker([c.lat, c.lon], {
+      icon: L.divIcon({
+        html: '<div style="width:30px;height:30px;border-radius:50%;background:#00838f;border:3px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:15px;">\u{1F4F9}</div>' +
+              (showLabels ? '<div style="position:absolute;top:32px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;background:rgba(255,255,255,0.9);padding:1px 4px;border-radius:3px;color:#14202e;">' + escapeHtml(c.roadway || '') + '</div>' : ''),
+        className: 'field-twin-badge',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      }),
+      zIndexOffset: 500
+    });
+    marker.on('click', () => showCamera(c));
+    marker.addTo(cameraLayer);
+  });
+}
+
+function playStream(video, url) {
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.play().catch(() => {});
+    return;
+  }
+  if (window.Hls && window.Hls.isSupported()) {
+    const hls = new window.Hls();
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    return;
+  }
+  video.src = url;
+  video.play().catch(() => {});
+}
+
+function showCamera(c) {
+  const panel = document.getElementById('panel');
+  let html = '<h2>CAMERA</h2>';
+  html += '<div class="meta-line">' + escapeHtml(c.roadway || 'unnamed') + '</div>';
+  if (c.direction && c.direction !== 'Unknown') {
+    html += '<div class="meta-line">facing ' + escapeHtml(c.direction) + '</div>';
+  }
+  html += '<video id="camVideo" controls autoplay muted playsinline style="width:100%;margin-top:8px;background:#000;"></video>';
+
+  const near = entries
+    .map(e => ({ e: e, dist: milesBetween(c.lat, c.lon, e.lat, e.lon) }))
+    .filter(x => x.dist <= 0.5)
+    .sort((a, b) => a.dist - b.dist);
+  if (near.length) {
+    html += '<div class="question">Your stops in view range</div>';
+    near.forEach(x => {
+      const m = CATEGORIES[x.e.category || 'general'] || CATEGORIES.general;
+      html += '<div class="meta-line">' + m.icon + ' ' + escapeHtml(x.e.addressLabel) + ', ' + x.dist.toFixed(2) + ' mi</div>';
+    });
+  }
+  html += '<div class="panel-actions"><button class="secondary" id="closeCamBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('closeCamBtn').addEventListener('click', closePanel);
+  if (c.stream) playStream(document.getElementById('camVideo'), c.stream);
+}
+
+async function toggleCameras() {
+  if (camerasVisible) {
+    if (cameraLayer) map.removeLayer(cameraLayer);
+    camerasVisible = false;
+    setStatus('cameras hidden');
+    return;
+  }
+  const ok = cameras.length ? true : await loadCameras(false);
+  if (!ok) return;
+  renderCameras();
+  cameraLayer.addTo(map);
+  camerasVisible = true;
+  setStatus(cameras.length + ' cameras shown');
+}
+
+function showCameraKeyPanel() {
+  const panel = document.getElementById('panel');
+  let html = '<h2>CAMERA SOURCE</h2>';
+  html += '<div>Address of the Field Twin camera service. No key is stored on this phone, the service holds it.</div>';
+  html += '<input type="text" id="apiBaseInput" placeholder="xxxxxxxx.up.railway.app" value="' + escapeHtml(getApiBase()) + '">';
+  html += '<div class="panel-actions">';
+  html += '<button id="saveApiBaseBtn">SAVE</button>';
+  html += '<button class="secondary" id="closeApiBaseBtn">CLOSE</button>';
+  html += '</div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('saveApiBaseBtn').addEventListener('click', async () => {
+    let v = document.getElementById('apiBaseInput').value.trim();
+    if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
+    setApiBase(v);
+    closePanel();
+    const ok = await loadCameras(true);
+    if (ok) {
+      renderCameras();
+      if (!camerasVisible) { cameraLayer.addTo(map); camerasVisible = true; }
+    }
+  });
+  document.getElementById('closeApiBaseBtn').addEventListener('click', closePanel);
+}
+
+function showProfile() {
+  const panel = document.getElementById('panel');
+  const stats = scoreEntries(entries);
+  const trophies = computeTrophies(stats, entries);
+  const span = territorySpan(entries);
+  const earned = trophies.filter(t => t.earned).length;
+
+  let html = '<h2>TWIN PROFILE</h2>';
+  html += '<div class="meta-line">' + TWIN_ID + '</div>';
+  html += '<div style="font-size:34px;color:var(--accent);margin:10px 0;">' + stats.total + '</div>';
+  html += '<div class="meta-line">total points</div>';
+
+  html += '<div class="question">Coverage</div>';
+  html += '<div class="meta-line">' + stats.entryCount + ' entries logged</div>';
+  html += '<div class="meta-line">' + stats.siteCount + ' distinct sites reached</div>';
+  html += '<div class="meta-line">' + stats.completedSites + ' sites fully documented</div>';
+  html += '<div class="meta-line">' + stats.photos + ' photos attached</div>';
+  html += '<div class="meta-line">' + span + ' miles of ground covered</div>';
+
+  html += '<div class="question">Categories</div>';
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none');
+  catKeys.forEach(k => {
+    const n = stats.categoryCounts[k] || 0;
+    const m = CATEGORIES[k];
+    const color = n ? 'var(--text)' : 'var(--text-dim)';
+    html += '<div class="meta-line" style="color:' + color + ';">' + m.icon + ' ' + m.label + ' ' + n + '</div>';
+  });
+
+  html += '<div class="question">Trophies, ' + earned + ' of ' + trophies.length + '</div>';
+  trophies.forEach(t => {
+    const color = t.earned ? 'var(--accent)' : 'var(--text-dim)';
+    const mark = t.earned ? '\u2605' : '\u2606';
+    html += '<div class="meta-line" style="color:' + color + ';">' + mark + ' ' + t.name + ', ' + t.desc + '</div>';
+  });
+
+  html += '<div class="panel-actions"><button class="secondary" id="closeProfileBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('closeProfileBtn').addEventListener('click', closePanel);
+}
+
+function showInfo() {
+  const panel = document.getElementById('panel');
+  let html = '<h2>ABOUT</h2>';
+  html += '<div class="question">Logging a stop</div>';
+  html += '<div>Press force update to capture your position. The tool resolves the address, works out what kind of place it is, and opens a form matched to that place type. Nothing is required, save with as many or as few answers as you want.</div>';
+  html += '<div class="question">Forms</div>';
+  html += '<div>Gas stations, grocery stores, fast food, and parcel lockers each have their own question pool. Each visit pulls a different set of eight from that pool, so returning to a location fills in new detail rather than repeating the same questions.</div>';
+  html += '<div class="question">Map</div>';
+  html += '<div>Each saved stop appears as a colored dot with an icon. Color shows the place type, listed under the color key in the menu. Tap a dot to read what was recorded there.</div>';
+  html += '<div class="question">Storage</div>';
+  html += '<div>Entries are held in this browser on this phone only, nothing is sent anywhere. Photos are stored separately so they survive alongside the rest of the record. Anything older than thirty days is dropped automatically, so export regularly if you want to keep a long term record. Import merges an export back in without creating duplicates.</div>';
+  html += '<div class="question">Duplicate protection</div>';
+  html += '<div>Saving the same answers at the same spot within thirty seconds is ignored, so a double tap will not create a second copy.</div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('closeInfoBtn').addEventListener('click', closePanel);
+}
+
+function showHistory() {
+  const panel = document.getElementById('panel');
+  let html = '<h2>HISTORY</h2>';
+  if (!entries.length) {
+    html += '<div class="question">No entries recorded yet</div>';
+  } else {
+    entries.forEach((e, i) => {
+      html += '<div class="meta-line" data-idx="' + i + '" style="padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;">';
+      html += new Date(e.timestamp).toLocaleString() + '<br>' + e.addressLabel;
+      html += '</div>';
+    });
+  }
+  html += '<div class="panel-actions"><button class="secondary" id="closeHistoryBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  panel.querySelectorAll('[data-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      showEntry(entries[parseInt(el.getAttribute('data-idx'), 10)], true);
+    });
+  });
+  document.getElementById('closeHistoryBtn').addEventListener('click', closePanel);
+}
+
+function showEntry(entry, fromHistory) {
+  const panel = document.getElementById('panel');
+  let html = '<h2>ENTRY</h2>';
+  html += '<div class="meta-line">' + new Date(entry.timestamp).toLocaleString() + '</div>';
+  html += '<div class="meta-line">' + entry.addressLabel + '</div>';
+  if (entry.photo) {
+    html += '<img src="' + entry.photo + '" style="max-width:100%;margin-top:8px;">';
+  }
+  if (entry.context) {
+    html += '<div class="question">Context</div><div>' + escapeHtml(entry.context) + '</div>';
+  } else if (entry.answers && entry.answers.length) {
+    entry.questions.forEach((q, i) => {
+      html += '<div class="question">' + q + '</div><div>' + escapeHtml(entry.answers[i] || '') + '</div>';
+    });
+  } else {
+    html += '<div class="question">No answers recorded</div>';
+  }
+  if (cameras.length) {
+    const nearCams = cameras
+      .map(c => ({ c: c, dist: milesBetween(entry.lat, entry.lon, c.lat, c.lon) }))
+      .filter(x => x.dist <= 0.5)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 5);
+    if (nearCams.length) {
+      html += '<div class="question">Cameras covering this spot</div>';
+      nearCams.forEach((x, i) => {
+        html += '<div class="meta-line camlink" data-camidx="' + cameras.indexOf(x.c) + '" style="padding:6px 0;border-bottom:1px solid var(--line);">';
+        html += escapeHtml(x.c.roadway || 'unnamed') + ', ' + x.dist.toFixed(2) + ' mi</div>';
+      });
+    }
+  }
+  html += '<div class="panel-actions"><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  panel.querySelectorAll('.camlink').forEach(el => {
+    el.addEventListener('click', () => {
+      showCamera(cameras[parseInt(el.getAttribute('data-camidx'), 10)]);
+    });
+  });
+  document.getElementById('closeEntryBtn').addEventListener('click', () => {
+    if (fromHistory) showHistory(); else closePanel();
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.remove('open');
+  document.getElementById('panel').innerHTML = '';
+  pendingEntry = null;
+}
+
+function exportEntries() {
+  const payload = {
+    format: 'field-twin',
+    version: 1,
+    twinId: TWIN_ID,
+    exportedAt: new Date().toISOString(),
+    stats: scoreEntries(entries),
+    entries: entries
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'field-twin-' + TWIN_ID + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importEntries(file) {
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const incoming = Array.isArray(parsed) ? parsed : (parsed.entries || []);
+      const sourceTwin = Array.isArray(parsed) ? 'unknown' : (parsed.twinId || 'unknown');
+      const existingKeys = new Set(entries.map(e => e.id || (e.timestamp + e.lat + e.lon)));
+      let added = 0;
+      incoming.forEach(e => {
+        const key = e.id || (e.timestamp + e.lat + e.lon);
+        if (!existingKeys.has(key)) {
+          if (!e.twinId) e.twinId = sourceTwin;
+          entries.unshift(e);
+          existingKeys.add(key);
+          added++;
+        }
+      });
+      entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      await saveEntries();
+      renderMarkers();
+      const foreign = sourceTwin !== 'unknown' && sourceTwin !== TWIN_ID;
+      setStatus('import complete, ' + added + ' new entries' + (foreign ? ', from ' + sourceTwin : ''));
+    } catch (e) {
+      setStatus('import failed, invalid file');
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function init() {
+  const legendHtml = Object.keys(CATEGORIES).map(k => {
+    const m = CATEGORIES[k];
+    return '<div class="legend-row"><span class="dot" style="background:' + m.color + ';"></span>' + m.icon + ' ' + m.label + '</div>';
+  }).join('');
+  document.getElementById('legendRows').innerHTML = legendHtml;
+  initMap();
+  await loadEntries();
+  renderMarkers();
+  if (entries.length) {
+    map.setView([entries[0].lat, entries[0].lon], 12);
+  }
+  setStatus(scoreEntries(entries).total + ' points, ' + entries.length + ' entries');
+
+  document.getElementById('updateBtn').addEventListener('click', forceUpdate);
+  document.getElementById('exportBtn').addEventListener('click', exportEntries);
+  document.getElementById('importBtn').addEventListener('click', () => {
+    document.getElementById('importInput').click();
+  });
+  document.getElementById('importInput').addEventListener('change', (e) => {
+    if (e.target.files[0]) importEntries(e.target.files[0]);
+  });
+
+  const menuBtn = document.getElementById('menuBtn');
+  const sideMenu = document.getElementById('sideMenu');
+  const menuOverlay = document.getElementById('menuOverlay');
+  function openMenu() {
+    sideMenu.classList.add('open');
+    menuOverlay.classList.add('open');
+  }
+  function closeMenu() {
+    sideMenu.classList.remove('open');
+    menuOverlay.classList.remove('open');
+  }
+  menuBtn.addEventListener('click', () => {
+    if (sideMenu.classList.contains('open')) closeMenu(); else openMenu();
+  });
+  menuOverlay.addEventListener('click', closeMenu);
+
+  document.getElementById('historyBtn').addEventListener('click', () => {
+    closeMenu();
+    showHistory();
+  });
+
+  document.getElementById('profileBtn').addEventListener('click', () => {
+    closeMenu();
+    showProfile();
+  });
+
+  document.getElementById('camerasBtn').addEventListener('click', () => {
+    closeMenu();
+    toggleCameras();
+  });
+
+  document.getElementById('camKeyBtn').addEventListener('click', () => {
+    closeMenu();
+    showCameraKeyPanel();
+  });
+
+  document.getElementById('infoBtn').addEventListener('click', () => {
+    closeMenu();
+    showInfo();
+  });
+}
+
+window.addEventListener('error', (e) => {
+  setStatus('JS ERROR: ' + e.message + ' (line ' + e.lineno + ')');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+  setStatus('PROMISE ERROR: ' + msg);
+});
+
+init();
+</script>
+</body>
+</html>
