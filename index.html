@@ -1419,7 +1419,7 @@ function renderCameras() {
   cameras.forEach(c => {
     const marker = L.marker([c.lat, c.lon], {
       icon: L.divIcon({
-        html: '<div style="width:30px;height:30px;border-radius:50%;background:#00838f;border:3px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:15px;">\u{1F4F9}</div>' +
+        html: '<div style="width:30px;height:30px;border-radius:50%;background:' + (c.online === false ? '#9aa7b1' : '#00838f') + ';opacity:' + (c.online === false ? '0.55' : '1') + ';border:3px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:15px;">\u{1F4F9}</div>' +
               (showLabels ? '<div style="position:absolute;top:32px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;background:rgba(255,255,255,0.9);padding:1px 4px;border-radius:3px;color:#14202e;">' + escapeHtml(c.roadway || '') + '</div>' : ''),
         className: 'field-twin-badge',
         iconSize: [30, 30],
@@ -1454,6 +1454,9 @@ function showCamera(c) {
   html += '<div class="meta-line">' + escapeHtml(c.roadway || 'unnamed') + '</div>';
   if (c.direction && c.direction !== 'Unknown') {
     html += '<div class="meta-line">facing ' + escapeHtml(c.direction) + '</div>';
+  }
+  if (c.online === false) {
+    html += '<div class="meta-line" style="color:#b00020;">reported offline at last daily check</div>';
   }
   html += '<video id="camVideo" controls autoplay muted playsinline style="width:100%;margin-top:8px;background:#000;"></video>';
 
