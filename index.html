@@ -1370,6 +1370,14 @@ let cameraLayer = null;
 let cameras = [];
 let camerasVisible = false;
 
+function getApiToken() {
+  try { return localStorage.getItem('apiToken') || ''; } catch (e) { return ''; }
+}
+
+function setApiToken(v) {
+  try { localStorage.setItem('apiToken', v); } catch (e) {}
+}
+
 function getApiBase() {
   try { return localStorage.getItem(API_BASE_KEY) || ''; } catch (e) { return ''; }
 }
@@ -1505,6 +1513,8 @@ function showCameraKeyPanel() {
   let html = '<h2>CAMERA SOURCE</h2>';
   html += '<div>Address of the Field Twin camera service. No key is stored on this phone, the service holds it.</div>';
   html += '<input type="text" id="apiBaseInput" placeholder="xxxxxxxx.up.railway.app" value="' + escapeHtml(getApiBase()) + '">';
+  html += '<div class="question">Access token, leave blank if the service does not require one</div>';
+  html += '<input type="text" id="apiTokenInput" value="' + escapeHtml(getApiToken()) + '">';
   html += '<div class="panel-actions">';
   html += '<button id="saveApiBaseBtn">SAVE</button>';
   html += '<button class="secondary" id="closeApiBaseBtn">CLOSE</button>';
@@ -1515,6 +1525,7 @@ function showCameraKeyPanel() {
     let v = document.getElementById('apiBaseInput').value.trim();
     if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
     setApiBase(v);
+    setApiToken((document.getElementById('apiTokenInput').value || '').trim());
     closePanel();
     const ok = await loadCameras(true);
     if (ok) {
@@ -1523,6 +1534,49 @@ function showCameraKeyPanel() {
     }
   });
   document.getElementById('closeApiBaseBtn').addEventListener('click', closePanel);
+}
+
+async function extractWithVision(photoData) {
+  const base = getApiBase();
+  if (!base) throw new Error('no service address set');
+  const root = base.replace(/\/+$/, '');
+  const headers = { 'Content-Type': 'application/json' };
+  const tok = getApiToken();
+  if (tok) headers['Authorization'] = 'Bearer ' + tok;
+  const res = await fetch(root + '/receipts/extract', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({ image: photoData })
+  });
+  if (!res.ok) throw new Error('service returned ' + res.status);
+  const data = await res.json();
+  return data.receipt || {};
+}
+
+function visionToFields(r) {
+  const n = v => (v === null || v === undefined || v === '') ? '' : String(v);
+  const addrParts = [r.address, r.city, r.state].filter(Boolean).join(', ');
+  const out = {
+    store: n(r.store),
+    addr: addrParts,
+    date: n(r.date),
+    time: n(r.time),
+    total: r.total !== null && r.total !== undefined ? Number(r.total).toFixed(2) : '',
+    tax: r.tax !== null && r.tax !== undefined ? Number(r.tax).toFixed(2) : '',
+    saved: r.saved !== null && r.saved !== undefined && Number(r.saved) > 0 ? Number(r.saved).toFixed(2) : '',
+    conf: {}
+  };
+  ['store', 'addr', 'date', 'time', 'total', 'tax', 'saved'].forEach(k => {
+    out.conf[k] = out[k] ? 'ok' : 'low';
+  });
+  if (r.fuel && (r.fuel.gallons || r.fuel.price_per_gallon)) {
+    out.fuelNote = [
+      r.fuel.gallons ? r.fuel.gallons + ' gal' : '',
+      r.fuel.price_per_gallon ? 'at $' + r.fuel.price_per_gallon + ' per gal' : '',
+      r.fuel.pump ? 'pump ' + r.fuel.pump : ''
+    ].filter(Boolean).join(', ');
+  }
+  return out;
 }
 
 async function geocodeAddress(q) {
@@ -1653,23 +1707,30 @@ async function startReceipt(file) {
     return;
   }
 
-  let text = '';
+  let parsed = null;
   try {
-    setStatus('preparing image');
-    const ocrImage = await prepForOcr(photoData, 2000);
-    const res = await Tesseract.recognize(ocrImage, 'eng', {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          setStatus('reading receipt, ' + Math.round(m.progress * 100) + ' percent');
-        }
-      }
-    });
-    text = res.data.text || '';
+    setStatus('reading receipt');
+    const r = await extractWithVision(photoData);
+    parsed = visionToFields(r);
+    setStatus('receipt read');
   } catch (e) {
-    setStatus('text reading failed, enter details by hand');
+    setStatus('using offline reader, ' + e.message);
+    let text = '';
+    try {
+      const ocrImage = await prepForOcr(photoData, 2000);
+      const res = await Tesseract.recognize(ocrImage, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            setStatus('offline reader, ' + Math.round(m.progress * 100) + ' percent');
+          }
+        }
+      });
+      text = res.data.text || '';
+    } catch (e2) {
+      setStatus('could not read text, enter details by hand');
+    }
+    parsed = parseReceipt(text);
   }
-
-  const parsed = parseReceipt(text);
   let lat = null, lon = null, addressLabel = 'location not captured';
   try {
     const pos = await getPosition();
@@ -1708,7 +1769,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   html += '<div class="icon-choice qopt' + (cls.work ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
   html += '<div class="icon-choice qopt' + (cls.work ? '' : ' active') + '" data-work="0" style="font-size:12px;">Personal</div>';
   html += '</div>';
-  html += '<div class="question">Notes</div><textarea id="rNotes"></textarea>';
+  html += '<div class="question">Notes</div><textarea id="rNotes">' + escapeHtml(p.fuelNote || '') + '</textarea>';
   html += '<div class="panel-actions">';
   html += '<button id="saveReceiptBtn">SAVE RECEIPT</button>';
   html += '<button class="secondary" id="cancelReceiptBtn">CANCEL</button>';
