@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
 <style>
   :root {
     --bg: #f4f6f9;
@@ -172,6 +173,23 @@
     display: flex;
     gap: 8px;
   }
+  #receiptFab {
+    position: absolute;
+    right: 14px;
+    bottom: 18px;
+    z-index: 1000;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: #2e7d32;
+    color: #ffffff;
+    border: none;
+    font-size: 24px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+    padding: 0;
+  }
+  #receiptFile { display: none; }
+  .conf-low { border-color: #e07b00 !important; background: #fff7ec !important; }
   #importInput { display: none; }
   #menuBtn {
     background: transparent;
@@ -304,12 +322,15 @@
 </div>
 
 <div id="map"></div>
+<button id="receiptFab">🧾</button>
+<input type="file" id="receiptFile" accept="image/*" capture="environment">
 
 <div id="menuOverlay"></div>
 <div id="sideMenu">
   <h3>COLOR KEY</h3>
   <div id="legendRows"></div>
   <h3>DATA</h3>
+  <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="profileBtn">PROFILE</button>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
@@ -360,6 +381,7 @@ const CATEGORIES = {
   warehouse:     { label: 'Warehouse',      icon: '\u{1F3ED}',  color: '#37474f' },
   printer_site:  { label: 'Printer service',icon: '\u{1F5A8}',  color: '#1565c0' },
   memorial:      { label: 'Roadside memorial', icon: '\u{1F56F}', color: '#6a1b9a' },
+  receipt:       { label: 'Receipt',        icon: '\u{1F9FE}',  color: '#2e7d32' },
   airstrip:      { label: 'Airstrip',       icon: '\u{1F6E9}',  color: '#00acc1' },
   airport:       { label: 'Airport',        icon: '\u{2708}',   color: '#0288d1' },
   govt_building: { label: 'Government',     icon: '\u{1F3DB}',  color: '#546e7a' },
@@ -1518,7 +1540,244 @@ function showCameraKeyPanel() {
   document.getElementById('closeApiBaseBtn').addEventListener('click', closePanel);
 }
 
+function parseReceipt(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const out = { store: '', addr: '', date: '', time: '', total: '', tax: '', saved: '', conf: {} };
+
+  const addrRe = /\d{2,6}\s+\w.+?(st|street|ave|avenue|rd|road|blvd|dr|drive|ln|lane|way|hwy|highway)\b/i;
+  let addrIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (addrRe.test(lines[i])) { out.addr = lines[i]; addrIdx = i; break; }
+  }
+  const head = lines.slice(0, addrIdx > 0 ? addrIdx : 3);
+  out.store = (head.filter(l => /[a-z]/i.test(l) && l.length > 2)[0] || '').replace(/[^\w\s&'.-]/g, '').trim();
+  out.conf.store = out.store ? 'ok' : 'low';
+  out.conf.addr = out.addr ? 'ok' : 'low';
+
+  const dm = text.match(/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/);
+  out.date = dm ? dm[1] : '';
+  out.conf.date = dm ? 'ok' : 'low';
+
+  const tm = text.match(/(\d{1,2}:\d{2}\s*(am|pm)?)/i);
+  out.time = tm ? tm[1] : '';
+  out.conf.time = tm ? 'ok' : 'low';
+
+  const totalRe = /(total|balance due|amount due|amount)\D{0,10}(\d+\.\d{2})/ig;
+  let m, last = null;
+  while ((m = totalRe.exec(text)) !== null) {
+    if (/sub\s*total/i.test(m[0])) continue;
+    last = m[2];
+  }
+  out.total = last || '';
+  out.conf.total = last ? 'ok' : 'low';
+
+  const tax = text.match(/tax\D{0,10}(\d+\.\d{2})/i);
+  out.tax = tax ? tax[1] : '';
+  out.conf.tax = tax ? 'ok' : 'low';
+
+  const savedRe = /(you saved|total savings|club savings|member savings|card savings|savings)\D{0,10}(\d+\.\d{2})/ig;
+  let sum = 0, hit = false;
+  while ((m = savedRe.exec(text)) !== null) { sum += parseFloat(m[2]); hit = true; }
+  out.saved = hit ? sum.toFixed(2) : '';
+  out.conf.saved = hit ? 'ok' : 'low';
+
+  return out;
+}
+
+function classifyWork(when) {
+  const day = when.getDay();
+  const hr = when.getHours();
+  if (day >= 1 && day <= 5 && hr >= 8 && hr < 17) {
+    return { work: true, reason: 'weekday work hours' };
+  }
+  return { work: false, reason: 'outside work hours' };
+}
+
+function shrinkImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function startReceipt(file) {
+  setStatus('reading receipt');
+  let photoData = '';
+  try {
+    photoData = await shrinkImage(file, 1400, 0.8);
+  } catch (e) {
+    setStatus('could not read photo');
+    return;
+  }
+
+  let text = '';
+  try {
+    const res = await Tesseract.recognize(photoData, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          setStatus('reading receipt, ' + Math.round(m.progress * 100) + ' percent');
+        }
+      }
+    });
+    text = res.data.text || '';
+  } catch (e) {
+    setStatus('text reading failed, enter details by hand');
+  }
+
+  const parsed = parseReceipt(text);
+  let lat = null, lon = null, addressLabel = 'location not captured';
+  try {
+    const pos = await getPosition();
+    lat = pos.coords.latitude;
+    lon = pos.coords.longitude;
+    const geo = await reverseGeocode(lat, lon).catch(() => ({}));
+    addressLabel = formatAddress(geo.address || {});
+  } catch (e) {}
+
+  showReceiptForm(parsed, photoData, lat, lon, addressLabel);
+}
+
+function showReceiptForm(p, photoData, lat, lon, addressLabel) {
+  const panel = document.getElementById('panel');
+  const now = new Date();
+  const cls = classifyWork(now);
+
+  function field(id, label, value, conf) {
+    const bad = conf === 'low' ? ' conf-low' : '';
+    return '<div class="question">' + label + '</div>' +
+           '<input type="text" id="' + id + '" class="rfield' + bad + '" value="' + escapeHtml(value || '') + '">';
+  }
+
+  let html = '<h2>RECEIPT</h2>';
+  html += '<div class="meta-line">' + escapeHtml(addressLabel) + '</div>';
+  if (photoData) html += '<img src="' + photoData + '" style="max-width:100%;margin-top:8px;">';
+  html += field('rStore', 'Store', p.store, p.conf.store);
+  html += field('rTotal', 'Total', p.total, p.conf.total);
+  html += field('rSaved', 'Saved', p.saved, p.conf.saved);
+  html += field('rTax', 'Tax', p.tax, p.conf.tax);
+  html += field('rDate', 'Date on receipt', p.date, p.conf.date);
+  html += field('rTime', 'Time on receipt', p.time, p.conf.time);
+  html += field('rAddr', 'Address on receipt', p.addr, p.conf.addr);
+  html += '<div class="question">Work or personal, ' + cls.reason + '</div>';
+  html += '<div class="icon-picker" id="workPicker">';
+  html += '<div class="icon-choice qopt' + (cls.work ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
+  html += '<div class="icon-choice qopt' + (cls.work ? '' : ' active') + '" data-work="0" style="font-size:12px;">Personal</div>';
+  html += '</div>';
+  html += '<div class="question">Notes</div><textarea id="rNotes"></textarea>';
+  html += '<div class="panel-actions">';
+  html += '<button id="saveReceiptBtn">SAVE RECEIPT</button>';
+  html += '<button class="secondary" id="cancelReceiptBtn">CANCEL</button>';
+  html += '</div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  setStatus('review the highlighted fields');
+
+  let isWork = cls.work;
+  panel.querySelectorAll('#workPicker .qopt').forEach(el => {
+    el.addEventListener('click', () => {
+      panel.querySelectorAll('#workPicker .qopt').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      isWork = el.getAttribute('data-work') === '1';
+    });
+  });
+
+  document.getElementById('cancelReceiptBtn').addEventListener('click', closePanel);
+
+  document.getElementById('saveReceiptBtn').addEventListener('click', async function () {
+    const btn = this;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'SAVED';
+    const v = id => (document.getElementById(id).value || '').trim();
+    const questions = ['Store', 'Total', 'Saved', 'Tax', 'Date on receipt', 'Time on receipt', 'Address on receipt', 'Work or personal', 'Notes'];
+    const answers = [v('rStore'), v('rTotal'), v('rSaved'), v('rTax'), v('rDate'), v('rTime'), v('rAddr'),
+                     isWork ? 'Work' : 'Personal', v('rNotes')];
+    const entry = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      timestamp: now.toISOString(),
+      lat: lat, lon: lon,
+      addressLabel: v('rStore') || addressLabel,
+      placeType: 'receipt',
+      confidence: 5,
+      formType: 'category',
+      category: 'receipt',
+      questions: questions,
+      answers: answers,
+      context: '',
+      icon: CATEGORIES.receipt.icon,
+      twinId: TWIN_ID,
+      photo: photoData,
+      receipt: {
+        store: v('rStore'),
+        total: parseFloat(v('rTotal')) || 0,
+        saved: parseFloat(v('rSaved')) || 0,
+        tax: parseFloat(v('rTax')) || 0,
+        work: isWork
+      }
+    };
+    entries.unshift(entry);
+    await saveEntries().catch(() => {});
+    renderMarkers();
+    if (lat !== null) map.setView([lat, lon], 15);
+    setStatus('receipt saved, ' + (v('rTotal') ? '$' + v('rTotal') : 'no total'));
+    setTimeout(closePanel, 500);
+  });
+}
+
+function showSpend() {
+  const panel = document.getElementById('panel');
+  const rs = entries.filter(e => e.category === 'receipt' && e.receipt);
+  let spent = 0, work = 0, personal = 0, saved = 0;
+  rs.forEach(e => {
+    spent += e.receipt.total;
+    saved += e.receipt.saved;
+    if (e.receipt.work) work += e.receipt.total; else personal += e.receipt.total;
+  });
+  const byStore = {};
+  rs.forEach(e => {
+    const k = e.receipt.store || 'unnamed';
+    if (!byStore[k]) byStore[k] = { visits: 0, spent: 0, saved: 0 };
+    byStore[k].visits++;
+    byStore[k].spent += e.receipt.total;
+    byStore[k].saved += e.receipt.saved;
+  });
+
+  let html = '<h2>SPEND</h2>';
+  html += '<div class="meta-line">' + rs.length + ' receipts</div>';
+  html += '<div style="font-size:30px;color:var(--accent);margin:8px 0;">$' + spent.toFixed(2) + '</div>';
+  html += '<div class="meta-line">work $' + work.toFixed(2) + '</div>';
+  html += '<div class="meta-line">personal $' + personal.toFixed(2) + '</div>';
+  html += '<div class="meta-line">saved $' + saved.toFixed(2) + '</div>';
+  html += '<div class="question">By store</div>';
+  Object.keys(byStore).sort((a, b) => byStore[b].spent - byStore[a].spent).forEach(k => {
+    const s = byStore[k];
+    html += '<div class="meta-line">' + escapeHtml(k) + ', ' + s.visits + ' visits, $' + s.spent.toFixed(2) +
+            (s.saved ? ', saved $' + s.saved.toFixed(2) : '') + '</div>';
+  });
+  if (!rs.length) html += '<div class="meta-line">no receipts captured yet</div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeSpendBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('closeSpendBtn').addEventListener('click', closePanel);
+}
+
 function showProfile() {
+
   const panel = document.getElementById('panel');
   const stats = scoreEntries(entries);
   const trophies = computeTrophies(stats, entries);
@@ -1752,6 +2011,19 @@ async function init() {
   document.getElementById('profileBtn').addEventListener('click', () => {
     closeMenu();
     showProfile();
+  });
+
+  document.getElementById('spendBtn').addEventListener('click', () => {
+    closeMenu();
+    showSpend();
+  });
+
+  document.getElementById('receiptFab').addEventListener('click', () => {
+    document.getElementById('receiptFile').click();
+  });
+  document.getElementById('receiptFile').addEventListener('change', (e) => {
+    if (e.target.files[0]) startReceipt(e.target.files[0]);
+    e.target.value = '';
   });
 
   document.getElementById('camerasBtn').addEventListener('click', () => {
