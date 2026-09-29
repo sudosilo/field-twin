@@ -319,6 +319,7 @@
   <button class="secondary" id="profileBtn">PROFILE</button>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
+  <button class="secondary" id="checkBtn">SERVICE CHECK</button>
   <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
   <button class="secondary" id="importBtn">IMPORT</button>
@@ -1536,6 +1537,78 @@ function showCameraKeyPanel() {
   document.getElementById('closeApiBaseBtn').addEventListener('click', closePanel);
 }
 
+async function serviceCheck() {
+  const panel = document.getElementById('panel');
+  const base = getApiBase().replace(/\/+$/, '');
+  const tok = getApiToken();
+  let html = '<h2>SERVICE CHECK</h2>';
+  html += '<div class="meta-line">' + escapeHtml(base || 'no address set') + '</div>';
+  html += '<div class="meta-line">token ' + (tok ? 'saved, ' + tok.length + ' characters' : 'not set') + '</div>';
+  html += '<div id="checkRows"></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeCheckBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('closeCheckBtn').addEventListener('click', closePanel);
+  const rows = document.getElementById('checkRows');
+  if (!base) return;
+
+  function row(label, msg) {
+    rows.innerHTML += '<div class="meta-line">' + label + ': ' + escapeHtml(msg) + '</div>';
+  }
+
+  try {
+    const r = await fetch(base + '/health');
+    const j = await r.json();
+    row('health', 'status ' + r.status + ', vision key ' + (j.keyConfigured ? 'set' : 'MISSING') + ', redis ' + j.redis);
+  } catch (e) {
+    row('health', 'unreachable, ' + e.message);
+  }
+
+  try {
+    const r = await fetch(base + '/');
+    const j = await r.json();
+    const eps = (j.endpoints || []).join(' ');
+    row('endpoints', eps || 'none listed');
+    row('extract deployed', eps.indexOf('extract') !== -1 ? 'yes' : 'NO, old build still running');
+  } catch (e) {
+    row('endpoints', 'unreachable, ' + e.message);
+  }
+
+  const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (tok) headers['Authorization'] = 'Bearer ' + tok;
+    const r = await fetch(base + '/receipts/extract', {
+      method: 'POST', headers: headers, body: JSON.stringify({ image: pixel })
+    });
+    let detail = '';
+    try { const j = await r.json(); detail = j.error ? ', ' + j.error : ''; } catch (e2) {}
+    if (r.status === 401) detail = ', token rejected';
+    if (r.status === 404) detail = ', endpoint not deployed';
+    if (r.status === 413) detail = ', payload too large';
+    row('extract call', 'status ' + r.status + detail);
+  } catch (e) {
+    row('extract call', 'blocked, ' + e.message);
+  }
+}
+
+function shrinkDataUrl(dataUrl, maxDim, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+      else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 async function extractWithVision(photoData) {
   const base = getApiBase();
   if (!base) throw new Error('no service address set');
@@ -1543,10 +1616,11 @@ async function extractWithVision(photoData) {
   const headers = { 'Content-Type': 'application/json' };
   const tok = getApiToken();
   if (tok) headers['Authorization'] = 'Bearer ' + tok;
+  const small = await shrinkDataUrl(photoData, 1100, 0.6);
   const res = await fetch(root + '/receipts/extract', {
     method: 'POST',
     headers: headers,
-    body: JSON.stringify({ image: photoData })
+    body: JSON.stringify({ image: small })
   });
   if (!res.ok) throw new Error('service returned ' + res.status);
   const data = await res.json();
@@ -1708,12 +1782,14 @@ async function startReceipt(file) {
   }
 
   let parsed = null;
+  let fallbackReason = '';
   try {
     setStatus('reading receipt');
     const r = await extractWithVision(photoData);
     parsed = visionToFields(r);
     setStatus('receipt read');
   } catch (e) {
+    fallbackReason = e.message;
     setStatus('using offline reader, ' + e.message);
     let text = '';
     try {
@@ -1730,6 +1806,7 @@ async function startReceipt(file) {
       setStatus('could not read text, enter details by hand');
     }
     parsed = parseReceipt(text);
+    parsed.fallbackReason = fallbackReason;
   }
   let lat = null, lon = null, addressLabel = 'location not captured';
   try {
@@ -1756,6 +1833,9 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
 
   let html = '<h2>RECEIPT</h2>';
   html += '<div class="meta-line">' + escapeHtml(addressLabel) + '</div>';
+  if (p.fallbackReason) {
+    html += '<div class="meta-line" style="color:#b00020;">offline reader used, ' + escapeHtml(p.fallbackReason) + '</div>';
+  }
   if (photoData) html += '<img src="' + photoData + '" style="max-width:100%;margin-top:8px;">';
   html += field('rStore', 'Store', p.store, p.conf.store);
   html += field('rTotal', 'Total', p.total, p.conf.total);
@@ -2138,6 +2218,11 @@ async function init() {
   document.getElementById('camerasBtn').addEventListener('click', () => {
     closeMenu();
     toggleCameras();
+  });
+
+  document.getElementById('checkBtn').addEventListener('click', () => {
+    closeMenu();
+    serviceCheck();
   });
 
   document.getElementById('camKeyBtn').addEventListener('click', () => {
