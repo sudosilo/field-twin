@@ -173,21 +173,6 @@
     display: flex;
     gap: 8px;
   }
-  #receiptFab {
-    position: absolute;
-    right: 14px;
-    bottom: 18px;
-    z-index: 1000;
-    width: 58px;
-    height: 58px;
-    border-radius: 50%;
-    background: #2e7d32;
-    color: #ffffff;
-    border: none;
-    font-size: 24px;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
-    padding: 0;
-  }
   #receiptFile { display: none; }
   .conf-low { border-color: #e07b00 !important; background: #fff7ec !important; }
   #importInput { display: none; }
@@ -322,7 +307,6 @@
 </div>
 
 <div id="map"></div>
-<button id="receiptFab">🧾</button>
 <input type="file" id="receiptFile" accept="image/*" capture="environment">
 
 <div id="menuOverlay"></div>
@@ -330,6 +314,7 @@
   <h3>COLOR KEY</h3>
   <div id="legendRows"></div>
   <h3>DATA</h3>
+  <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
   <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="profileBtn">PROFILE</button>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
@@ -1540,6 +1525,15 @@ function showCameraKeyPanel() {
   document.getElementById('closeApiBaseBtn').addEventListener('click', closePanel);
 }
 
+async function geocodeAddress(q) {
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q);
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('geocode failed');
+  const list = await res.json();
+  if (!list.length) throw new Error('address not found');
+  return { lat: parseFloat(list[0].lat), lon: parseFloat(list[0].lon), label: list[0].display_name };
+}
+
 function parseReceipt(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const out = { store: '', addr: '', date: '', time: '', total: '', tax: '', saved: '', conf: {} };
@@ -1593,6 +1587,40 @@ function classifyWork(when) {
   return { work: false, reason: 'outside work hours' };
 }
 
+function prepForOcr(dataUrl, maxDim) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+      else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        d[i] = d[i + 1] = d[i + 2] = g;
+        sum += g;
+      }
+      const mean = sum / (d.length / 4);
+      const cut = mean * 0.88;
+      for (let i = 0; i < d.length; i += 4) {
+        const val = d[i] > cut ? 255 : 0;
+        d[i] = d[i + 1] = d[i + 2] = val;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 function shrinkImage(file, maxDim, quality) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1619,7 +1647,7 @@ async function startReceipt(file) {
   setStatus('reading receipt');
   let photoData = '';
   try {
-    photoData = await shrinkImage(file, 1400, 0.8);
+    photoData = await shrinkImage(file, 1600, 0.85);
   } catch (e) {
     setStatus('could not read photo');
     return;
@@ -1627,7 +1655,9 @@ async function startReceipt(file) {
 
   let text = '';
   try {
-    const res = await Tesseract.recognize(photoData, 'eng', {
+    setStatus('preparing image');
+    const ocrImage = await prepForOcr(photoData, 2000);
+    const res = await Tesseract.recognize(ocrImage, 'eng', {
       logger: m => {
         if (m.status === 'recognizing text') {
           setStatus('reading receipt, ' + Math.round(m.progress * 100) + ' percent');
@@ -1702,16 +1732,32 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
     const btn = this;
     if (btn.disabled) return;
     btn.disabled = true;
-    btn.textContent = 'SAVED';
     const v = id => (document.getElementById(id).value || '').trim();
+
+    let useLat = lat, useLon = lon, useLabel = addressLabel, locSrc = lat === null ? 'none' : 'phone';
+    const typedAddr = v('rAddr');
+    if (typedAddr) {
+      btn.textContent = 'LOCATING';
+      try {
+        const g = await geocodeAddress(typedAddr);
+        useLat = g.lat;
+        useLon = g.lon;
+        useLabel = g.label;
+        locSrc = 'address';
+      } catch (e) {
+        setStatus('address not found, kept phone location');
+      }
+    }
+    btn.textContent = 'SAVED';
     const questions = ['Store', 'Total', 'Saved', 'Tax', 'Date on receipt', 'Time on receipt', 'Address on receipt', 'Work or personal', 'Notes'];
     const answers = [v('rStore'), v('rTotal'), v('rSaved'), v('rTax'), v('rDate'), v('rTime'), v('rAddr'),
                      isWork ? 'Work' : 'Personal', v('rNotes')];
     const entry = {
       id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
       timestamp: now.toISOString(),
-      lat: lat, lon: lon,
-      addressLabel: v('rStore') || addressLabel,
+      lat: useLat, lon: useLon,
+      addressLabel: v('rStore') || useLabel,
+      locSrc: locSrc,
       placeType: 'receipt',
       confidence: 5,
       formType: 'category',
@@ -1733,8 +1779,9 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
     entries.unshift(entry);
     await saveEntries().catch(() => {});
     renderMarkers();
-    if (lat !== null) map.setView([lat, lon], 15);
-    setStatus('receipt saved, ' + (v('rTotal') ? '$' + v('rTotal') : 'no total'));
+    if (useLat !== null) map.setView([useLat, useLon], 15);
+    setStatus('receipt saved' + (v('rTotal') ? ', $' + v('rTotal') : '') +
+      (locSrc === 'address' ? ', pinned at receipt address' : ''));
     setTimeout(closePanel, 500);
   });
 }
@@ -2018,7 +2065,8 @@ async function init() {
     showSpend();
   });
 
-  document.getElementById('receiptFab').addEventListener('click', () => {
+  document.getElementById('receiptBtn').addEventListener('click', () => {
+    closeMenu();
     document.getElementById('receiptFile').click();
   });
   document.getElementById('receiptFile').addEventListener('change', (e) => {
