@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
   :root {
     --bg: #f4f6f9;
@@ -314,6 +315,7 @@
   <h3>COLOR KEY</h3>
   <div id="legendRows"></div>
   <h3>DATA</h3>
+  <button class="secondary" id="accountBtn">ACCOUNT</button>
   <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
   <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="profileBtn">PROFILE</button>
@@ -445,7 +447,260 @@ function photoDelete(id) {
   }));
 }
 
+const SUPABASE_URL = 'https://zasyjjoypkpvyqdueums.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphc3lqam95cGtwdnlxZHVldW1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMjk1NjQsImV4cCI6MjEwNjgwNTU2NH0.PZrUvG4qsTpMQeihXbbzaFYUAAJ9YV7FtxLTkcQGFVI';
+const SYNCED_KEY = 'syncedIds';
+let sb = null;
+let cloudUser = null;
+let syncing = false;
+
+function cloudReady() {
+  return Boolean(sb && cloudUser);
+}
+
+function getSyncedIds() {
+  try { return new Set(JSON.parse(localStorage.getItem(SYNCED_KEY) || '[]')); } catch (e) { return new Set(); }
+}
+
+function setSyncedIds(set) {
+  try { localStorage.setItem(SYNCED_KEY, JSON.stringify(Array.from(set))); } catch (e) {}
+}
+
+function initCloud() {
+  if (!window.supabase || SUPABASE_ANON.indexOf('xxxx') === 0) return;
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+  sb.auth.onAuthStateChange((event, session) => {
+    const wasOut = !cloudUser;
+    cloudUser = session ? session.user : null;
+    if (cloudUser && wasOut) {
+      setStatus('signed in, syncing');
+      cloudPull().then(cloudPush);
+    }
+  });
+}
+
+async function loadCloudSession() {
+  if (!sb) return;
+  try {
+    const res = await sb.auth.getSession();
+    cloudUser = res.data && res.data.session ? res.data.session.user : null;
+  } catch (e) {
+    cloudUser = null;
+  }
+}
+
+function dataUrlToBlob(dataUrl) {
+  const parts = dataUrl.split(',');
+  const mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  const bin = atob(parts[1]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+function entryToRow(e, photoPath) {
+  return {
+    id: e.id,
+    user_id: cloudUser.id,
+    twin_id: e.twinId || TWIN_ID,
+    ts: e.timestamp,
+    lat: typeof e.lat === 'number' ? e.lat : null,
+    lon: typeof e.lon === 'number' ? e.lon : null,
+    address_label: e.addressLabel || '',
+    category: e.category || null,
+    form_type: e.formType || null,
+    place_type: e.placeType || null,
+    icon: e.icon || null,
+    questions: (e.questions || []).map(q => (q && typeof q === 'object') ? q.text : q),
+    answers: e.answers || [],
+    context: e.context || '',
+    loc_src: e.locSrc || null,
+    photo_path: photoPath || e.photoPath || null
+  };
+}
+
+function rowToEntry(r) {
+  return {
+    id: r.id,
+    timestamp: r.ts,
+    lat: r.lat,
+    lon: r.lon,
+    addressLabel: r.address_label || '',
+    category: r.category,
+    formType: r.form_type,
+    placeType: r.place_type,
+    icon: r.icon,
+    questions: r.questions || [],
+    answers: r.answers || [],
+    context: r.context || '',
+    locSrc: r.loc_src,
+    twinId: r.twin_id,
+    photoPath: r.photo_path
+  };
+}
+
+async function cloudPush() {
+  if (!cloudReady() || syncing) return;
+  syncing = true;
+  const synced = getSyncedIds();
+  const pending = entries.filter(e => e.id && !synced.has(e.id));
+  let done = 0;
+  try {
+    for (const e of pending) {
+      let photoPath = e.photoPath || null;
+      if (e.photo && !photoPath) {
+        const path = cloudUser.id + '/' + e.id + '.jpg';
+        const up = await sb.storage.from('photos').upload(path, dataUrlToBlob(e.photo), {
+          upsert: true, contentType: 'image/jpeg'
+        });
+        if (!up.error) {
+          photoPath = path;
+          e.photoPath = path;
+        }
+      }
+      const er = await sb.from('entries').upsert(entryToRow(e, photoPath), { onConflict: 'id' });
+      if (er.error) throw new Error(er.error.message);
+      if (e.category === 'receipt' && e.receipt) {
+        const rr = await sb.from('receipts').upsert({
+          entry_id: e.id,
+          user_id: cloudUser.id,
+          store: e.receipt.store || '',
+          total: e.receipt.total || 0,
+          saved: e.receipt.saved || 0,
+          tax: e.receipt.tax || 0,
+          work: Boolean(e.receipt.work),
+          receipt_date: (e.answers || [])[4] || null,
+          receipt_time: (e.answers || [])[5] || null,
+          raw: e.receipt
+        }, { onConflict: 'entry_id' });
+        if (rr.error) throw new Error(rr.error.message);
+      }
+      synced.add(e.id);
+      setSyncedIds(synced);
+      done++;
+    }
+    if (pending.length) setStatus('synced ' + done + ' to cloud');
+  } catch (err) {
+    setStatus('sync paused, ' + err.message);
+  } finally {
+    syncing = false;
+  }
+}
+
+async function cloudPull() {
+  if (!cloudReady()) return;
+  try {
+    const res = await sb.from('entries').select('*').order('ts', { ascending: false });
+    if (res.error) throw new Error(res.error.message);
+    const rec = await sb.from('receipts').select('*');
+    const receiptMap = {};
+    (rec.data || []).forEach(r => { receiptMap[r.entry_id] = r; });
+    const have = new Set(entries.map(e => e.id));
+    const synced = getSyncedIds();
+    let added = 0;
+    (res.data || []).forEach(r => {
+      synced.add(r.id);
+      if (have.has(r.id)) return;
+      const e = rowToEntry(r);
+      const rc = receiptMap[r.id];
+      if (rc) {
+        e.receipt = {
+          store: rc.store || '',
+          total: Number(rc.total) || 0,
+          saved: Number(rc.saved) || 0,
+          tax: Number(rc.tax) || 0,
+          work: Boolean(rc.work)
+        };
+      }
+      entries.push(e);
+      added++;
+    });
+    setSyncedIds(synced);
+    entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    if (added) {
+      await saveEntriesLocal();
+      renderMarkers();
+    }
+    setStatus(entries.length + ' entries, cloud synced');
+  } catch (err) {
+    setStatus('cloud pull failed, ' + err.message);
+  }
+}
+
+async function cloudPhotoUrl(path) {
+  if (!cloudReady() || !path) return '';
+  const res = await sb.storage.from('photos').createSignedUrl(path, 3600);
+  return res.data ? res.data.signedUrl : '';
+}
+
+function showAccount() {
+  const panel = document.getElementById('panel');
+  let html = '<h2>ACCOUNT</h2>';
+  if (!sb) {
+    html += '<div class="meta-line">cloud is not configured in this build</div>';
+  } else if (cloudUser) {
+    const pending = entries.filter(e => !getSyncedIds().has(e.id)).length;
+    html += '<div class="meta-line">signed in as ' + escapeHtml(cloudUser.email || '') + '</div>';
+    html += '<div class="meta-line">' + (pending ? pending + ' entries waiting to upload' : 'everything is uploaded') + '</div>';
+    html += '<div class="panel-actions">';
+    html += '<button id="syncNowBtn">SYNC NOW</button>';
+    html += '<button class="secondary" id="signOutBtn">SIGN OUT</button>';
+    html += '</div>';
+  } else {
+    html += '<div>Enter your email. A sign in link arrives in your inbox. Opening that link on this phone signs you in, and every entry on this phone uploads to your account.</div>';
+    html += '<input type="text" id="authEmail" inputmode="email" autocomplete="email">';
+    html += '<div class="panel-actions"><button id="sendLinkBtn">SEND LINK</button></div>';
+  }
+  html += '<div class="panel-actions"><button class="secondary" id="closeAccountBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+  document.getElementById('closeAccountBtn').addEventListener('click', closePanel);
+
+  const sendBtn = document.getElementById('sendLinkBtn');
+  if (sendBtn) {
+    sendBtn.addEventListener('click', async () => {
+      const email = (document.getElementById('authEmail').value || '').trim();
+      if (!email) return;
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'SENDING';
+      const res = await sb.auth.signInWithOtp({
+        email: email,
+        options: { emailRedirectTo: window.location.origin }
+      });
+      if (res.error) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'SEND LINK';
+        setStatus('link failed, ' + res.error.message);
+      } else {
+        sendBtn.textContent = 'LINK SENT';
+        setStatus('check your email for the sign in link');
+      }
+    });
+  }
+  const syncBtn = document.getElementById('syncNowBtn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.disabled = true;
+      await cloudPull();
+      await cloudPush();
+      showAccount();
+    });
+  }
+  const outBtn = document.getElementById('signOutBtn');
+  if (outBtn) {
+    outBtn.addEventListener('click', async () => {
+      await sb.auth.signOut();
+      cloudUser = null;
+      setStatus('signed out');
+      showAccount();
+    });
+  }
+}
+
 function pruneToRetention(list) {
+  if (cloudUser) return list;
   const cutoff = Date.now() - RETENTION_MS;
   return list.filter(e => new Date(e.timestamp).getTime() >= cutoff);
 }
@@ -471,6 +726,11 @@ async function loadEntries() {
 }
 
 async function saveEntries() {
+  await saveEntriesLocal();
+  cloudPush();
+}
+
+async function saveEntriesLocal() {
   const persisted = pruneToRetention(entries);
   await Promise.all(persisted.map(e => {
     if (!e.id || !e.photo) return Promise.resolve();
@@ -2055,6 +2315,8 @@ function showEntry(entry, fromHistory) {
   html += '<div class="meta-line">' + entry.addressLabel + '</div>';
   if (entry.photo) {
     html += '<img src="' + entry.photo + '" style="max-width:100%;margin-top:8px;">';
+  } else if (entry.photoPath) {
+    html += '<img id="cloudPhoto" style="max-width:100%;margin-top:8px;">';
   }
   if (entry.context) {
     html += '<div class="question">Context</div><div>' + escapeHtml(entry.context) + '</div>';
@@ -2082,6 +2344,12 @@ function showEntry(entry, fromHistory) {
   html += '<div class="panel-actions"><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
   panel.classList.add('open');
+  if (!entry.photo && entry.photoPath) {
+    cloudPhotoUrl(entry.photoPath).then(u => {
+      const img = document.getElementById('cloudPhoto');
+      if (img && u) img.src = u;
+    }).catch(() => {});
+  }
   panel.querySelectorAll('.camlink').forEach(el => {
     el.addEventListener('click', () => {
       showCamera(cameras[parseInt(el.getAttribute('data-camidx'), 10)]);
@@ -2159,12 +2427,16 @@ async function init() {
   }).join('');
   document.getElementById('legendRows').innerHTML = legendHtml;
   initMap();
+  initCloud();
+  await loadCloudSession();
   await loadEntries();
   renderMarkers();
   if (entries.length) {
     map.setView([entries[0].lat, entries[0].lon], 12);
   }
-  setStatus(scoreEntries(entries).total + ' points, ' + entries.length + ' entries');
+  setStatus(scoreEntries(entries).total + ' points, ' + entries.length + ' entries' + (cloudUser ? ', signed in' : ''));
+  if (cloudUser) cloudPull().then(cloudPush);
+  window.addEventListener('online', () => { if (cloudUser) cloudPush(); });
 
   document.getElementById('updateBtn').addEventListener('click', forceUpdate);
   document.getElementById('exportBtn').addEventListener('click', exportEntries);
@@ -2218,6 +2490,11 @@ async function init() {
   document.getElementById('camerasBtn').addEventListener('click', () => {
     closeMenu();
     toggleCameras();
+  });
+
+  document.getElementById('accountBtn').addEventListener('click', () => {
+    closeMenu();
+    showAccount();
   });
 
   document.getElementById('checkBtn').addEventListener('click', () => {
