@@ -610,6 +610,9 @@
   @media (prefers-reduced-motion: reduce) {
     #sideMenu, .leaflet-cluster-anim .leaflet-marker-icon { transition: none; }
   }
+  .entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .entry-head h2 { margin: 0; }
+  #movePinBtn { flex: 0 0 auto; width: 48px; height: 48px; min-width: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 </style>
 </head>
 <body>
@@ -3323,10 +3326,10 @@ function showEdit(entry, fromHistory) {
         entry.lon = g.lon;
         entry.locSrc = 'address';
         pinNote = ', pin moved';
-        pinNotice = { id: entry.id, ok: true, text: g.exact ? 'Pin moved to the address.' : 'The exact street number was not on the map, so the pin was moved to that street. Use MOVE PIN to set the exact spot.' };
+        pinNotice = { id: entry.id, ok: true, text: g.exact ? 'Pin moved to the address.' : 'The exact street number was not on the map, so the pin was moved to that street. Tap the four arrows button at the top right to set the exact spot.' };
       } catch (e) {
         pinNote = ', address not found so the pin stayed';
-        pinNotice = { id: entry.id, ok: false, text: 'The map service could not find that address, so the pin did not move. Use MOVE PIN and tap the map to set it.' };
+        pinNotice = { id: entry.id, ok: false, text: 'The map service could not find that address, so the pin did not move. Tap the four arrows button at the top right, then tap the map to set it.' };
       }
     }
 
@@ -3345,7 +3348,7 @@ function showEdit(entry, fromHistory) {
 
 function showEntry(entry, fromHistory) {
   const panel = document.getElementById('panel');
-  let html = '<h2>ENTRY</h2>';
+  let html = '<div class="entry-head"><h2>ENTRY</h2><button class="secondary" id="movePinBtn" aria-label="Move pin" title="Move pin"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button></div>';
   if (pinNotice && pinNotice.id === entry.id) {
     html += '<div style="margin:6px 0;padding:8px;border:1px solid ' + (pinNotice.ok ? 'var(--accent-dim)' : '#b00020') + ';color:' + (pinNotice.ok ? 'var(--text)' : '#b00020') + ';font-size:13px;">' + escapeHtml(pinNotice.text) + '</div>';
     pinNotice = null;
@@ -3397,7 +3400,7 @@ function showEntry(entry, fromHistory) {
       });
     }
   }
-  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="movePinBtn">MOVE PIN</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
+  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
