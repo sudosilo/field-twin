@@ -910,6 +910,72 @@ function rowToEntry(r) {
   };
 }
 
+function getDeletedIds() {
+  try { return new Set(JSON.parse(localStorage.getItem('deletedIds') || '[]')); } catch (e) { return new Set(); }
+}
+
+function setDeletedIds(set) {
+  try { localStorage.setItem('deletedIds', JSON.stringify(Array.from(set))); } catch (e) {}
+}
+
+function photoRemove(id) {
+  return new Promise(resolve => {
+    try {
+      const req = indexedDB.open('fieldTwinPhotos');
+      req.onsuccess = () => {
+        try {
+          const db = req.result;
+          const name = db.objectStoreNames[0];
+          if (!name) { resolve(); return; }
+          const tx = db.transaction(name, 'readwrite');
+          tx.objectStore(name).delete(id);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        } catch (e) { resolve(); }
+      };
+      req.onerror = () => resolve();
+    } catch (e) { resolve(); }
+  });
+}
+
+async function cloudDeletePending() {
+  if (!cloudReady()) return;
+  const gone = getDeletedIds();
+  if (!gone.size) return;
+  for (const id of Array.from(gone)) {
+    try {
+      await sb.storage.from('photos').remove([cloudUser.id + '/' + id + '.jpg']);
+      await sb.from('receipts').delete().eq('entry_id', id);
+      const del = await sb.from('entries').delete().eq('id', id);
+      if (del.error) continue;
+      const check = await sb.from('entries').select('id').eq('id', id);
+      if (!check.error && (check.data || []).length === 0) {
+        gone.delete(id);
+        setDeletedIds(gone);
+      }
+    } catch (e) {}
+  }
+}
+
+async function deleteEntry(entry) {
+  const idx = entries.findIndex(e => e.id === entry.id);
+  if (idx !== -1) entries.splice(idx, 1);
+  const gone = getDeletedIds();
+  gone.add(entry.id);
+  setDeletedIds(gone);
+  const synced = getSyncedIds();
+  synced.delete(entry.id);
+  setSyncedIds(synced);
+  const dirty = getDirtyIds();
+  dirty.delete(entry.id);
+  setDirtyIds(dirty);
+  await photoRemove(entry.id);
+  await saveEntriesLocal();
+  renderMarkers();
+  setStatus('entry deleted');
+  cloudDeletePending();
+}
+
 async function cloudPush() {
   if (!cloudReady() || syncing) return;
   syncing = true;
@@ -964,6 +1030,8 @@ async function cloudPush() {
 async function cloudPull() {
   if (!cloudReady()) return;
   try {
+    await cloudDeletePending();
+    const goneNow = getDeletedIds();
     const res = await sb.from('entries').select('*').order('ts', { ascending: false });
     if (res.error) throw new Error(res.error.message);
     const rec = await sb.from('receipts').select('*');
@@ -975,6 +1043,7 @@ async function cloudPull() {
     const dirtyNow = getDirtyIds();
     let added = 0;
     (res.data || []).forEach(r => {
+      if (goneNow.has(r.id)) return;
       synced.add(r.id);
       const local = have[r.id];
       if (local) {
@@ -3126,7 +3195,7 @@ function showInfo() {
   html += '<div class="question">Map</div>';
   html += '<div>Each stop is drawn as a road sign shape with a picture inside. The shape and tint tell you the kind of place, and the full list is under Color key in the menu. Receipts show as a price tag with the total. Stops that sit close together merge into a blue circle with a count. Tap the circle to zoom in and spread them apart. Tap any sign to open that entry.</div>';
   html += '<div class="question">Opening, editing and moving an entry</div>';
-  html += '<div>Tap a sign on the map or a line in History to open an entry. Edit changes any answer, the date, the address, the items and the notes. The four arrows button at the top right of an entry moves the pin. Press it, then tap the map at the correct spot.</div>';
+  html += '<div>Tap a sign on the map or a line in History to open an entry. Edit changes any answer, the date, the address, the items and the notes. Delete is on the Edit screen. Tap Delete, then tap it again to confirm. The entry and its photo are removed from this phone and from your account. The four arrows button at the top right of an entry moves the pin. Press it, then tap the map at the correct spot.</div>';
   html += '<div class="question">Search</div>';
   html += '<div>Search in the menu looks through store names, addresses, notes, answers and receipt items. You can narrow by kind of place, by dates and by work or personal. Results can be shown on the map or saved as a spreadsheet file.</div>';
   html += '<div class="question">History and Spend</div>';
@@ -3246,6 +3315,7 @@ function showEdit(entry, fromHistory) {
   html += '<div class="panel-actions">';
   html += '<button id="edSaveBtn">SAVE CHANGES</button>';
   html += '<button class="secondary" id="edCancelBtn">CANCEL</button>';
+  html += '<button class="secondary" id="edDeleteBtn" style="color:#b00020;border-color:#b00020;">DELETE</button>';
   html += '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -3260,6 +3330,18 @@ function showEdit(entry, fromHistory) {
   });
 
   document.getElementById('edCancelBtn').addEventListener('click', () => showEntry(entry, fromHistory));
+  document.getElementById('edDeleteBtn').addEventListener('click', async function () {
+    if (this.getAttribute('data-armed') !== '1') {
+      this.setAttribute('data-armed', '1');
+      this.textContent = 'TAP AGAIN TO DELETE';
+      return;
+    }
+    this.disabled = true;
+    await deleteEntry(entry);
+    if (fromHistory === 'search') { closePanel(); openSearch(); }
+    else if (fromHistory) showHistory();
+    else closePanel();
+  });
 
   const rereadBtn = document.getElementById('edReread');
   if (rereadBtn) {
