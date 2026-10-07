@@ -373,6 +373,7 @@
 </div>
 
 <div id="mapFilterBar"><span id="mapFilterText"></span><button class="secondary" id="mapFilterClear" style="padding:8px 10px;font-size:11px;">SHOW ALL</button></div>
+<div id="pinPlaceBar" style="position:absolute;left:10px;right:10px;bottom:14px;z-index:950;background:var(--panel);border:2px solid var(--accent);display:none;align-items:center;justify-content:space-between;gap:10px;padding:10px;font-size:13px;"><span>Tap the map where this entry belongs</span><button class="secondary" id="pinPlaceCancel" style="padding:8px 10px;font-size:11px;">CANCEL</button></div>
 <div id="panel"></div>
 <div id="searchPage"></div>
 
@@ -672,7 +673,8 @@ async function cloudPull() {
             total: Number(rcu.total) || 0,
             saved: Number(rcu.saved) || 0,
             tax: Number(rcu.tax) || 0,
-            work: Boolean(rcu.work)
+            work: Boolean(rcu.work),
+            items: cleanItems(rcu.raw && rcu.raw.items)
           };
         }
         added++;
@@ -686,7 +688,8 @@ async function cloudPull() {
           total: Number(rc.total) || 0,
           saved: Number(rc.saved) || 0,
           tax: Number(rc.tax) || 0,
-          work: Boolean(rc.work)
+          work: Boolean(rc.work),
+          items: cleanItems(rc.raw && rc.raw.items)
         };
       }
       entries.push(e);
@@ -831,6 +834,7 @@ function initMap() {
     crossOrigin: true
   }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
+  map.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.latlng); });
   map.on('zoomend', () => { if (camerasVisible) renderCameras(); });
   setTimeout(() => map.invalidateSize(), 200);
   setTimeout(() => { map.invalidateSize(); renderMarkers(); }, 800);
@@ -927,10 +931,49 @@ function computeTrophies(stats, list) {
 let mapFilterIds = null;
 let searchResults = [];
 
+function cleanItems(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map(it => ({
+      name: String((it && it.name) || '').trim(),
+      price: (it && it.price !== null && it.price !== undefined && isFinite(Number(it.price))) ? Number(it.price) : null
+    }))
+    .filter(it => it.name);
+}
+
+function itemsToText(items) {
+  return cleanItems(items).map(it => it.name + (it.price !== null ? ' | ' + it.price.toFixed(2) : '')).join('\n');
+}
+
+function textToItems(text) {
+  return String(text || '').split('\n').map(line => {
+    const t = line.trim();
+    if (!t) return null;
+    const m = t.match(/^(.*?)\s*\|\s*\$?(-?\d+(?:\.\d+)?)\s*$/);
+    if (m && m[1].trim()) return { name: m[1].trim(), price: parseFloat(m[2]) };
+    return { name: t.replace(/\s*\|\s*$/, ''), price: null };
+  }).filter(Boolean);
+}
+
+async function entryPhotoData(entry) {
+  if (entry.photo) return entry.photo;
+  if (!entry.photoPath) return '';
+  const url = await cloudPhotoUrl(entry.photoPath);
+  if (!url) return '';
+  const blob = await (await fetch(url)).blob();
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
 function entryText(e) {
   const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
   const parts = [e.addressLabel || '', e.context || '', m.label];
   (e.answers || []).forEach(a => { if (a) parts.push(String(a)); });
+  if (e.receipt && e.receipt.items) e.receipt.items.forEach(it => { parts.push(it.name); });
   return parts.join(' ').toLowerCase();
 }
 
@@ -1006,6 +1049,7 @@ function runSearch() {
     html += '<div class="sq-name">' + escapeHtml(e.addressLabel || m.label) + '</div>';
     html += '<div class="sq-sub">' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
             ', ' + m.label + (e.receipt ? (e.receipt.work ? ', work' : ', personal') : '') +
+            (e.receipt && e.receipt.items && e.receipt.items.length ? ', ' + e.receipt.items.length + ' items' : '') +
             (hasPos(e) ? '' : ', no pin') + '</div>';
     html += '</div>';
     html += '<div class="sq-amt">' + (e.receipt ? '$' + e.receipt.total.toFixed(2) : '') + '</div>';
@@ -1028,7 +1072,7 @@ function csvCell(v) {
 }
 
 function exportSearchCsv() {
-  const head = ['date', 'time', 'name', 'type', 'store', 'total', 'saved', 'tax', 'work or personal', 'address on receipt', 'latitude', 'longitude', 'notes', 'context'];
+  const head = ['date', 'time', 'name', 'type', 'store', 'total', 'saved', 'tax', 'work or personal', 'address on receipt', 'latitude', 'longitude', 'notes', 'context', 'items'];
   const lines = [head.map(csvCell).join(',')];
   searchResults.forEach(e => {
     const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
@@ -1049,7 +1093,8 @@ function exportSearchCsv() {
       hasPos(e) ? e.lat : '',
       hasPos(e) ? e.lon : '',
       ans('Notes'),
-      e.context || ''
+      e.context || '',
+      (e.receipt && e.receipt.items) ? e.receipt.items.map(it => it.name + (it.price !== null && it.price !== undefined ? ' ' + Number(it.price).toFixed(2) : '')).join('; ') : ''
     ].map(csvCell).join(','));
   });
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -1086,8 +1131,8 @@ function buildSearchPage() {
 
   ['sqText', 'sqFrom', 'sqTo', 'sqCat', 'sqWork', 'sqMin', 'sqMax', 'sqPhoto', 'sqSort'].forEach(id => {
     const el = document.getElementById(id);
-    el.addEventListener('input', runSearch);
-    el.addEventListener('change', runSearch);
+    const isTyped = el.tagName === 'INPUT' && el.type !== 'date';
+    el.addEventListener(isTyped ? 'input' : 'change', runSearch);
   });
   document.getElementById('sqClose').addEventListener('click', () => page.classList.remove('open'));
   document.getElementById('sqReset').addEventListener('click', () => {
@@ -1144,7 +1189,7 @@ function renderMarkers() {
         fillColor: fill,
         fillOpacity: 1
       });
-      dot.on('click', () => showEntry(e));
+      dot.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng); else showEntry(e); });
       dot.addTo(markersLayer);
 
       const badge = L.marker([lat, lon], {
@@ -1157,7 +1202,7 @@ function renderMarkers() {
         interactive: true,
         zIndexOffset: 2000
       });
-      badge.on('click', () => showEntry(e));
+      badge.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng); else showEntry(e); });
       badge.addTo(markersLayer);
 
       drawn++;
@@ -2185,6 +2230,7 @@ function visionToFields(r) {
   ['store', 'addr', 'date', 'time', 'total', 'tax', 'saved'].forEach(k => {
     out.conf[k] = out[k] ? 'ok' : 'low';
   });
+  out.items = cleanItems(r.items);
   if (r.fuel && (r.fuel.gallons || r.fuel.price_per_gallon)) {
     out.fuelNote = [
       r.fuel.gallons ? r.fuel.gallons + ' gal' : '',
@@ -2193,6 +2239,98 @@ function visionToFields(r) {
     ].filter(Boolean).join(', ');
   }
   return out;
+}
+
+let pinNotice = null;
+let pinPlacing = null;
+
+function cleanAddress(a) {
+  return String(a || '')
+    .replace(/\b(suite|ste|unit|apt|apartment|bldg|building|space|spc|room|rm|lot)\b\.?\s*#?\s*[\w-]*/gi, ' ')
+    .replace(/#\s*[\w-]+/g, ' ')
+    .replace(/\s+,/g, ',')
+    .replace(/,\s*,+/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '');
+}
+
+async function geocodeQuery(q, state) {
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1' +
+    (state ? '&countrycodes=us' : '') + '&q=' + encodeURIComponent(q);
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('geocode failed');
+  return await res.json();
+}
+
+async function geocodeSmart(raw) {
+  const clean = cleanAddress(raw);
+  if (!clean) throw new Error('address not found');
+  const parts = clean.split(',').map(x => x.trim()).filter(Boolean);
+  let state = '', city = '';
+  const last = parts[parts.length - 1] || '';
+  const sm = last.match(/^([A-Za-z]{2})(\s+\d{5}(-\d{4})?)?$/);
+  if (sm && parts.length >= 2) {
+    state = sm[1].toUpperCase();
+    if (parts.length >= 3) city = parts[parts.length - 2];
+  }
+  const tries = [clean];
+  const street = parts[0] || '';
+  const streetNoNumber = street.replace(/^\d+[A-Za-z]?\s+/, '');
+  if (city && streetNoNumber && streetNoNumber !== street) {
+    tries.push([streetNoNumber, city, state].filter(Boolean).join(', '));
+  }
+  const inState = r => !state || !r.address || !r.address['ISO3166-2-lvl4'] || r.address['ISO3166-2-lvl4'] === 'US-' + state;
+  const inCity = r => !city || String(r.display_name || '').toLowerCase().indexOf(city.toLowerCase()) !== -1;
+  let weak = null;
+  for (let i = 0; i < tries.length; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 1200));
+    let list = [];
+    try { list = await geocodeQuery(tries[i], state); } catch (e) { list = []; }
+    const good = list.filter(r => inState(r) && inCity(r))[0];
+    if (good) {
+      return { lat: parseFloat(good.lat), lon: parseFloat(good.lon), label: good.display_name, exact: i === 0 };
+    }
+    if (!weak) {
+      const w = list.filter(inState)[0];
+      if (w && !city) weak = { lat: parseFloat(w.lat), lon: parseFloat(w.lon), label: w.display_name, exact: false };
+    }
+  }
+  if (weak) return weak;
+  throw new Error('address not found');
+}
+
+function startPinPlacement(entry, fromHistory) {
+  closePanel();
+  document.getElementById('searchPage').classList.remove('open');
+  pinPlacing = { entry: entry, fromHistory: fromHistory };
+  const bar = document.getElementById('pinPlaceBar');
+  bar.style.display = 'flex';
+  setStatus('tap the map where this entry belongs');
+}
+
+function cancelPinPlacement() {
+  const p = pinPlacing;
+  pinPlacing = null;
+  document.getElementById('pinPlaceBar').style.display = 'none';
+  if (p) showEntry(p.entry, p.fromHistory);
+}
+
+async function finishPinPlacement(latlng) {
+  const p = pinPlacing;
+  if (!p) return;
+  pinPlacing = null;
+  document.getElementById('pinPlaceBar').style.display = 'none';
+  p.entry.lat = latlng.lat;
+  p.entry.lon = latlng.lng;
+  p.entry.locSrc = 'manual';
+  p.entry.updatedAt = new Date().toISOString();
+  const dirty = getDirtyIds();
+  dirty.add(p.entry.id);
+  setDirtyIds(dirty);
+  await saveEntries().catch(() => {});
+  renderMarkers();
+  setStatus('pin moved');
+  showEntry(p.entry, p.fromHistory);
 }
 
 async function geocodeAddress(q) {
@@ -2415,6 +2553,8 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   html += '<div class="icon-choice qopt' + (cls.work ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
   html += '<div class="icon-choice qopt' + (cls.work ? '' : ' active') + '" data-work="0" style="font-size:12px;">Personal</div>';
   html += '</div>';
+  html += '<div class="question">Items, one per line, name then a bar then the price</div>';
+  html += '<textarea id="rItems" style="min-height:120px;">' + escapeHtml(itemsToText(p.items || [])) + '</textarea>';
   html += '<div class="question">Notes</div><textarea id="rNotes">' + escapeHtml(p.fuelNote || '') + '</textarea>';
   html += '<div class="panel-actions">';
   html += '<button id="saveReceiptBtn">SAVE RECEIPT</button>';
@@ -2454,7 +2594,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
     for (let i = 0; i < tries.length && !found; i++) {
       if (i > 0) await new Promise(r => setTimeout(r, 1200));
       try {
-        const g = await geocodeAddress(tries[i].q);
+        const g = tries[i].src === 'address' ? await geocodeSmart(tries[i].q) : await geocodeAddress(tries[i].q);
         found = { lat: g.lat, lon: g.lon, label: g.label, src: tries[i].src };
       } catch (e) {}
     }
@@ -2497,7 +2637,8 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
         total: parseFloat(v('rTotal')) || 0,
         saved: parseFloat(v('rSaved')) || 0,
         tax: parseFloat(v('rTax')) || 0,
-        work: isWork
+        work: isWork,
+        items: textToItems(v('rItems'))
       }
     };
     entries.unshift(entry);
@@ -2689,13 +2830,23 @@ function showEdit(entry, fromHistory) {
       html += '</div>';
       return;
     }
-    const label = i === addrIdx ? 'Address on receipt, changing it moves the map pin' : q;
+    const label = i === addrIdx ? 'Address on receipt' : q;
     html += '<div class="question">' + escapeHtml(label) + '</div>';
     html += '<input type="text" class="edAns" data-i="' + i + '" value="' + escapeHtml(answers[i] || '') + '">';
   });
   if (!isReceipt) {
     html += '<div class="question">Move the map pin to this address, leave empty to leave the pin where it is</div>';
     html += '<input type="text" id="edMove">';
+  } else {
+    html += '<div class="question">Map pin</div>';
+    html += '<select id="edPin"><option value="auto">Move it when the address above changes</option><option value="move">Find the address above and move the pin there now</option><option value="stay">Leave the pin where it is</option></select>';
+  }
+  if (isReceipt) {
+    html += '<div class="question">Items, one per line, name then a bar then the price</div>';
+    html += '<textarea id="edItems" style="min-height:120px;">' + escapeHtml(itemsToText((entry.receipt && entry.receipt.items) || [])) + '</textarea>';
+    if (entry.photo || entry.photoPath) {
+      html += '<button class="secondary" id="edReread" style="margin-top:8px;width:100%;">READ ITEMS FROM THE PHOTO</button>';
+    }
   }
   html += '<div class="question">Notes</div>';
   html += '<textarea id="edNotes">' + escapeHtml(notesIdx >= 0 ? (answers[notesIdx] || '') : '') + '</textarea>';
@@ -2715,6 +2866,25 @@ function showEdit(entry, fromHistory) {
   });
 
   document.getElementById('edCancelBtn').addEventListener('click', () => showEntry(entry, fromHistory));
+
+  const rereadBtn = document.getElementById('edReread');
+  if (rereadBtn) {
+    rereadBtn.addEventListener('click', async () => {
+      rereadBtn.disabled = true;
+      rereadBtn.textContent = 'READING';
+      try {
+        const data = await entryPhotoData(entry);
+        if (!data) throw new Error('photo not available');
+        const r = await extractWithVision(data);
+        const found = cleanItems(r.items);
+        document.getElementById('edItems').value = itemsToText(found);
+        rereadBtn.textContent = found.length ? 'ITEMS READ, REVIEW THEN SAVE' : 'NO ITEMS FOUND ON THE PHOTO';
+      } catch (e) {
+        rereadBtn.textContent = 'COULD NOT READ, ' + e.message;
+      }
+      rereadBtn.disabled = false;
+    });
+  }
 
   document.getElementById('edSaveBtn').addEventListener('click', async function () {
     const btn = this;
@@ -2745,11 +2915,15 @@ function showEdit(entry, fromHistory) {
         total: parseFloat(get('Total')) || 0,
         saved: parseFloat(get('Saved')) || 0,
         tax: parseFloat(get('Tax')) || 0,
-        work: isWork
+        work: isWork,
+        items: textToItems(val('edItems'))
       };
+      if (!entry.capturedAt) entry.capturedAt = entry.timestamp;
       entry.timestamp = receiptWhen(get('Date on receipt'), get('Time on receipt'), new Date(entry.timestamp)).toISOString();
       const newAddr = get('Address on receipt');
-      if (newAddr && newAddr !== originalAddr) moveTo = newAddr;
+      const pinChoice = val('edPin') || 'auto';
+      if (newAddr && pinChoice === 'move') moveTo = newAddr;
+      else if (newAddr && pinChoice === 'auto' && newAddr !== originalAddr) moveTo = newAddr;
     } else {
       const when = new Date(val('edWhen'));
       if (!isNaN(when.getTime())) entry.timestamp = when.toISOString();
@@ -2768,13 +2942,15 @@ function showEdit(entry, fromHistory) {
     if (moveTo) {
       btn.textContent = 'LOCATING';
       try {
-        const g = await geocodeAddress(moveTo);
+        const g = await geocodeSmart(moveTo);
         entry.lat = g.lat;
         entry.lon = g.lon;
         entry.locSrc = 'address';
         pinNote = ', pin moved';
+        pinNotice = { id: entry.id, ok: true, text: g.exact ? 'Pin moved to the address.' : 'The exact street number was not on the map, so the pin was moved to that street. Use MOVE PIN to set the exact spot.' };
       } catch (e) {
         pinNote = ', address not found so the pin stayed';
+        pinNotice = { id: entry.id, ok: false, text: 'The map service could not find that address, so the pin did not move. Use MOVE PIN and tap the map to set it.' };
       }
     }
 
@@ -2794,6 +2970,13 @@ function showEdit(entry, fromHistory) {
 function showEntry(entry, fromHistory) {
   const panel = document.getElementById('panel');
   let html = '<h2>ENTRY</h2>';
+  if (pinNotice && pinNotice.id === entry.id) {
+    html += '<div style="margin:6px 0;padding:8px;border:1px solid ' + (pinNotice.ok ? 'var(--accent-dim)' : '#b00020') + ';color:' + (pinNotice.ok ? 'var(--text)' : '#b00020') + ';font-size:13px;">' + escapeHtml(pinNotice.text) + '</div>';
+    pinNotice = null;
+  }
+  if (!hasPos(entry)) {
+    html += '<div class="meta-line">no map pin</div>';
+  }
   html += '<div class="meta-line">' + new Date(entry.timestamp).toLocaleString() + '</div>';
   html += '<div class="meta-line">' + entry.addressLabel + '</div>';
   if (entry.photo) {
@@ -2813,6 +2996,14 @@ function showEntry(entry, fromHistory) {
     html += '<div class="question">' + escapeHtml(label) + '</div><div>' + escapeHtml(String(a)) + '</div>';
     shown = true;
   });
+  if (entry.receipt && entry.receipt.items && entry.receipt.items.length) {
+    html += '<div class="question">Items</div>';
+    entry.receipt.items.forEach(it => {
+      html += '<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0;border-bottom:1px solid var(--line);">' +
+              '<span>' + escapeHtml(it.name) + '</span><span>' + (it.price !== null && it.price !== undefined ? '$' + Number(it.price).toFixed(2) : '') + '</span></div>';
+    });
+    shown = true;
+  }
   if (!shown) {
     html += '<div class="question">No answers recorded</div>';
   }
@@ -2830,7 +3021,7 @@ function showEntry(entry, fromHistory) {
       });
     }
   }
-  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
+  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="movePinBtn">MOVE PIN</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
   panel.classList.add('open');
   if (!entry.photo && entry.photoPath) {
@@ -2845,6 +3036,7 @@ function showEntry(entry, fromHistory) {
     });
   });
   document.getElementById('editEntryBtn').addEventListener('click', () => showEdit(entry, fromHistory));
+  document.getElementById('movePinBtn').addEventListener('click', () => startPinPlacement(entry, fromHistory));
   document.getElementById('closeEntryBtn').addEventListener('click', () => {
     if (fromHistory === 'search') { closePanel(); openSearch(); }
     else if (fromHistory) showHistory();
@@ -2972,6 +3164,7 @@ async function init() {
     openSearch();
   });
   document.getElementById('mapFilterClear').addEventListener('click', clearMapFilter);
+  document.getElementById('pinPlaceCancel').addEventListener('click', cancelPinPlacement);
 
   document.getElementById('spendBtn').addEventListener('click', () => {
     closeMenu();
