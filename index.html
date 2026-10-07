@@ -176,6 +176,49 @@
   }
   #receiptFile { display: none; }
   .conf-low { border-color: #e07b00 !important; background: #fff7ec !important; }
+  #searchPage {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg);
+    z-index: 3000;
+    display: none;
+    overflow-y: auto;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    color: var(--text);
+  }
+  #searchPage.open { display: block; }
+  .sq-head {
+    position: sticky; top: 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px;
+    z-index: 2;
+  }
+  .sq-filters { background: var(--panel); padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .sq-filters label { display: block; font-size: 11px; color: var(--text-dim); margin-top: 8px; }
+  .sq-filters input, .sq-filters select {
+    width: 100%; background: #f9fafb; border: 1px solid var(--line); color: var(--text);
+    padding: 8px; font-family: inherit; font-size: 14px; margin-top: 4px;
+  }
+  .sq-pair { display: flex; gap: 10px; }
+  .sq-pair > div { flex: 1; min-width: 0; }
+  .sq-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .sq-actions button { flex: 1; padding: 10px 4px; font-size: 11px; }
+  .sq-summary { padding: 10px 14px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; color: var(--accent); }
+  .sq-row { display: flex; align-items: center; gap: 10px; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 14px; }
+  .sq-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex: 0 0 auto; }
+  .sq-main { flex: 1; min-width: 0; }
+  .sq-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sq-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .sq-amt { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 13px; flex: 0 0 auto; }
+  .sq-empty { padding: 24px 14px; color: var(--text-dim); font-size: 14px; }
+  #mapFilterBar {
+    position: absolute; left: 10px; right: 10px; bottom: 14px; z-index: 900;
+    background: var(--panel); border: 1px solid var(--accent-dim);
+    display: none; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 10px; font-size: 12px;
+  }
   #importInput { display: none; }
   #menuBtn {
     background: transparent;
@@ -317,6 +360,7 @@
   <h3>DATA</h3>
   <button class="secondary" id="accountBtn">ACCOUNT</button>
   <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
+  <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="profileBtn">PROFILE</button>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
@@ -328,7 +372,9 @@
   <input type="file" id="importInput" accept="application/json">
 </div>
 
+<div id="mapFilterBar"><span id="mapFilterText"></span><button class="secondary" id="mapFilterClear" style="padding:8px 10px;font-size:11px;">SHOW ALL</button></div>
 <div id="panel"></div>
+<div id="searchPage"></div>
 
 <script>
 const STORAGE_KEY = 'entries';
@@ -878,6 +924,203 @@ function computeTrophies(stats, list) {
   ];
 }
 
+let mapFilterIds = null;
+let searchResults = [];
+
+function entryText(e) {
+  const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
+  const parts = [e.addressLabel || '', e.context || '', m.label];
+  (e.answers || []).forEach(a => { if (a) parts.push(String(a)); });
+  return parts.join(' ').toLowerCase();
+}
+
+function localDay(ts) {
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+function runSearch() {
+  const val = id => (document.getElementById(id).value || '').trim();
+  const words = val('sqText').toLowerCase().split(/\s+/).filter(Boolean);
+  const from = val('sqFrom');
+  const to = val('sqTo');
+  const cat = val('sqCat');
+  const work = val('sqWork');
+  const photo = val('sqPhoto');
+  const min = val('sqMin') === '' ? null : parseFloat(val('sqMin'));
+  const max = val('sqMax') === '' ? null : parseFloat(val('sqMax'));
+  const sort = val('sqSort');
+
+  let list = entries.filter(e => {
+    if (cat && (e.category || 'general') !== cat) return false;
+    const day = localDay(e.timestamp);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    if (work) {
+      if (!e.receipt) return false;
+      if (work === 'work' && !e.receipt.work) return false;
+      if (work === 'personal' && e.receipt.work) return false;
+    }
+    if (photo === 'yes' && !(e.photo || e.photoPath)) return false;
+    if (photo === 'no' && (e.photo || e.photoPath)) return false;
+    if (min !== null || max !== null) {
+      if (!e.receipt) return false;
+      if (min !== null && e.receipt.total < min) return false;
+      if (max !== null && e.receipt.total > max) return false;
+    }
+    if (words.length) {
+      const hay = entryText(e);
+      for (let i = 0; i < words.length; i++) {
+        if (hay.indexOf(words[i]) === -1) return false;
+      }
+    }
+    return true;
+  });
+
+  const total = e => (e.receipt ? e.receipt.total : 0);
+  if (sort === 'old') list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  else if (sort === 'high') list.sort((a, b) => total(b) - total(a));
+  else if (sort === 'low') list.sort((a, b) => total(a) - total(b));
+  else if (sort === 'name') list.sort((a, b) => (a.addressLabel || '').localeCompare(b.addressLabel || ''));
+  else list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  searchResults = list;
+  let spent = 0, saved = 0, receipts = 0;
+  list.forEach(e => { if (e.receipt) { spent += e.receipt.total; saved += e.receipt.saved; receipts++; } });
+  document.getElementById('sqSummary').textContent =
+    list.length + ' found' + (receipts ? ', ' + receipts + ' receipts, $' + spent.toFixed(2) + ' spent, $' + saved.toFixed(2) + ' saved' : '');
+
+  const box = document.getElementById('sqRows');
+  if (!list.length) {
+    box.innerHTML = '<div class="sq-empty">Nothing matches these filters</div>';
+    return;
+  }
+  let html = '';
+  list.forEach((e, i) => {
+    const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
+    const d = new Date(e.timestamp);
+    html += '<div class="sq-row" data-i="' + i + '">';
+    html += '<div class="sq-icon" style="background:' + m.color + ';">' + (e.icon || m.icon) + '</div>';
+    html += '<div class="sq-main">';
+    html += '<div class="sq-name">' + escapeHtml(e.addressLabel || m.label) + '</div>';
+    html += '<div class="sq-sub">' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
+            ', ' + m.label + (e.receipt ? (e.receipt.work ? ', work' : ', personal') : '') +
+            (hasPos(e) ? '' : ', no pin') + '</div>';
+    html += '</div>';
+    html += '<div class="sq-amt">' + (e.receipt ? '$' + e.receipt.total.toFixed(2) : '') + '</div>';
+    html += '</div>';
+  });
+  box.innerHTML = html;
+  box.querySelectorAll('.sq-row').forEach(el => {
+    el.addEventListener('click', () => {
+      const e = searchResults[parseInt(el.getAttribute('data-i'), 10)];
+      document.getElementById('searchPage').classList.remove('open');
+      if (hasPos(e)) map.setView([e.lat, e.lon], 15);
+      showEntry(e, 'search');
+    });
+  });
+}
+
+function csvCell(v) {
+  const s = v === null || v === undefined ? '' : String(v);
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function exportSearchCsv() {
+  const head = ['date', 'time', 'name', 'type', 'store', 'total', 'saved', 'tax', 'work or personal', 'address on receipt', 'latitude', 'longitude', 'notes', 'context'];
+  const lines = [head.map(csvCell).join(',')];
+  searchResults.forEach(e => {
+    const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
+    const d = new Date(e.timestamp);
+    const qs = (e.questions || []).map(q => (q && typeof q === 'object') ? q.text : q);
+    const ans = name => { const i = qs.indexOf(name); return i >= 0 ? ((e.answers || [])[i] || '') : ''; };
+    lines.push([
+      localDay(e.timestamp),
+      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      e.addressLabel || '',
+      m.label,
+      e.receipt ? e.receipt.store : '',
+      e.receipt ? e.receipt.total.toFixed(2) : '',
+      e.receipt ? e.receipt.saved.toFixed(2) : '',
+      e.receipt ? e.receipt.tax.toFixed(2) : '',
+      e.receipt ? (e.receipt.work ? 'work' : 'personal') : '',
+      ans('Address on receipt'),
+      hasPos(e) ? e.lat : '',
+      hasPos(e) ? e.lon : '',
+      ans('Notes'),
+      e.context || ''
+    ].map(csvCell).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'field-twin-search-' + localDay(new Date()) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildSearchPage() {
+  const page = document.getElementById('searchPage');
+  if (page.getAttribute('data-built')) return;
+  let cats = '<option value="">All types</option>';
+  Object.keys(CATEGORIES).forEach(k => {
+    cats += '<option value="' + k + '">' + CATEGORIES[k].icon + ' ' + CATEGORIES[k].label + '</option>';
+  });
+  let html = '<div class="sq-head"><div class="title">[ SEARCH ]</div><button class="secondary" id="sqClose">CLOSE</button></div>';
+  html += '<div class="sq-filters">';
+  html += '<input type="text" id="sqText" placeholder="store, town, note, any word">';
+  html += '<div class="sq-pair"><div><label>From</label><input type="date" id="sqFrom"></div><div><label>To</label><input type="date" id="sqTo"></div></div>';
+  html += '<div class="sq-pair"><div><label>Type</label><select id="sqCat">' + cats + '</select></div>';
+  html += '<div><label>Work or personal</label><select id="sqWork"><option value="">Either</option><option value="work">Work</option><option value="personal">Personal</option></select></div></div>';
+  html += '<div class="sq-pair"><div><label>Total at least</label><input type="number" id="sqMin" inputmode="decimal" step="0.01"></div><div><label>Total at most</label><input type="number" id="sqMax" inputmode="decimal" step="0.01"></div></div>';
+  html += '<div class="sq-pair"><div><label>Photo</label><select id="sqPhoto"><option value="">Either</option><option value="yes">With photo</option><option value="no">Without photo</option></select></div>';
+  html += '<div><label>Sort</label><select id="sqSort"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="high">Highest total</option><option value="low">Lowest total</option><option value="name">Name</option></select></div></div>';
+  html += '<div class="sq-actions"><button class="secondary" id="sqReset">RESET</button><button class="secondary" id="sqMap">SHOW ON MAP</button><button class="secondary" id="sqCsv">SAVE AS SHEET</button></div>';
+  html += '</div>';
+  html += '<div class="sq-summary" id="sqSummary"></div>';
+  html += '<div id="sqRows"></div>';
+  page.innerHTML = html;
+  page.setAttribute('data-built', '1');
+
+  ['sqText', 'sqFrom', 'sqTo', 'sqCat', 'sqWork', 'sqMin', 'sqMax', 'sqPhoto', 'sqSort'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', runSearch);
+    el.addEventListener('change', runSearch);
+  });
+  document.getElementById('sqClose').addEventListener('click', () => page.classList.remove('open'));
+  document.getElementById('sqReset').addEventListener('click', () => {
+    ['sqText', 'sqFrom', 'sqTo', 'sqCat', 'sqWork', 'sqMin', 'sqMax', 'sqPhoto'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('sqSort').value = 'new';
+    runSearch();
+  });
+  document.getElementById('sqCsv').addEventListener('click', exportSearchCsv);
+  document.getElementById('sqMap').addEventListener('click', () => {
+    mapFilterIds = new Set(searchResults.map(e => e.id));
+    renderMarkers();
+    const pinned = searchResults.filter(hasPos);
+    if (pinned.length) {
+      map.fitBounds(L.latLngBounds(pinned.map(e => [e.lat, e.lon])).pad(0.2), { maxZoom: 15 });
+    }
+    page.classList.remove('open');
+    document.getElementById('mapFilterBar').style.display = 'flex';
+    document.getElementById('mapFilterText').textContent = 'map shows ' + pinned.length + ' search results';
+  });
+}
+
+function openSearch() {
+  buildSearchPage();
+  runSearch();
+  document.getElementById('searchPage').classList.add('open');
+}
+
+function clearMapFilter() {
+  mapFilterIds = null;
+  document.getElementById('mapFilterBar').style.display = 'none';
+  renderMarkers();
+}
+
 function renderMarkers() {
   if (!map || !markersLayer) return;
   markersLayer.clearLayers();
@@ -885,6 +1128,7 @@ function renderMarkers() {
   let drawn = 0;
   entries.forEach(e => {
     if (!hasPos(e)) return;
+    if (mapFilterIds && !mapFilterIds.has(e.id)) return;
     const lat = e.lat;
     const lon = e.lon;
     try {
@@ -2602,7 +2846,9 @@ function showEntry(entry, fromHistory) {
   });
   document.getElementById('editEntryBtn').addEventListener('click', () => showEdit(entry, fromHistory));
   document.getElementById('closeEntryBtn').addEventListener('click', () => {
-    if (fromHistory) showHistory(); else closePanel();
+    if (fromHistory === 'search') { closePanel(); openSearch(); }
+    else if (fromHistory) showHistory();
+    else closePanel();
   });
 }
 
@@ -2719,6 +2965,13 @@ async function init() {
     closeMenu();
     showProfile();
   });
+
+  document.getElementById('searchBtn').addEventListener('click', () => {
+    closeMenu();
+    closePanel();
+    openSearch();
+  });
+  document.getElementById('mapFilterClear').addEventListener('click', clearMapFilter);
 
   document.getElementById('spendBtn').addEventListener('click', () => {
     closeMenu();
