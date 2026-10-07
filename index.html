@@ -761,8 +761,13 @@ function initMap() {
   setTimeout(() => { map.invalidateSize(); renderMarkers(); }, 800);
 }
 
+function hasPos(e) {
+  return typeof e.lat === 'number' && typeof e.lon === 'number' && isFinite(e.lat) && isFinite(e.lon);
+}
+
 function siteKey(e) {
-  return Number(e.lat).toFixed(3) + ',' + Number(e.lon).toFixed(3);
+  if (!hasPos(e)) return 'nopos';
+  return e.lat.toFixed(3) + ',' + e.lon.toFixed(3);
 }
 
 function answeredCount(e) {
@@ -812,6 +817,7 @@ function scoreEntries(list) {
 }
 
 function territorySpan(list) {
+  list = list.filter(hasPos);
   if (!list.length) return 0;
   let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
   list.forEach(e => {
@@ -849,9 +855,9 @@ function renderMarkers() {
   let renderError = null;
   let drawn = 0;
   entries.forEach(e => {
-    const lat = Number(e.lat);
-    const lon = Number(e.lon);
-    if (!isFinite(lat) || !isFinite(lon)) return;
+    if (!hasPos(e)) return;
+    const lat = e.lat;
+    const lon = e.lon;
     try {
       const key = e.formType === 'none' ? 'none' : (e.category || 'general');
       const meta = CATEGORIES[key] || CATEGORIES.general;
@@ -1737,6 +1743,7 @@ function showCamera(c) {
   html += '<video id="camVideo" controls autoplay muted playsinline style="width:100%;margin-top:8px;background:#000;"></video>';
 
   const near = entries
+    .filter(hasPos)
     .map(e => ({ e: e, dist: milesBetween(c.lat, c.lon, e.lat, e.lon) }))
     .filter(x => x.dist <= 0.5)
     .sort((a, b) => a.dist - b.dist);
@@ -1892,6 +1899,8 @@ function visionToFields(r) {
   const addrParts = [r.address, r.city, r.state].filter(Boolean).join(', ');
   const out = {
     store: n(r.store),
+    city: n(r.city),
+    state: n(r.state),
     addr: addrParts,
     date: n(r.date),
     time: n(r.time),
@@ -2127,7 +2136,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   html += field('rTax', 'Tax', p.tax, p.conf.tax);
   html += field('rDate', 'Date on receipt', p.date, p.conf.date);
   html += field('rTime', 'Time on receipt', p.time, p.conf.time);
-  html += field('rAddr', 'Address on receipt', p.addr, p.conf.addr);
+  html += field('rAddr', 'Address on receipt, sets the map pin', p.addr, p.conf.addr);
   html += '<div class="question">Work or personal, ' + cls.reason + '</div>';
   html += '<div class="icon-picker" id="workPicker">';
   html += '<div class="icon-choice qopt' + (cls.work ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
@@ -2161,17 +2170,33 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
 
     let useLat = lat, useLon = lon, useLabel = addressLabel, locSrc = lat === null ? 'none' : 'phone';
     const typedAddr = v('rAddr');
-    if (typedAddr) {
-      btn.textContent = 'LOCATING';
+    const typedStore = v('rStore');
+    const town = [p.city, p.state].filter(Boolean).join(', ');
+    const tries = [];
+    if (typedAddr) tries.push({ q: typedAddr, src: 'address' });
+    if (typedStore && town) tries.push({ q: typedStore + ', ' + town, src: 'store' });
+    if (town) tries.push({ q: town, src: 'town' });
+    let found = null;
+    if (tries.length) btn.textContent = 'LOCATING';
+    for (let i = 0; i < tries.length && !found; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 1200));
       try {
-        const g = await geocodeAddress(typedAddr);
-        useLat = g.lat;
-        useLon = g.lon;
-        useLabel = g.label;
-        locSrc = 'address';
-      } catch (e) {
-        setStatus('address not found, kept phone location');
-      }
+        const g = await geocodeAddress(tries[i].q);
+        found = { lat: g.lat, lon: g.lon, label: g.label, src: tries[i].src };
+      } catch (e) {}
+    }
+    const purchasedAt = receiptWhen(v('rDate'), v('rTime'), now);
+    const oldReceipt = now.getTime() - purchasedAt.getTime() > 6 * 60 * 60 * 1000;
+    if (found) {
+      useLat = found.lat;
+      useLon = found.lon;
+      useLabel = found.label;
+      locSrc = found.src;
+    } else if (oldReceipt) {
+      useLat = null;
+      useLon = null;
+      useLabel = typedAddr || 'no location';
+      locSrc = 'none';
     }
     btn.textContent = 'SAVED';
     const questions = ['Store', 'Total', 'Saved', 'Tax', 'Date on receipt', 'Time on receipt', 'Address on receipt', 'Work or personal', 'Notes'];
@@ -2207,8 +2232,14 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
     await saveEntries().catch(() => {});
     renderMarkers();
     if (useLat !== null) map.setView([useLat, useLon], 15);
-    setStatus('receipt saved' + (v('rTotal') ? ', $' + v('rTotal') : '') +
-      (locSrc === 'address' ? ', pinned at receipt address' : ''));
+    const pinWords = {
+      address: ', pinned at receipt address',
+      store: ', pinned at the store in that town',
+      town: ', pinned at the town on the receipt',
+      phone: ', pinned at phone location',
+      none: ', no map pin, address not found'
+    };
+    setStatus('receipt saved' + (v('rTotal') ? ', $' + v('rTotal') : '') + (pinWords[locSrc] || ''));
     setTimeout(closePanel, 500);
   });
 }
@@ -2353,7 +2384,7 @@ function showEntry(entry, fromHistory) {
   } else {
     html += '<div class="question">No answers recorded</div>';
   }
-  if (cameras.length) {
+  if (cameras.length && hasPos(entry)) {
     const nearCams = cameras
       .map(c => ({ c: c, dist: milesBetween(entry.lat, entry.lon, c.lat, c.lon) }))
       .filter(x => x.dist <= 0.5)
@@ -2457,8 +2488,9 @@ async function init() {
   await loadCloudSession();
   await loadEntries();
   renderMarkers();
-  if (entries.length) {
-    map.setView([entries[0].lat, entries[0].lon], 12);
+  const firstPinned = entries.filter(hasPos)[0];
+  if (firstPinned) {
+    map.setView([firstPinned.lat, firstPinned.lon], 12);
   }
   setStatus(scoreEntries(entries).total + ' points, ' + entries.length + ' entries' + (cloudUser ? ', signed in' : ''));
   if (cloudUser) cloudPull().then(cloudPush);
