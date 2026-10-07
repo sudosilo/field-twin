@@ -342,8 +342,9 @@
     --accent-dim: #0b4ea2;
     --text: #0a1b2e;
     --text-dim: #44556a;
-    --signal: #ffc61a;
-    --dock-h: 76px;
+    --signal: #7fb0f0;
+    --tint: #dbe9fb;
+    --dock-h: 66px;
     --head-h: 64px;
   }
   html, body {
@@ -409,26 +410,20 @@
     outline: 3px solid var(--signal);
     outline-offset: 2px;
   }
-  #updateBtn {
-    flex: 1 1 auto;
-    min-height: 54px;
-    font-size: 18px;
-    background: var(--signal);
-    color: var(--text);
-    border: 2px solid var(--text);
-    border-radius: 10px;
-  }
-  #receiptDockBtn {
+  #actionBar { justify-content: flex-end; gap: 12px; }
+  #actionBar .radar { margin-right: auto; }
+  #updateBtn, #receiptDockBtn {
     flex: 0 0 auto;
-    min-height: 54px;
-    width: 58px;
-    padding: 0;
-    font-size: 24px;
-    background: #ffffff;
-    color: var(--text);
+    min-height: 46px;
+    padding: 0 22px;
+    font-size: 16px;
     border: 2px solid var(--text);
-    border-radius: 10px;
+    border-radius: 8px;
+    box-shadow: 3px 3px 0 var(--text);
   }
+  #updateBtn { background: var(--accent); color: #ffffff; }
+  #receiptDockBtn { background: #ffffff; color: var(--text); }
+  #updateBtn:active, #receiptDockBtn:active { box-shadow: none; transform: translate(3px, 3px); }
   #menuBtn, #infoBtn {
     min-height: 44px;
     width: 44px;
@@ -562,14 +557,29 @@
   .sq-name { font-size: 16px; font-weight: 600; }
   .sq-sub { font-size: 13px; }
   .sq-amt { font-family: inherit; font-size: 16px; font-weight: 800; }
-  .sq-icon { width: 36px; height: 36px; font-size: 18px; box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px var(--text); }
+  .sq-icon { width: 34px; height: 34px; font-size: 17px; border: 2px solid var(--text); }
 
   .ft-pin {
-    width: 36px; height: 36px; border-radius: 50%;
+    width: 30px; height: 30px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
-    border: 3px solid #ffffff;
-    box-shadow: 0 0 0 1.5px var(--text), 0 2px 5px rgba(10, 27, 46, 0.45);
+    font-size: 15px;
+    border: 2px solid var(--text);
+    opacity: 0.9;
+  }
+  .ft-price {
+    position: absolute;
+    left: 0; top: 0;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    background: var(--tint);
+    color: var(--text);
+    border: 2px solid var(--text);
+    border-radius: 6px;
+    padding: 2px 6px 1px 6px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 16px;
+    opacity: 0.92;
   }
   .ft-cluster {
     border-radius: 50%;
@@ -577,9 +587,20 @@
     color: #ffffff;
     font-weight: 800;
     display: flex; align-items: center; justify-content: center;
-    border: 3px solid #ffffff;
-    box-shadow: 0 0 0 1.5px var(--text), 0 2px 5px rgba(10, 27, 46, 0.45);
+    border: 2px solid var(--text);
+    opacity: 0.95;
   }
+  .ft-sign { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
+  .ft-sign svg { position: absolute; left: 0; top: 0; z-index: 0 !important; pointer-events: none; }
+  .ft-sign span { position: relative; z-index: 1; line-height: 1; }
+  .ft-signwrap { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); opacity: 0.92; }
+  .sq-sign { flex: 0 0 auto; width: 42px; display: flex; justify-content: center; }
+  .legend-row { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 18px; padding: 4px 14px; }
+  .legend-row .ft-sign { width: 34px !important; justify-content: center; }
+  .legend-row .ft-sign svg { left: 50%; transform: translateX(-50%); }
+  #sideMenu { left: -250px; width: 226px; }
+  #sideMenu h3 { margin: 16px 14px 2px 14px; }
+  #sideMenu button, #sideMenu button.secondary { min-height: 46px; padding: 0 14px; font-size: 16px; }
   .leaflet-cluster-anim .leaflet-marker-icon, .leaflet-cluster-anim .leaflet-marker-shadow {
     transition: transform 0.3s ease-out, opacity 0.3s ease-in;
   }
@@ -606,8 +627,8 @@
   <div class="radar" id="radar">
     <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
   </div>
-  <button id="updateBtn">FORCE UPDATE</button>
-  <button id="receiptDockBtn" aria-label="New receipt">🧾</button>
+  <button id="updateBtn">LOG</button>
+  <button id="receiptDockBtn">RECEIPT</button>
 </div>
 
 <div id="map"></div>
@@ -687,6 +708,41 @@ const CATEGORIES = {
   general:       { label: 'Other stop',     icon: '\u{1F4CD}',  color: '#1265c9' },
   none:          { label: 'Silent log',     icon: '\u{1F319}',  color: '#5c6c7d' }
 };
+
+const SIGN_SHAPES = {
+  fast_food: 'octagon', restaurant: 'octagon', coffee_shop: 'octagon',
+  gas_station: 'square', hotel: 'square', car_wash: 'square', laundromat: 'square', pharmacy: 'square',
+  amazon_locker: 'diamond', warehouse: 'diamond', printer_site: 'diamond',
+  govt_building: 'pentagon',
+  airport: 'guide', airstrip: 'guide',
+  memorial: 'yield',
+  grocery: 'circle', retail: 'circle', mall: 'circle', bank: 'circle', dispensary: 'circle',
+  general: 'shield', none: 'shield', receipt: 'tag'
+};
+
+function signHtml(key, iconChar, size) {
+  const meta = CATEGORIES[key] || CATEGORIES.general;
+  const shape = SIGN_SHAPES[key] || 'shield';
+  const ink = '#0a1b2e';
+  let w = 34, h = 34, body = '', shift = 0, scale = 1;
+  if (shape === 'octagon') body = '<polygon points="10,1.5 24,1.5 32.5,10 32.5,24 24,32.5 10,32.5 1.5,24 1.5,10"/>';
+  else if (shape === 'square') body = '<rect x="2" y="2" width="30" height="30" rx="5"/>';
+  else if (shape === 'diamond') { body = '<polygon points="17,1.5 32.5,17 17,32.5 1.5,17"/>'; scale = 0.82; }
+  else if (shape === 'pentagon') { body = '<polygon points="17,1.5 32.5,13 32.5,32.5 1.5,32.5 1.5,13"/>'; shift = 3; }
+  else if (shape === 'guide') { w = 42; body = '<rect x="1.5" y="5" width="39" height="24" rx="4"/>'; }
+  else if (shape === 'yield') { body = '<polygon points="1.5,3 32.5,3 17,32.5"/>'; shift = -4; scale = 0.78; }
+  else if (shape === 'circle') body = '<circle cx="17" cy="17" r="15.5"/>';
+  else if (shape === 'tag') { w = 30; body = '<rect x="2" y="2" width="26" height="30" rx="3"/>'; }
+  else { body = '<path d="M3,2 H31 V17 C31,26 17,32.5 17,32.5 C17,32.5 3,26 3,17 Z"/>'; shift = -2; scale = 0.9; }
+  const k = (size || 34) / 34;
+  const fs = Math.round(16 * scale * k);
+  return '<div class="ft-sign" style="width:' + Math.round(w * k) + 'px;height:' + Math.round(h * k) + 'px;">' +
+    '<svg viewBox="0 0 ' + w + ' ' + h + '" width="' + Math.round(w * k) + '" height="' + Math.round(h * k) + '" aria-hidden="true">' +
+    '<g fill="#ffffff" stroke="none">' + body + '</g>' +
+    '<g fill="' + meta.color + '" fill-opacity="0.2" stroke="' + ink + '" stroke-width="2" stroke-linejoin="round">' + body + '</g>' +
+    '</svg>' +
+    '<span style="font-size:' + fs + 'px;transform:translateY(' + Math.round(shift * k) + 'px);">' + iconChar + '</span></div>';
+}
 
 const ICON_CHOICES = Object.keys(CATEGORIES).filter(k => k !== 'none');
 const FALLBACK_ICON = CATEGORIES.general.icon;
@@ -1106,9 +1162,9 @@ function initMap() {
       spiderfyDistanceMultiplier: 1.6,
       iconCreateFunction: function (cluster) {
         const n = cluster.getChildCount();
-        const size = n < 10 ? 40 : (n < 50 ? 46 : 54);
+        const size = n < 10 ? 34 : (n < 50 ? 40 : 46);
         return L.divIcon({
-          html: '<div class="ft-cluster" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (n < 100 ? 17 : 14) + 'px;">' + n + '</div>',
+          html: '<div class="ft-cluster" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (n < 100 ? 15 : 13) + 'px;">' + n + '</div>',
           className: 'field-twin-badge',
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2]
@@ -1338,7 +1394,7 @@ function runSearch() {
     const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
     const d = new Date(e.timestamp);
     html += '<div class="sq-row" data-i="' + i + '">';
-    html += '<div class="sq-icon" style="background:' + m.color + ';">' + (e.icon || m.icon) + '</div>';
+    html += '<div class="sq-sign">' + signHtml(e.formType === 'none' ? 'none' : (e.category || 'general'), e.icon || m.icon, 34) + '</div>';
     html += '<div class="sq-main">';
     html += '<div class="sq-name">' + escapeHtml(e.addressLabel || m.label) + '</div>';
     html += '<div class="sq-sub">' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) +
@@ -1476,15 +1532,24 @@ function renderMarkers() {
       const fill = meta.color;
       const iconChar = e.icon || meta.icon;
 
-      const pin = L.marker([lat, lon], {
-        icon: L.divIcon({
-          html: '<div class="ft-pin" style="background:' + fill + ';">' + iconChar + '</div>',
+      let pinIcon;
+      if (key === 'receipt') {
+        const amt = e.receipt && e.receipt.total ? '$' + Math.round(e.receipt.total) : '$';
+        pinIcon = L.divIcon({
+          html: '<div class="ft-price">' + amt + '</div>',
           className: 'field-twin-badge',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18]
-        }),
-        interactive: true
-      });
+          iconSize: [0, 0],
+          iconAnchor: [0, 0]
+        });
+      } else {
+        pinIcon = L.divIcon({
+          html: '<div class="ft-signwrap">' + signHtml(key, iconChar, 34) + '</div>',
+          className: 'field-twin-badge',
+          iconSize: [0, 0],
+          iconAnchor: [0, 0]
+        });
+      }
+      const pin = L.marker([lat, lon], { icon: pinIcon, interactive: true });
       pin.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng); else showEntry(e); });
       pin.addTo(markersLayer);
 
@@ -3031,7 +3096,7 @@ function showInfo() {
   const panel = document.getElementById('panel');
   let html = '<h2>ABOUT</h2>';
   html += '<div class="question">Logging a stop</div>';
-  html += '<div>Press force update to capture your position. The tool resolves the address, works out what kind of place it is, and opens a form matched to that place type. Nothing is required, save with as many or as few answers as you want.</div>';
+  html += '<div>Press log to capture your position. Press receipt to photograph a receipt. The tool resolves the address, works out what kind of place it is, and opens a form matched to that place type. Nothing is required, save with as many or as few answers as you want.</div>';
   html += '<div class="question">Forms</div>';
   html += '<div>Gas stations, grocery stores, fast food, and parcel lockers each have their own question pool. Each visit pulls a different set of eight from that pool, so returning to a location fills in new detail rather than repeating the same questions.</div>';
   html += '<div class="question">Map</div>';
@@ -3401,7 +3466,7 @@ function importEntries(file) {
 async function init() {
   const legendHtml = Object.keys(CATEGORIES).map(k => {
     const m = CATEGORIES[k];
-    return '<div class="legend-row"><span class="dot" style="background:' + m.color + ';"></span>' + m.icon + ' ' + m.label + '</div>';
+    return '<div class="legend-row">' + signHtml(k, m.icon, 26) + '<span>' + m.label + '</span></div>';
   }).join('');
   document.getElementById('legendRows').innerHTML = legendHtml;
   setRadar(0);
