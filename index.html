@@ -613,6 +613,11 @@
   .entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .entry-head h2 { margin: 0; }
   #movePinBtn { flex: 0 0 auto; width: 48px; height: 48px; min-width: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  #milesDockBtn { flex: 0 0 auto; min-height: 46px; padding: 0 14px; font-size: 16px; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); background: var(--tint); color: var(--text); }
+  #milesDockBtn:active { box-shadow: none; transform: translate(3px, 3px); }
+  #actionBar.three #updateBtn, #actionBar.three #receiptDockBtn { padding: 0 14px; }
+  .mi-day { margin-top: 14px; padding-top: 10px; border-top: 2px solid var(--text); font-weight: 800; }
+  .mi-row { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 </style>
 </head>
 <body>
@@ -630,6 +635,7 @@
   <div class="radar" id="radar">
     <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
   </div>
+  <button id="milesDockBtn" style="display:none;">MILES</button>
   <button id="updateBtn">LOG</button>
   <button id="receiptDockBtn">RECEIPT</button>
 </div>
@@ -641,10 +647,12 @@
 <div id="sideMenu">
   <h3>Capture</h3>
   <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
+  <button class="secondary" id="milesToggleBtn">ODOMETER BUTTON IS OFF</button>
   <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="spendBtn">SPEND</button>
+  <button class="secondary" id="mileageBtn">MILEAGE</button>
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
@@ -708,6 +716,7 @@ const CATEGORIES = {
   govt_building: { label: 'Government',     icon: '\u{1F3DB}',  color: '#546e7a' },
   mall:          { label: 'Mall',           icon: '\u{1F6CD}',  color: '#ad1457' },
   general:       { label: 'Other stop',     icon: '\u{1F4CD}',  color: '#1265c9' },
+  odometer:      { label: 'Odometer reading', icon: '\u{1F6E3}', color: '#0b4ea2' },
   none:          { label: 'Silent log',     icon: '\u{1F319}',  color: '#5c6c7d' }
 };
 
@@ -719,7 +728,7 @@ const SIGN_SHAPES = {
   airport: 'guide', airstrip: 'guide',
   memorial: 'yield',
   grocery: 'circle', retail: 'circle', mall: 'circle', bank: 'circle', dispensary: 'circle',
-  general: 'shield', none: 'shield', receipt: 'tag'
+  general: 'shield', none: 'shield', receipt: 'tag', odometer: 'guide'
 };
 
 function signHtml(key, iconChar, size) {
@@ -746,7 +755,7 @@ function signHtml(key, iconChar, size) {
     '<span style="font-size:' + fs + 'px;transform:translateY(' + Math.round(shift * k) + 'px);">' + iconChar + '</span></div>';
 }
 
-const ICON_CHOICES = Object.keys(CATEGORIES).filter(k => k !== 'none');
+const ICON_CHOICES = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer');
 const FALLBACK_ICON = CATEGORIES.general.icon;
 let selectedIcon = FALLBACK_ICON;
 const MIN_SAVE_INTERVAL_MS = 30000;
@@ -1337,7 +1346,7 @@ function territorySpan(list) {
 }
 
 function computeTrophies(stats, list) {
-  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none');
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer');
   const distinctCats = catKeys.filter(k => stats.categoryCounts[k]).length;
   const span = territorySpan(list);
   return [
@@ -3107,6 +3116,194 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   });
 }
 
+function milesOn() {
+  try { return localStorage.getItem('milesOn') === '1'; } catch (e) { return false; }
+}
+
+function applyMilesToggle() {
+  const on = milesOn();
+  document.getElementById('milesDockBtn').style.display = on ? '' : 'none';
+  document.getElementById('actionBar').classList.toggle('three', on);
+  document.getElementById('milesToggleBtn').textContent = on ? 'ODOMETER BUTTON IS ON' : 'ODOMETER BUTTON IS OFF';
+}
+
+function odoList() {
+  entries.forEach(odoFromAnswers);
+  return entries.filter(e => e.category === 'odometer' && e.odometer && isFinite(e.odometer.reading))
+    .slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+}
+
+function showOdometer() {
+  const panel = document.getElementById('panel');
+  const list = odoList();
+  const last = list[list.length - 1];
+  const now = new Date();
+  const cls = classifyWork(now);
+  let vehicle = '';
+  try { vehicle = localStorage.getItem('milesVehicle') || ''; } catch (e) {}
+  let html = '<h2>ODOMETER</h2>';
+  html += '<div class="meta-line">' + (last ? 'Last reading ' + last.odometer.reading + ' on ' + new Date(last.timestamp).toLocaleString() : 'No readings saved yet') + '</div>';
+  html += '<div class="question">Number on the odometer right now</div>';
+  html += '<input type="text" id="odoReading" inputmode="decimal" autocomplete="off">';
+  html += '<div class="question">Vehicle</div>';
+  html += '<input type="text" id="odoVehicle" value="' + escapeHtml(vehicle) + '">';
+  html += '<div class="question">Work or personal, ' + cls.reason + '</div>';
+  html += '<div class="icon-picker" id="odoWork">';
+  html += '<div class="icon-choice qopt' + (cls.work ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
+  html += '<div class="icon-choice qopt' + (cls.work ? '' : ' active') + '" data-work="0" style="font-size:12px;">Personal</div>';
+  html += '</div>';
+  html += '<div class="question">Notes</div><textarea id="odoNotes"></textarea>';
+  html += '<div class="meta-line" id="odoMsg" style="color:#b00020;"></div>';
+  html += '<div class="panel-actions"><button id="odoSaveBtn">SAVE READING</button><button class="secondary" id="odoCancelBtn">CANCEL</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  let isWork = cls.work;
+  panel.querySelectorAll('#odoWork .qopt').forEach(el => {
+    el.addEventListener('click', () => {
+      panel.querySelectorAll('#odoWork .qopt').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      isWork = el.getAttribute('data-work') === '1';
+    });
+  });
+  document.getElementById('odoCancelBtn').addEventListener('click', closePanel);
+  document.getElementById('odoSaveBtn').addEventListener('click', async function () {
+    const btn = this;
+    const reading = parseFloat((document.getElementById('odoReading').value || '').replace(/,/g, ''));
+    if (!isFinite(reading) || reading < 0) {
+      document.getElementById('odoMsg').textContent = 'Type the number shown on the odometer.';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'LOCATING';
+    const veh = (document.getElementById('odoVehicle').value || '').trim();
+    const notes = (document.getElementById('odoNotes').value || '').trim();
+    try { localStorage.setItem('milesVehicle', veh); } catch (e) {}
+    let lat = null, lon = null, label = 'no location';
+    try {
+      const pos = await getPosition();
+      lat = pos.coords.latitude;
+      lon = pos.coords.longitude;
+      const geo = await reverseGeocode(lat, lon).catch(() => ({}));
+      label = formatAddress(geo.address || {}) || 'position saved';
+    } catch (e) {}
+    const when = new Date();
+    const entry = {
+      id: when.getTime() + '-' + Math.random().toString(36).slice(2, 8),
+      timestamp: when.toISOString(),
+      lat: lat, lon: lon,
+      addressLabel: label,
+      locSrc: lat === null ? 'none' : 'phone',
+      placeType: 'odometer',
+      confidence: 5,
+      formType: 'category',
+      category: 'odometer',
+      questions: ['Odometer', 'Vehicle', 'Work or personal', 'Notes'],
+      answers: [String(reading), veh, isWork ? 'Work' : 'Personal', notes],
+      context: '',
+      icon: CATEGORIES.odometer.icon,
+      twinId: TWIN_ID,
+      odometer: { reading: reading, vehicle: veh, work: isWork }
+    };
+    entries.unshift(entry);
+    entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    await saveEntries();
+    renderMarkers();
+    closePanel();
+    setStatus('odometer ' + reading + ' saved' + (lat === null ? ', no location fix' : ''));
+  });
+}
+
+function odoFromAnswers(e) {
+  if (e.category !== 'odometer') return;
+  const a = e.answers || [];
+  const r = parseFloat(a[0]);
+  if (isFinite(r)) e.odometer = { reading: r, vehicle: a[1] || '', work: a[2] !== 'Personal' };
+}
+
+function mileageLegs() {
+  entries.forEach(odoFromAnswers);
+  const byVeh = {};
+  odoList().forEach(e => {
+    const k = e.odometer.vehicle || '';
+    (byVeh[k] = byVeh[k] || []).push(e);
+  });
+  const legs = [];
+  Object.keys(byVeh).forEach(k => {
+    const l = byVeh[k];
+    for (let i = 0; i < l.length; i++) {
+      const prev = i ? l[i - 1] : null;
+      const miles = prev ? Math.round((l[i].odometer.reading - prev.odometer.reading) * 10) / 10 : null;
+      let crow = null;
+      if (prev && hasPos(prev) && hasPos(l[i])) {
+        const R = 3958.8, t = Math.PI / 180;
+        const dLat = (l[i].lat - prev.lat) * t, dLon = (l[i].lon - prev.lon) * t;
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * t) * Math.cos(l[i].lat * t) * Math.sin(dLon / 2) ** 2;
+        crow = Math.round(2 * R * Math.asin(Math.sqrt(h)) * 10) / 10;
+      }
+      legs.push({ entry: l[i], prev: prev, miles: miles, crow: crow });
+    }
+  });
+  legs.sort((a, b) => new Date(b.entry.timestamp) - new Date(a.entry.timestamp));
+  return legs;
+}
+
+function showMileage() {
+  const panel = document.getElementById('panel');
+  const legs = mileageLegs();
+  let html = '<h2>MILEAGE</h2>';
+  if (!legs.length) {
+    html += '<div class="meta-line">No odometer readings yet. Turn on the odometer button in the menu, then press Miles at the bottom of the screen and type the number on the odometer.</div>';
+  } else {
+    let work = 0, personal = 0;
+    legs.forEach(g => { if (g.miles > 0) { if (g.entry.odometer.work) work += g.miles; else personal += g.miles; } });
+    html += '<div class="meta-line">Each line is one reading. Miles are counted from the reading before it on the same vehicle, and belong to the work or personal choice on the later reading.</div>';
+    html += '<div style="font-size:28px;color:var(--accent);margin:8px 0 0;">' + (Math.round(work * 10) / 10) + '</div><div class="meta-line">work miles</div>';
+    html += '<div style="font-size:28px;color:var(--accent);margin:8px 0 0;">' + (Math.round(personal * 10) / 10) + '</div><div class="meta-line">personal miles</div>';
+    let day = '';
+    legs.forEach((g, i) => {
+      const d = new Date(g.entry.timestamp);
+      const dk = d.toLocaleDateString();
+      if (dk !== day) {
+        day = dk;
+        let tot = 0;
+        legs.forEach(x => { if (new Date(x.entry.timestamp).toLocaleDateString() === dk && x.miles > 0) tot += x.miles; });
+        html += '<div class="mi-day">' + dk + ', ' + (Math.round(tot * 10) / 10) + ' miles</div>';
+      }
+      html += '<div class="mi-row" data-leg="' + i + '">' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ', odometer ' + g.entry.odometer.reading +
+        (g.entry.odometer.vehicle ? ', ' + escapeHtml(g.entry.odometer.vehicle) : '') + ', ' + (g.entry.odometer.work ? 'work' : 'personal') +
+        '<br>' + (g.miles === null ? 'first reading for this vehicle' : g.miles < 0 ? 'lower than the reading before it, check the number' : g.miles + ' miles driven since the reading before') +
+        (g.crow !== null ? ', ' + g.crow + ' miles apart in a straight line' : '') +
+        '<br><span class="meta-line">' + escapeHtml(g.entry.addressLabel || '') + '</span></div>';
+    });
+    html += '<div class="panel-actions"><button id="miCsvBtn">SAVE SPREADSHEET</button><button class="secondary" id="closeMileageBtn">CLOSE</button></div>';
+  }
+  if (!legs.length) html += '<div class="panel-actions"><button class="secondary" id="closeMileageBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  document.getElementById('closeMileageBtn').addEventListener('click', closePanel);
+  panel.querySelectorAll('[data-leg]').forEach(el => {
+    el.addEventListener('click', () => showEntry(legs[parseInt(el.getAttribute('data-leg'), 10)].entry, true));
+  });
+  const csvBtn = document.getElementById('miCsvBtn');
+  if (csvBtn) csvBtn.addEventListener('click', () => {
+    const rows = [['date', 'time', 'vehicle', 'odometer', 'miles since previous reading', 'straight line miles', 'work or personal', 'address', 'lat', 'lon', 'notes']];
+    legs.slice().reverse().forEach(g => {
+      const d = new Date(g.entry.timestamp);
+      rows.push([d.toLocaleDateString(), d.toLocaleTimeString(), g.entry.odometer.vehicle || '', g.entry.odometer.reading, g.miles === null ? '' : g.miles, g.crow === null ? '' : g.crow,
+        g.entry.odometer.work ? 'work' : 'personal', g.entry.addressLabel || '', hasPos(g.entry) ? g.entry.lat : '', hasPos(g.entry) ? g.entry.lon : '', (g.entry.answers || [])[3] || '']);
+    });
+    const blob = new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'field-twin-mileage-' + localStamp(new Date()).replace(/[:T]/g, '-') + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+}
+
 function showSpend() {
   const panel = document.getElementById('panel');
   const rs = entries.filter(e => e.category === 'receipt' && e.receipt);
@@ -3163,7 +3360,7 @@ function profileHtml() {
   html += '<div class="meta-line">' + span + ' miles of ground covered</div>';
 
   html += '<div class="question">Categories</div>';
-  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none');
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer');
   catKeys.forEach(k => {
     const n = stats.categoryCounts[k] || 0;
     const m = CATEGORIES[k];
@@ -3198,6 +3395,8 @@ function showInfo() {
   html += '<div>Tap a sign on the map or a line in History to open an entry. Edit changes any answer, the date, the address, the items and the notes. Delete is on the Edit screen. Tap Delete, then tap it again to confirm. The entry and its photo are removed from this phone and from your account. The four arrows button at the top right of an entry moves the pin. Press it, then tap the map at the correct spot.</div>';
   html += '<div class="question">Search</div>';
   html += '<div>Search in the menu looks through store names, addresses, notes, answers and receipt items. You can narrow by kind of place, by dates and by work or personal. Results can be shown on the map or saved as a spreadsheet file.</div>';
+  html += '<div class="question">Mileage</div>';
+  html += '<div>Under Capture in the menu there is a switch named Odometer button. Tap it to turn it on, and a Miles button appears at the bottom of the screen. Press Miles any time during the day and type the number on the odometer. The app saves that number with the time and one reading of where the phone is. It does not track the phone between readings, so it does not drain the battery. Mileage in the menu lists every reading, the miles driven since the reading before it, the straight line distance between the two spots, work and personal totals, and a spreadsheet file to save.</div>';
   html += '<div class="question">History and Spend</div>';
   html += '<div>History lists every entry, newest first. Spend adds up receipt totals, tax and savings.</div>';
   html += '<div class="question">Account and profile</div>';
@@ -3274,7 +3473,7 @@ function showEdit(entry, fromHistory) {
     html += '<input type="datetime-local" id="edWhen" value="' + localStamp(new Date(entry.timestamp)) + '" style="width:100%;padding:8px;font-size:14px;margin-top:4px;border:1px solid var(--line);background:#f9fafb;color:var(--text);">';
     html += '<div class="question">Type</div>';
     html += '<select id="edCat">';
-    Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'receipt').forEach(k => {
+    Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'receipt' && k !== 'odometer').forEach(k => {
       const sel = (entry.category || 'general') === k ? ' selected' : '';
       html += '<option value="' + k + '"' + sel + '>' + CATEGORIES[k].icon + ' ' + CATEGORIES[k].label + '</option>';
     });
@@ -3638,6 +3837,17 @@ async function init() {
   });
   document.getElementById('mapFilterClear').addEventListener('click', clearMapFilter);
   document.getElementById('pinPlaceCancel').addEventListener('click', cancelPinPlacement);
+
+  applyMilesToggle();
+  document.getElementById('milesToggleBtn').addEventListener('click', () => {
+    try { localStorage.setItem('milesOn', milesOn() ? '0' : '1'); } catch (e) {}
+    applyMilesToggle();
+  });
+  document.getElementById('milesDockBtn').addEventListener('click', showOdometer);
+  document.getElementById('mileageBtn').addEventListener('click', () => {
+    closeMenu();
+    showMileage();
+  });
 
   document.getElementById('spendBtn').addEventListener('click', () => {
     closeMenu();
