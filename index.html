@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Field Twin</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=overpass:400,600,800">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -330,6 +332,263 @@
     background: transparent !important;
     border: none !important;
   }
+
+  /* ---- v11 skin: road sign legibility for outdoor use ---- */
+  :root {
+    --bg: #eef2f6;
+    --panel: #ffffff;
+    --line: #b8c2cc;
+    --accent: #0b4ea2;
+    --accent-dim: #0b4ea2;
+    --text: #0a1b2e;
+    --text-dim: #44556a;
+    --signal: #ffc61a;
+    --dock-h: 76px;
+    --head-h: 64px;
+  }
+  html, body {
+    font-family: 'Overpass', 'Segoe UI', Roboto, Arial, sans-serif;
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  header {
+    height: var(--head-h);
+    border-bottom: 2px solid var(--text);
+    padding: 0 10px;
+  }
+  .title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: var(--text);
+  }
+  .status {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #map { top: var(--head-h); bottom: var(--dock-h); }
+  #actionBar {
+    top: auto;
+    bottom: 0;
+    height: var(--dock-h);
+    border-bottom: none;
+    border-top: 2px solid var(--text);
+    padding: 0 12px;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .radar { height: 26px; gap: 3px; flex: 0 0 auto; }
+  .radar div { width: 5px; background: var(--line); }
+  .radar div.on { background: var(--accent); }
+
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    text-transform: lowercase;
+    min-height: 48px;
+    padding: 0 16px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #ffffff;
+    border: 2px solid var(--accent);
+  }
+  button::first-letter { text-transform: uppercase; }
+  button.secondary {
+    background: #ffffff;
+    color: var(--accent);
+    border: 2px solid var(--accent);
+  }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 3px solid var(--signal);
+    outline-offset: 2px;
+  }
+  #updateBtn {
+    flex: 1 1 auto;
+    min-height: 54px;
+    font-size: 18px;
+    background: var(--signal);
+    color: var(--text);
+    border: 2px solid var(--text);
+    border-radius: 10px;
+  }
+  #receiptDockBtn {
+    flex: 0 0 auto;
+    min-height: 54px;
+    width: 58px;
+    padding: 0;
+    font-size: 24px;
+    background: #ffffff;
+    color: var(--text);
+    border: 2px solid var(--text);
+    border-radius: 10px;
+  }
+  #menuBtn, #infoBtn {
+    min-height: 44px;
+    width: 44px;
+    padding: 0;
+    font-size: 20px;
+    font-style: normal;
+    background: #ffffff;
+    color: var(--text);
+    border: 2px solid var(--text);
+    border-radius: 8px;
+  }
+  #infoBtn { font-weight: 800; text-transform: none; }
+  #infoBtn::first-letter { text-transform: none; }
+  #searchPage { font-family: inherit; }
+  #panel .panel-actions {
+    position: sticky;
+    bottom: -22px;
+    background: var(--panel);
+    margin: 18px -16px -22px -16px;
+    padding: 10px 16px 22px 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  #panel {
+    z-index: 1010;
+    max-height: 72%;
+    border-top: 2px solid var(--text);
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px 22px 16px;
+    font-family: inherit;
+    box-shadow: 0 -6px 0 rgba(10, 27, 46, 0.08);
+  }
+  #panel h2 {
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0;
+    color: var(--text);
+    text-transform: lowercase;
+    margin: 0 0 8px 0;
+  }
+  #panel h2::first-letter { text-transform: uppercase; }
+  .meta-line {
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+  }
+  .question {
+    margin: 16px 0 4px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  .question + div { font-size: 17px; }
+  input[type=text], input[type=number], input[type=date], input[type=datetime-local], textarea, select,
+  .sq-filters input, .sq-filters select {
+    background: #ffffff;
+    border: 2px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 11px 10px;
+    font-family: inherit;
+    font-size: 16px;
+    min-height: 48px;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  .conf-low { border-color: #c96a00 !important; background: #fff4e0 !important; }
+  .panel-actions { margin-top: 18px; gap: 8px; flex-wrap: wrap; }
+  .panel-actions button { flex: 1 1 auto; }
+
+  .icon-choice {
+    background: #ffffff;
+    border: 2px solid var(--line);
+    border-radius: 8px;
+  }
+  .icon-choice.active { border-color: var(--accent); background: #e2edfb; }
+  .icon-choice.qopt { min-height: 46px; display: flex; align-items: center; justify-content: center; font-size: 15px !important; font-weight: 600; }
+
+  #sideMenu {
+    left: -300px;
+    right: auto;
+    width: 280px;
+    border-left: none;
+    border-right: 2px solid var(--text);
+    padding: 14px 0 24px 0;
+    transition: left 0.2s ease;
+  }
+  #sideMenu.open { left: 0; right: auto; }
+  #sideMenu h3 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: var(--text-dim);
+    margin: 18px 16px 4px 16px;
+  }
+  #sideMenu h3:first-child { margin-top: 4px; }
+  #sideMenu button, #sideMenu button.secondary {
+    width: 100%;
+    margin: 0;
+    min-height: 50px;
+    padding: 0 16px;
+    text-align: left;
+    font-size: 17px;
+    font-weight: 600;
+    background: #ffffff;
+    color: var(--text);
+    border: none;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+  }
+  #sideMenu button:active { background: #e2edfb; }
+  .legend-row { font-size: 14px; line-height: 26px; padding: 0 16px; }
+  .legend-row span.dot { width: 10px; height: 10px; }
+  #menuOverlay { background: rgba(10, 27, 46, 0.45); }
+
+  #mapFilterBar, #pinPlaceBar {
+    bottom: calc(var(--dock-h) + 12px) !important;
+    border: 2px solid var(--text) !important;
+    border-radius: 10px;
+    font-size: 15px !important;
+    font-weight: 600;
+  }
+  #mapFilterBar button, #pinPlaceBar button { min-height: 40px; font-size: 14px !important; }
+
+  .sq-head { border-bottom: 2px solid var(--text); }
+  .sq-head .title { letter-spacing: 3px; }
+  .sq-filters label { font-size: 13px; font-weight: 600; }
+  .sq-actions button { font-size: 13px; padding: 0 4px; }
+  .sq-summary { font-family: inherit; font-size: 15px; font-weight: 800; color: var(--text); }
+  .sq-name { font-size: 16px; font-weight: 600; }
+  .sq-sub { font-size: 13px; }
+  .sq-amt { font-family: inherit; font-size: 16px; font-weight: 800; }
+  .sq-icon { width: 36px; height: 36px; font-size: 18px; box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px var(--text); }
+
+  .ft-pin {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 0 1.5px var(--text), 0 2px 5px rgba(10, 27, 46, 0.45);
+  }
+  .ft-cluster {
+    border-radius: 50%;
+    background: var(--accent);
+    color: #ffffff;
+    font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 0 1.5px var(--text), 0 2px 5px rgba(10, 27, 46, 0.45);
+  }
+  .leaflet-cluster-anim .leaflet-marker-icon, .leaflet-cluster-anim .leaflet-marker-shadow {
+    transition: transform 0.3s ease-out, opacity 0.3s ease-in;
+  }
+  .leaflet-cluster-spider-leg { transition: stroke-dashoffset 0.3s ease-out, stroke-opacity 0.3s ease-in; }
+  .leaflet-bar a { width: 40px !important; height: 40px !important; line-height: 40px !important; font-size: 22px !important; color: var(--text) !important; }
+  .leaflet-bar { border: 2px solid var(--text) !important; border-radius: 8px !important; overflow: hidden; }
+  @media (prefers-reduced-motion: reduce) {
+    #sideMenu, .leaflet-cluster-anim .leaflet-marker-icon { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -348,6 +607,7 @@
     <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
   </div>
   <button id="updateBtn">FORCE UPDATE</button>
+  <button id="receiptDockBtn" aria-label="New receipt">🧾</button>
 </div>
 
 <div id="map"></div>
@@ -355,21 +615,24 @@
 
 <div id="menuOverlay"></div>
 <div id="sideMenu">
-  <h3>COLOR KEY</h3>
-  <div id="legendRows"></div>
-  <h3>DATA</h3>
-  <button class="secondary" id="accountBtn">ACCOUNT</button>
+  <h3>Capture</h3>
   <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
+  <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
+  <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="profileBtn">PROFILE</button>
+  <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
   <button class="secondary" id="checkBtn">SERVICE CHECK</button>
-  <button class="secondary" id="historyBtn">HISTORY</button>
+  <h3>Your data</h3>
+  <button class="secondary" id="accountBtn">ACCOUNT</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
   <button class="secondary" id="importBtn">IMPORT</button>
   <input type="file" id="importInput" accept="application/json">
+  <h3>Color key</h3>
+  <div id="legendRows"></div>
 </div>
 
 <div id="mapFilterBar"><span id="mapFilterText"></span><button class="secondary" id="mapFilterClear" style="padding:8px 10px;font-size:11px;">SHOW ALL</button></div>
@@ -733,6 +996,7 @@ function showAccount() {
   }
   html += '<div class="panel-actions"><button class="secondary" id="closeAccountBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeAccountBtn').addEventListener('click', closePanel);
 
@@ -833,7 +1097,37 @@ function initMap() {
     maxZoom: 19,
     crossOrigin: true
   }).addTo(map);
-  markersLayer = L.layerGroup().addTo(map);
+  if (L.markerClusterGroup) {
+    markersLayer = L.markerClusterGroup({
+      maxClusterRadius: 44,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: false,
+      spiderfyOnMaxZoom: true,
+      spiderfyDistanceMultiplier: 1.6,
+      iconCreateFunction: function (cluster) {
+        const n = cluster.getChildCount();
+        const size = n < 10 ? 40 : (n < 50 ? 46 : 54);
+        return L.divIcon({
+          html: '<div class="ft-cluster" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (n < 100 ? 17 : 14) + 'px;">' + n + '</div>',
+          className: 'field-twin-badge',
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2]
+        });
+      }
+    });
+    markersLayer.on('clusterclick', (ev) => {
+      if (pinPlacing) {
+        finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng);
+      } else if (map.getZoom() >= map.getMaxZoom() - 1) {
+        ev.layer.spiderfy();
+      } else {
+        ev.layer.zoomToBounds({ padding: [50, 50] });
+      }
+    });
+    markersLayer.addTo(map);
+  } else {
+    markersLayer = L.layerGroup().addTo(map);
+  }
   map.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.latlng); });
   map.on('zoomend', () => { if (camerasVisible) renderCameras(); });
   setTimeout(() => map.invalidateSize(), 200);
@@ -1182,28 +1476,17 @@ function renderMarkers() {
       const fill = meta.color;
       const iconChar = e.icon || meta.icon;
 
-      const dot = L.circleMarker([lat, lon], {
-        radius: 14,
-        color: '#ffffff',
-        weight: 3,
-        fillColor: fill,
-        fillOpacity: 1
-      });
-      dot.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng); else showEntry(e); });
-      dot.addTo(markersLayer);
-
-      const badge = L.marker([lat, lon], {
+      const pin = L.marker([lat, lon], {
         icon: L.divIcon({
-          html: '<div style="width:32px;height:32px;line-height:32px;text-align:center;font-size:16px;">' + iconChar + '</div>',
+          html: '<div class="ft-pin" style="background:' + fill + ';">' + iconChar + '</div>',
           className: 'field-twin-badge',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
+          iconSize: [36, 36],
+          iconAnchor: [18, 18]
         }),
-        interactive: true,
-        zIndexOffset: 2000
+        interactive: true
       });
-      badge.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng); else showEntry(e); });
-      badge.addTo(markersLayer);
+      pin.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.originalEvent ? map.mouseEventToLatLng(ev.originalEvent) : ev.latlng); else showEntry(e); });
+      pin.addTo(markersLayer);
 
       drawn++;
     } catch (err) {
@@ -1816,6 +2099,7 @@ function showForm(entry) {
   html += '<button class="secondary" id="skipEntryBtn">LOG WITHOUT ANSWERS</button>';
   html += '</div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
 
   let photoData = entry.photo || '';
@@ -2074,6 +2358,7 @@ function showCamera(c) {
   }
   html += '<div class="panel-actions"><button class="secondary" id="closeCamBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeCamBtn').addEventListener('click', closePanel);
   if (c.stream) playStream(document.getElementById('camVideo'), c.stream);
@@ -2106,6 +2391,7 @@ function showCameraKeyPanel() {
   html += '<button class="secondary" id="closeApiBaseBtn">CLOSE</button>';
   html += '</div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('saveApiBaseBtn').addEventListener('click', async () => {
     let v = document.getElementById('apiBaseInput').value.trim();
@@ -2132,6 +2418,7 @@ async function serviceCheck() {
   html += '<div id="checkRows"></div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeCheckBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeCheckBtn').addEventListener('click', closePanel);
   const rows = document.getElementById('checkRows');
@@ -2561,6 +2848,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   html += '<button class="secondary" id="cancelReceiptBtn">CANCEL</button>';
   html += '</div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   setStatus('review the highlighted fields');
 
@@ -2691,6 +2979,7 @@ function showSpend() {
   if (!rs.length) html += '<div class="meta-line">no receipts captured yet</div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeSpendBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeSpendBtn').addEventListener('click', closePanel);
 }
@@ -2733,6 +3022,7 @@ function showProfile() {
 
   html += '<div class="panel-actions"><button class="secondary" id="closeProfileBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeProfileBtn').addEventListener('click', closePanel);
 }
@@ -2752,6 +3042,7 @@ function showInfo() {
   html += '<div>Saving the same answers at the same spot within thirty seconds is ignored, so a double tap will not create a second copy.</div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeInfoBtn').addEventListener('click', closePanel);
 }
@@ -2770,6 +3061,7 @@ function showHistory() {
   }
   html += '<div class="panel-actions"><button class="secondary" id="closeHistoryBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   panel.querySelectorAll('[data-idx]').forEach(el => {
     el.addEventListener('click', () => {
@@ -2855,6 +3147,7 @@ function showEdit(entry, fromHistory) {
   html += '<button class="secondary" id="edCancelBtn">CANCEL</button>';
   html += '</div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
 
   panel.querySelectorAll('#edWork .qopt').forEach(el => {
@@ -3023,6 +3316,7 @@ function showEntry(entry, fromHistory) {
   }
   html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="movePinBtn">MOVE PIN</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
+  panel.scrollTop = 0;
   panel.classList.add('open');
   if (!entry.photo && entry.photoPath) {
     cloudPhotoUrl(entry.photoPath).then(u => {
@@ -3110,6 +3404,7 @@ async function init() {
     return '<div class="legend-row"><span class="dot" style="background:' + m.color + ';"></span>' + m.icon + ' ' + m.label + '</div>';
   }).join('');
   document.getElementById('legendRows').innerHTML = legendHtml;
+  setRadar(0);
   initMap();
   initCloud();
   await loadCloudSession();
@@ -3171,6 +3466,9 @@ async function init() {
     showSpend();
   });
 
+  document.getElementById('receiptDockBtn').addEventListener('click', () => {
+    document.getElementById('receiptFile').click();
+  });
   document.getElementById('receiptBtn').addEventListener('click', () => {
     closeMenu();
     document.getElementById('receiptFile').click();
