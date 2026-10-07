@@ -2899,7 +2899,13 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   html += field('rTax', 'Tax', p.tax, p.conf.tax);
   html += field('rDate', 'Date on receipt', p.date, p.conf.date);
   html += field('rTime', 'Time on receipt', p.time, p.conf.time);
-  html += field('rAddr', 'Address on receipt, sets the map pin', p.addr, p.conf.addr);
+  html += field('rAddr', 'Address on receipt', p.addr, p.conf.addr);
+  html += '<div class="question">Where the map pin goes</div>';
+  html += '<div class="icon-picker" id="pinPicker">';
+  html += '<div class="icon-choice qopt' + (lat === null ? '' : ' active') + '" data-pin="phone" style="font-size:12px;">My location</div>';
+  html += '<div class="icon-choice qopt' + (lat === null ? ' active' : '') + '" data-pin="receipt" style="font-size:12px;">Receipt address</div>';
+  html += '</div>';
+  if (lat === null) html += '<div class="meta-line">The phone has no location fix right now, so the receipt address is selected.</div>';
   html += '<div class="question">Work or personal, ' + cls.reason + '</div>';
   html += '<div class="icon-picker" id="workPicker">';
   html += '<div class="icon-choice qopt' + (cls.work ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
@@ -2926,6 +2932,15 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
     });
   });
 
+  let pinFrom = lat === null ? 'receipt' : 'phone';
+  panel.querySelectorAll('#pinPicker .qopt').forEach(el => {
+    el.addEventListener('click', () => {
+      panel.querySelectorAll('#pinPicker .qopt').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      pinFrom = el.getAttribute('data-pin');
+    });
+  });
+
   document.getElementById('cancelReceiptBtn').addEventListener('click', closePanel);
 
   document.getElementById('saveReceiptBtn').addEventListener('click', async function () {
@@ -2939,9 +2954,12 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
     const typedStore = v('rStore');
     const town = [p.city, p.state].filter(Boolean).join(', ');
     const tries = [];
-    if (typedAddr) tries.push({ q: typedAddr, src: 'address' });
-    if (typedStore && town) tries.push({ q: typedStore + ', ' + town, src: 'store' });
-    if (town) tries.push({ q: town, src: 'town' });
+    const usePhone = pinFrom === 'phone' && lat !== null;
+    if (!usePhone) {
+      if (typedAddr) tries.push({ q: typedAddr, src: 'address' });
+      if (typedStore && town) tries.push({ q: typedStore + ', ' + town, src: 'store' });
+      if (town && lat === null) tries.push({ q: town, src: 'town' });
+    }
     let found = null;
     if (tries.length) btn.textContent = 'LOCATING';
     for (let i = 0; i < tries.length && !found; i++) {
@@ -2958,7 +2976,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
       useLon = found.lon;
       useLabel = found.label;
       locSrc = found.src;
-    } else if (oldReceipt) {
+    } else if (oldReceipt && !usePhone) {
       useLat = null;
       useLon = null;
       useLabel = typedAddr || 'no location';
