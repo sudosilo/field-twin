@@ -537,7 +537,8 @@ function rowToEntry(r) {
     context: r.context || '',
     locSrc: r.loc_src,
     twinId: r.twin_id,
-    photoPath: r.photo_path
+    photoPath: r.photo_path,
+    updatedAt: r.updated_at
   };
 }
 
@@ -545,7 +546,8 @@ async function cloudPush() {
   if (!cloudReady() || syncing) return;
   syncing = true;
   const synced = getSyncedIds();
-  const pending = entries.filter(e => e.id && !synced.has(e.id));
+  const dirty = getDirtyIds();
+  const pending = entries.filter(e => e.id && (!synced.has(e.id) || dirty.has(e.id)));
   let done = 0;
   try {
     for (const e of pending) {
@@ -579,6 +581,8 @@ async function cloudPush() {
       }
       synced.add(e.id);
       setSyncedIds(synced);
+      dirty.delete(e.id);
+      setDirtyIds(dirty);
       done++;
     }
     if (pending.length) setStatus('synced ' + done + ' to cloud');
@@ -597,12 +601,37 @@ async function cloudPull() {
     const rec = await sb.from('receipts').select('*');
     const receiptMap = {};
     (rec.data || []).forEach(r => { receiptMap[r.entry_id] = r; });
-    const have = new Set(entries.map(e => e.id));
+    const have = {};
+    entries.forEach(e => { have[e.id] = e; });
     const synced = getSyncedIds();
+    const dirtyNow = getDirtyIds();
     let added = 0;
     (res.data || []).forEach(r => {
       synced.add(r.id);
-      if (have.has(r.id)) return;
+      const local = have[r.id];
+      if (local) {
+        if (dirtyNow.has(r.id)) return;
+        if (!r.updated_at) return;
+        if (local.updatedAt && new Date(r.updated_at) <= new Date(local.updatedAt)) return;
+        const fresh = rowToEntry(r);
+        const keepPhoto = local.photo;
+        const keepCaptured = local.capturedAt;
+        Object.assign(local, fresh);
+        if (keepPhoto) local.photo = keepPhoto;
+        if (keepCaptured) local.capturedAt = keepCaptured;
+        const rcu = receiptMap[r.id];
+        if (rcu) {
+          local.receipt = {
+            store: rcu.store || '',
+            total: Number(rcu.total) || 0,
+            saved: Number(rcu.saved) || 0,
+            tax: Number(rcu.tax) || 0,
+            work: Boolean(rcu.work)
+          };
+        }
+        added++;
+        return;
+      }
       const e = rowToEntry(r);
       const rc = receiptMap[r.id];
       if (rc) {
@@ -2365,6 +2394,159 @@ function showHistory() {
   document.getElementById('closeHistoryBtn').addEventListener('click', closePanel);
 }
 
+function getDirtyIds() {
+  try { return new Set(JSON.parse(localStorage.getItem('dirtyIds') || '[]')); } catch (e) { return new Set(); }
+}
+
+function setDirtyIds(set) {
+  try { localStorage.setItem('dirtyIds', JSON.stringify(Array.from(set))); } catch (e) {}
+}
+
+function localStamp(d) {
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function showEdit(entry, fromHistory) {
+  const panel = document.getElementById('panel');
+  const isReceipt = entry.category === 'receipt';
+  const questions = (entry.questions || []).map(q => (q && typeof q === 'object') ? q.text : q);
+  const answers = (entry.answers || []).slice();
+  while (answers.length < questions.length) answers.push('');
+  const notesIdx = questions.indexOf('Notes');
+  const workIdx = isReceipt ? questions.indexOf('Work or personal') : -1;
+  const addrIdx = isReceipt ? questions.indexOf('Address on receipt') : -1;
+  const originalAddr = addrIdx >= 0 ? (answers[addrIdx] || '') : '';
+  let isWork = entry.receipt ? Boolean(entry.receipt.work) : (workIdx >= 0 && answers[workIdx] === 'Work');
+
+  let html = '<h2>EDIT</h2>';
+  html += '<div class="question">Name shown in history</div>';
+  html += '<input type="text" id="edLabel" value="' + escapeHtml(entry.addressLabel || '') + '">';
+  if (!isReceipt) {
+    html += '<div class="question">Date and time</div>';
+    html += '<input type="datetime-local" id="edWhen" value="' + localStamp(new Date(entry.timestamp)) + '" style="width:100%;padding:8px;font-size:14px;margin-top:4px;border:1px solid var(--line);background:#f9fafb;color:var(--text);">';
+    html += '<div class="question">Type</div>';
+    html += '<select id="edCat">';
+    Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'receipt').forEach(k => {
+      const sel = (entry.category || 'general') === k ? ' selected' : '';
+      html += '<option value="' + k + '"' + sel + '>' + CATEGORIES[k].icon + ' ' + CATEGORIES[k].label + '</option>';
+    });
+    html += '</select>';
+    html += '<div class="question">Context</div>';
+    html += '<textarea id="edContext">' + escapeHtml(entry.context || '') + '</textarea>';
+  }
+  questions.forEach((q, i) => {
+    if (i === notesIdx) return;
+    if (i === workIdx) {
+      html += '<div class="question">Work or personal</div>';
+      html += '<div class="icon-picker" id="edWork">';
+      html += '<div class="icon-choice qopt' + (isWork ? ' active' : '') + '" data-work="1" style="font-size:12px;">Work</div>';
+      html += '<div class="icon-choice qopt' + (isWork ? '' : ' active') + '" data-work="0" style="font-size:12px;">Personal</div>';
+      html += '</div>';
+      return;
+    }
+    const label = i === addrIdx ? 'Address on receipt, changing it moves the map pin' : q;
+    html += '<div class="question">' + escapeHtml(label) + '</div>';
+    html += '<input type="text" class="edAns" data-i="' + i + '" value="' + escapeHtml(answers[i] || '') + '">';
+  });
+  if (!isReceipt) {
+    html += '<div class="question">Move the map pin to this address, leave empty to leave the pin where it is</div>';
+    html += '<input type="text" id="edMove">';
+  }
+  html += '<div class="question">Notes</div>';
+  html += '<textarea id="edNotes">' + escapeHtml(notesIdx >= 0 ? (answers[notesIdx] || '') : '') + '</textarea>';
+  html += '<div class="panel-actions">';
+  html += '<button id="edSaveBtn">SAVE CHANGES</button>';
+  html += '<button class="secondary" id="edCancelBtn">CANCEL</button>';
+  html += '</div>';
+  panel.innerHTML = html;
+  panel.classList.add('open');
+
+  panel.querySelectorAll('#edWork .qopt').forEach(el => {
+    el.addEventListener('click', () => {
+      panel.querySelectorAll('#edWork .qopt').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      isWork = el.getAttribute('data-work') === '1';
+    });
+  });
+
+  document.getElementById('edCancelBtn').addEventListener('click', () => showEntry(entry, fromHistory));
+
+  document.getElementById('edSaveBtn').addEventListener('click', async function () {
+    const btn = this;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const val = id => { const el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+
+    panel.querySelectorAll('.edAns').forEach(el => {
+      answers[parseInt(el.getAttribute('data-i'), 10)] = (el.value || '').trim();
+    });
+    if (workIdx >= 0) answers[workIdx] = isWork ? 'Work' : 'Personal';
+    const notes = val('edNotes');
+    if (notesIdx >= 0) {
+      answers[notesIdx] = notes;
+    } else if (notes) {
+      questions.push('Notes');
+      answers.push(notes);
+    }
+    entry.questions = questions;
+    entry.answers = answers;
+
+    let moveTo = '';
+    let pinNote = '';
+    if (isReceipt) {
+      const get = name => { const i = questions.indexOf(name); return i >= 0 ? answers[i] : ''; };
+      entry.receipt = {
+        store: get('Store'),
+        total: parseFloat(get('Total')) || 0,
+        saved: parseFloat(get('Saved')) || 0,
+        tax: parseFloat(get('Tax')) || 0,
+        work: isWork
+      };
+      entry.timestamp = receiptWhen(get('Date on receipt'), get('Time on receipt'), new Date(entry.timestamp)).toISOString();
+      const newAddr = get('Address on receipt');
+      if (newAddr && newAddr !== originalAddr) moveTo = newAddr;
+    } else {
+      const when = new Date(val('edWhen'));
+      if (!isNaN(when.getTime())) entry.timestamp = when.toISOString();
+      const cat = val('edCat') || 'general';
+      if (cat !== (entry.category || 'general')) {
+        entry.category = cat === 'general' ? null : cat;
+        entry.icon = CATEGORIES[cat].icon;
+        entry.formType = cat === 'general' ? 'full' : 'category';
+        entry.placeType = CATEGORIES[cat].label;
+      }
+      entry.context = val('edContext');
+      moveTo = val('edMove');
+    }
+    entry.addressLabel = val('edLabel') || entry.addressLabel;
+
+    if (moveTo) {
+      btn.textContent = 'LOCATING';
+      try {
+        const g = await geocodeAddress(moveTo);
+        entry.lat = g.lat;
+        entry.lon = g.lon;
+        entry.locSrc = 'address';
+        pinNote = ', pin moved';
+      } catch (e) {
+        pinNote = ', address not found so the pin stayed';
+      }
+    }
+
+    entry.updatedAt = new Date().toISOString();
+    const dirty = getDirtyIds();
+    dirty.add(entry.id);
+    setDirtyIds(dirty);
+    entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    await saveEntries().catch(() => {});
+    renderMarkers();
+    if (pinNote === ', pin moved') map.setView([entry.lat, entry.lon], 15);
+    setStatus('changes saved' + pinNote);
+    showEntry(entry, fromHistory);
+  });
+}
+
 function showEntry(entry, fromHistory) {
   const panel = document.getElementById('panel');
   let html = '<h2>ENTRY</h2>';
@@ -2375,13 +2557,19 @@ function showEntry(entry, fromHistory) {
   } else if (entry.photoPath) {
     html += '<img id="cloudPhoto" style="max-width:100%;margin-top:8px;">';
   }
+  let shown = false;
   if (entry.context) {
     html += '<div class="question">Context</div><div>' + escapeHtml(entry.context) + '</div>';
-  } else if (entry.answers && entry.answers.length) {
-    entry.questions.forEach((q, i) => {
-      html += '<div class="question">' + q + '</div><div>' + escapeHtml(entry.answers[i] || '') + '</div>';
-    });
-  } else {
+    shown = true;
+  }
+  (entry.questions || []).forEach((q, i) => {
+    const a = (entry.answers || [])[i];
+    if (a === undefined || a === null || String(a).trim() === '') return;
+    const label = (q && typeof q === 'object') ? q.text : q;
+    html += '<div class="question">' + escapeHtml(label) + '</div><div>' + escapeHtml(String(a)) + '</div>';
+    shown = true;
+  });
+  if (!shown) {
     html += '<div class="question">No answers recorded</div>';
   }
   if (cameras.length && hasPos(entry)) {
@@ -2398,7 +2586,7 @@ function showEntry(entry, fromHistory) {
       });
     }
   }
-  html += '<div class="panel-actions"><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
+  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
   panel.classList.add('open');
   if (!entry.photo && entry.photoPath) {
@@ -2412,6 +2600,7 @@ function showEntry(entry, fromHistory) {
       showCamera(cameras[parseInt(el.getAttribute('data-camidx'), 10)]);
     });
   });
+  document.getElementById('editEntryBtn').addEventListener('click', () => showEdit(entry, fromHistory));
   document.getElementById('closeEntryBtn').addEventListener('click', () => {
     if (fromHistory) showHistory(); else closePanel();
   });
