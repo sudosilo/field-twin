@@ -645,13 +645,12 @@
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="spendBtn">SPEND</button>
-  <button class="secondary" id="profileBtn">PROFILE</button>
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
   <button class="secondary" id="checkBtn">SERVICE CHECK</button>
   <h3>Your data</h3>
-  <button class="secondary" id="accountBtn">ACCOUNT</button>
+  <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
   <button class="secondary" id="importBtn">IMPORT</button>
   <input type="file" id="importInput" accept="application/json">
@@ -1037,7 +1036,7 @@ async function cloudPhotoUrl(path) {
 
 function showAccount() {
   const panel = document.getElementById('panel');
-  let html = '<h2>ACCOUNT</h2>';
+  let html = '<h2>ACCOUNT AND PROFILE</h2>';
   if (!sb) {
     html += '<div class="meta-line">cloud is not configured in this build</div>';
   } else if (cloudUser) {
@@ -1053,6 +1052,13 @@ function showAccount() {
     html += '<input type="text" id="authEmail" inputmode="email" autocomplete="email">';
     html += '<div class="panel-actions"><button id="sendLinkBtn">SEND LINK</button></div>';
   }
+  if (cloudUser) {
+    html += '<div class="meta-line">Your points and trophies are counted from the entries saved to this email, so they follow you to any phone you sign in on.</div>';
+  } else {
+    html += '<div class="meta-line">Not signed in. Entries, points and trophies are kept in this browser on this phone only, and entries older than thirty days are dropped. Signing in saves them to your email.</div>';
+  }
+  html += '<div class="meta-line">Phone tag ' + TWIN_ID + '. This tag is made up by this browser and stamped on each entry so you can tell which phone logged it. It does not identify the phone itself.</div>';
+  html += profileHtml();
   html += '<div class="panel-actions"><button class="secondary" id="closeAccountBtn">CLOSE</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -3070,16 +3076,13 @@ function showSpend() {
   document.getElementById('closeSpendBtn').addEventListener('click', closePanel);
 }
 
-function showProfile() {
-
-  const panel = document.getElementById('panel');
+function profileHtml() {
   const stats = scoreEntries(entries);
   const trophies = computeTrophies(stats, entries);
   const span = territorySpan(entries);
   const earned = trophies.filter(t => t.earned).length;
 
-  let html = '<h2>TWIN PROFILE</h2>';
-  html += '<div class="meta-line">' + TWIN_ID + '</div>';
+  let html = '<div class="question">Points</div>';
   html += '<div style="font-size:34px;color:var(--accent);margin:10px 0;">' + stats.total + '</div>';
   html += '<div class="meta-line">total points</div>';
 
@@ -3106,26 +3109,38 @@ function showProfile() {
     html += '<div class="meta-line" style="color:' + color + ';">' + mark + ' ' + t.name + ', ' + t.desc + '</div>';
   });
 
-  html += '<div class="panel-actions"><button class="secondary" id="closeProfileBtn">CLOSE</button></div>';
-  panel.innerHTML = html;
-  panel.scrollTop = 0;
-  panel.classList.add('open');
-  document.getElementById('closeProfileBtn').addEventListener('click', closePanel);
+  return html;
 }
+
+function showProfile() { showAccount(); }
 
 function showInfo() {
   const panel = document.getElementById('panel');
   let html = '<h2>ABOUT</h2>';
   html += '<div class="question">Logging a stop</div>';
-  html += '<div>Press log to capture your position. Press receipt to photograph a receipt. The tool resolves the address, works out what kind of place it is, and opens a form matched to that place type. Nothing is required, save with as many or as few answers as you want.</div>';
-  html += '<div class="question">Forms</div>';
-  html += '<div>Gas stations, grocery stores, fast food, and parcel lockers each have their own question pool. Each visit pulls a different set of eight from that pool, so returning to a location fills in new detail rather than repeating the same questions.</div>';
+  html += '<div>Press Log at the bottom of the screen. The app reads your position, looks up the address, works out what kind of place it is, and opens a short form for that kind of place. No answer is required. Press save with as many or as few answers as you want. You can attach a photo.</div>';
+  html += '<div class="question">Receipts</div>';
+  html += '<div>Press Receipt at the bottom of the screen and photograph a receipt. The app reads the store, total, tax, savings, date, time, address and every item line. Fields it was unsure about are highlighted so you can fix them before saving. The entry is filed under the date printed on the receipt, not the date you photographed it.</div>';
+  html += '<div class="question">Where the receipt pin goes</div>';
+  html += '<div>The receipt form has a choice between My location and Receipt address. My location puts the pin where the phone is standing. Receipt address looks up the address printed on the receipt. If the phone has no position, Receipt address is used.</div>';
   html += '<div class="question">Map</div>';
-  html += '<div>Each saved stop appears as a colored dot with an icon. Color shows the place type, listed under the color key in the menu. Tap a dot to read what was recorded there.</div>';
-  html += '<div class="question">Storage</div>';
-  html += '<div>Entries are held in this browser on this phone only, nothing is sent anywhere. Photos are stored separately so they survive alongside the rest of the record. Anything older than thirty days is dropped automatically, so export regularly if you want to keep a long term record. Import merges an export back in without creating duplicates.</div>';
+  html += '<div>Each stop is drawn as a road sign shape with a picture inside. The shape and tint tell you the kind of place, and the full list is under Color key in the menu. Receipts show as a price tag with the total. Stops that sit close together merge into a blue circle with a count. Tap the circle to zoom in and spread them apart. Tap any sign to open that entry.</div>';
+  html += '<div class="question">Opening, editing and moving an entry</div>';
+  html += '<div>Tap a sign on the map or a line in History to open an entry. Edit changes any answer, the date, the address, the items and the notes. The four arrows button at the top right of an entry moves the pin. Press it, then tap the map at the correct spot.</div>';
+  html += '<div class="question">Search</div>';
+  html += '<div>Search in the menu looks through store names, addresses, notes, answers and receipt items. You can narrow by kind of place, by dates and by work or personal. Results can be shown on the map or saved as a spreadsheet file.</div>';
+  html += '<div class="question">History and Spend</div>';
+  html += '<div>History lists every entry, newest first. Spend adds up receipt totals, tax and savings.</div>';
+  html += '<div class="question">Account and profile</div>';
+  html += '<div>Account and profile in the menu is one page. Type your email and a sign in link arrives in your inbox. Opening that link on this phone signs you in. Once signed in, every entry and photo is saved to your email account and comes back on any phone where you sign in. Points and trophies are counted from those saved entries, so they belong to your email.</div>';
+  html += '<div class="question">Using the app without an account</div>';
+  html += '<div>Signing in is optional. Without it, everything stays in this browser on this phone, nothing is uploaded, and entries older than thirty days are dropped. Export saves a file you can store anywhere, and Import reads that file back in without making duplicates. Clearing this browser\'s site data erases entries that were never exported or signed in.</div>';
+  html += '<div class="question">Phone tag</div>';
+  html += '<div>Each browser makes up a random tag the first time the app opens, shown on the Account and profile page. The tag is stamped on each entry so that entries from different phones can be told apart after an import or a sign in. It is not read from the phone, and it is not stored on any server by itself.</div>';
+  html += '<div class="question">Traffic cameras</div>';
+  html += '<div>Cameras in the menu shows Nevada highway cameras on the map. Tap one to watch it. The camera list is refreshed daily by the app\'s own server. Service check shows whether that server is reachable.</div>';
   html += '<div class="question">Duplicate protection</div>';
-  html += '<div>Saving the same answers at the same spot within thirty seconds is ignored, so a double tap will not create a second copy.</div>';
+  html += '<div>Saving the same answers at the same spot within thirty seconds is ignored, so a double tap does not create a second copy.</div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -3532,11 +3547,6 @@ async function init() {
   document.getElementById('historyBtn').addEventListener('click', () => {
     closeMenu();
     showHistory();
-  });
-
-  document.getElementById('profileBtn').addEventListener('click', () => {
-    closeMenu();
-    showProfile();
   });
 
   document.getElementById('searchBtn').addEventListener('click', () => {
