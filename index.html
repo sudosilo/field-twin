@@ -657,6 +657,10 @@
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
   <button class="secondary" id="checkBtn">SERVICE CHECK</button>
+  <h3>Roads</h3>
+  <button class="secondary" id="roadQualityBtn">ROAD QUALITY IS OFF</button>
+  <button class="secondary" id="roadHeatBtn">TRAVEL HEAT MAP IS OFF</button>
+  <button class="secondary" id="openCqBtn">OPEN CHASSISQUIVER</button>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
@@ -3304,6 +3308,130 @@ function showMileage() {
   });
 }
 
+const CQ_URL = 'https://vogxdikogfaxhwcgajfg.supabase.co';
+const CQ_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvZ3hkaWtvZ2ZheGh3Y2dhamZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTk4MDAsImV4cCI6MjEwNjk3NTgwMH0.fUosu3JdsUI5GFnQjDbOxfYCWO1hfijQO3O8lJVsU98';
+const CQ_SITE = 'https://chassisquiver.vercel.app/';
+let cqClient = null, cqRuns = null, cqLoading = null;
+let roadLayer = null, heatLayer = null;
+const roadView = { quality: false, heat: false };
+
+function cqScore(f, spm) { return Math.max(0, Math.min(10, 10 * (1 - Math.min(1, f * 4 + spm / 30)))); }
+function cqColor(s) {
+  if (s == null) return '#9aa0a8';
+  const t = Math.max(0, Math.min(1, s / 10)), A = [201, 59, 59], B = [217, 130, 43], C = [47, 158, 107];
+  const m = (a, b, u) => a.map((v, i) => Math.round(v + (b[i] - v) * u));
+  const c = t < 0.5 ? m(A, B, t * 2) : m(B, C, (t - 0.5) * 2);
+  return 'rgb(' + c.join(',') + ')';
+}
+function heatColor(t) {
+  const A = [158, 197, 240], B = [11, 78, 162], C = [10, 27, 46];
+  const m = (a, b, u) => a.map((v, i) => Math.round(v + (b[i] - v) * u));
+  const c = t < 0.5 ? m(A, B, t * 2) : m(B, C, (t - 0.5) * 2);
+  return 'rgb(' + c.join(',') + ')';
+}
+
+async function loadCqRuns() {
+  if (cqRuns) return cqRuns;
+  if (cqLoading) return cqLoading;
+  cqLoading = (async () => {
+    if (!window.supabase) throw new Error('road service library did not load');
+    if (!cqClient) cqClient = window.supabase.createClient(CQ_URL, CQ_ANON, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'fieldtwin-cq-readonly' } });
+    const res = await cqClient.from('chassisquiver_runs').select('id,road,at,score,rating,miles,mph,vehicle,path').order('at', { ascending: false }).limit(1500);
+    if (res.error) throw new Error(res.error.message);
+    cqRuns = (res.data || []).filter(r => Array.isArray(r.path) && r.path.length > 1);
+    return cqRuns;
+  })();
+  try { return await cqLoading; } finally { cqLoading = null; }
+}
+
+function roadPopup(r) {
+  const d = new Date(r.at);
+  return '<b>' + escapeHtml(r.road || 'Unnamed road') + '</b><br>Road score ' + (typeof r.score === 'number' ? r.score.toFixed(1) : 'none') + ' of ten' +
+    (typeof r.rating === 'number' ? '<br>Your rating ' + r.rating + ' of ten' : '') +
+    '<br>' + d.toLocaleDateString() + (r.miles ? ', ' + Number(r.miles).toFixed(1) + ' miles' : '') +
+    (r.vehicle && r.vehicle.type ? '<br>' + escapeHtml(String(r.vehicle.type)) : '') +
+    '<br><a href="' + CQ_SITE + '" target="_blank" rel="noopener">Open in Chassisquiver</a>';
+}
+
+function drawRoadQuality(runs) {
+  if (roadLayer) { map.removeLayer(roadLayer); roadLayer = null; }
+  if (!roadView.quality) return;
+  roadLayer = L.layerGroup();
+  const W = 3;
+  runs.forEach(r => {
+    const P = r.path, grp = L.featureGroup();
+    for (let i = 1; i < P.length; i++) {
+      let n = 0, out = 0, sp = 0, mt = 0;
+      for (let j = Math.max(1, i - W); j <= Math.min(P.length - 1, i + W); j++) { n += P[j][2] || 0; out += P[j][3] || 0; sp += P[j][4] || 0; mt += P[j][5] || 0; }
+      const sc = n ? cqScore(out / n, mt > 0 ? sp / (mt / 60) : 0) : null;
+      L.polyline([[P[i - 1][0], P[i - 1][1]], [P[i][0], P[i][1]]], { color: cqColor(sc), weight: 5, opacity: 0.85, lineCap: 'round' }).addTo(grp);
+    }
+    grp.bindPopup(() => roadPopup(r));
+    grp.addTo(roadLayer);
+  });
+  roadLayer.addTo(map);
+}
+
+function drawTravelHeat(runs) {
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+  if (!roadView.heat) return;
+  const cell = (la, lo) => Math.round(la * 500) + ':' + Math.round(lo * 500);
+  const counts = {};
+  runs.forEach(r => {
+    const seen = new Set();
+    r.path.forEach(p => seen.add(cell(p[0], p[1])));
+    seen.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
+  });
+  entries.forEach(e => { if (hasPos(e)) { const k = cell(e.lat, e.lon); counts[k] = (counts[k] || 0) + 1; } });
+  let max = 1;
+  Object.keys(counts).forEach(k => { if (counts[k] > max) max = counts[k]; });
+  heatLayer = L.layerGroup();
+  runs.forEach(r => {
+    const P = r.path;
+    for (let i = 1; i < P.length; i++) {
+      const n = counts[cell(P[i][0], P[i][1])] || 1;
+      const t = max > 1 ? Math.log(n) / Math.log(max) : 0;
+      L.polyline([[P[i - 1][0], P[i - 1][1]], [P[i][0], P[i][1]]], { color: heatColor(t), weight: 4 + t * 6, opacity: 0.55 + t * 0.35, lineCap: 'round', interactive: false }).addTo(heatLayer);
+    }
+  });
+  entries.forEach(e => {
+    if (!hasPos(e)) return;
+    const n = counts[cell(e.lat, e.lon)] || 1;
+    const t = max > 1 ? Math.log(n) / Math.log(max) : 0;
+    L.circleMarker([e.lat, e.lon], { radius: 10 + t * 10, stroke: false, fillColor: heatColor(t), fillOpacity: 0.25 + t * 0.3, interactive: false }).addTo(heatLayer);
+  });
+  heatLayer.addTo(map);
+}
+
+function applyRoadButtons() {
+  document.getElementById('roadQualityBtn').textContent = roadView.quality ? 'ROAD QUALITY IS ON' : 'ROAD QUALITY IS OFF';
+  document.getElementById('roadHeatBtn').textContent = roadView.heat ? 'TRAVEL HEAT MAP IS ON' : 'TRAVEL HEAT MAP IS OFF';
+}
+
+async function refreshRoadLayers() {
+  applyRoadButtons();
+  try { localStorage.setItem('roadView', JSON.stringify(roadView)); } catch (e) {}
+  if (!roadView.quality && !roadView.heat) { drawRoadQuality([]); drawTravelHeat([]); return; }
+  setStatus('loading roads from Chassisquiver');
+  try {
+    const runs = await loadCqRuns();
+    drawTravelHeat(runs);
+    drawRoadQuality(runs);
+    setStatus(runs.length ? runs.length + ' road runs from Chassisquiver' : 'no shared road runs in Chassisquiver yet');
+  } catch (err) {
+    setStatus('roads did not load, ' + err.message);
+  }
+}
+
+function initRoadButtons() {
+  try { Object.assign(roadView, JSON.parse(localStorage.getItem('roadView') || '{}')); } catch (e) {}
+  applyRoadButtons();
+  document.getElementById('roadQualityBtn').addEventListener('click', () => { roadView.quality = !roadView.quality; refreshRoadLayers(); });
+  document.getElementById('roadHeatBtn').addEventListener('click', () => { roadView.heat = !roadView.heat; refreshRoadLayers(); });
+  document.getElementById('openCqBtn').addEventListener('click', () => { window.open(CQ_SITE, '_blank', 'noopener'); });
+  if (roadView.quality || roadView.heat) refreshRoadLayers();
+}
+
 function showSpend() {
   const panel = document.getElementById('panel');
   const rs = entries.filter(e => e.category === 'receipt' && e.receipt);
@@ -3405,6 +3533,8 @@ function showInfo() {
   html += '<div>Signing in is optional. Without it, everything stays in this browser on this phone, nothing is uploaded, and entries older than thirty days are dropped. Export saves a file you can store anywhere, and Import reads that file back in without making duplicates. Clearing this browser\'s site data erases entries that were never exported or signed in.</div>';
   html += '<div class="question">Phone tag</div>';
   html += '<div>Each browser makes up a random tag the first time the app opens, shown on the Account and profile page. The tag is stamped on each entry so that entries from different phones can be told apart after an import or a sign in. It is not read from the phone, and it is not stored on any server by itself.</div>';
+  html += '<div class="question">Roads from Chassisquiver</div>';
+  html += '<div>Chassisquiver is a companion app that rates road roughness from a phone mounted on the steering wheel. It is at chassisquiver.vercel.app. Under Roads in the menu, Road quality draws every shared Chassisquiver run on this map, colored from red for rough to green for smooth. Tap a colored road to see its name, score and date. Travel heat map shades roads and stops by how often they show up, light blue for once and dark blue for often, using Chassisquiver runs and the entries in this app. Open Chassisquiver opens that app so you can set it up with your own account and record your own roads.</div>';
   html += '<div class="question">Traffic cameras</div>';
   html += '<div>Cameras in the menu shows Nevada highway cameras on the map. Tap one to watch it. The camera list is refreshed daily by the app\'s own server. Service check shows whether that server is reachable.</div>';
   html += '<div class="question">Duplicate protection</div>';
@@ -3839,6 +3969,7 @@ async function init() {
   document.getElementById('pinPlaceCancel').addEventListener('click', cancelPinPlacement);
 
   applyMilesToggle();
+  initRoadButtons();
   document.getElementById('milesToggleBtn').addEventListener('click', () => {
     try { localStorage.setItem('milesOn', milesOn() ? '0' : '1'); } catch (e) {}
     applyMilesToggle();
