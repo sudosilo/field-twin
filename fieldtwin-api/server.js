@@ -509,8 +509,8 @@ function trimEvent(src, e, now) {
     closure: Boolean(e.IsFullClosure),
     lat: pickNum(e.Latitude),
     lon: pickNum(e.Longitude),
-    lat2: pickNum(e.LatitudeSecondary),
-    lon2: pickNum(e.LongitudeSecondary),
+    lat2: pickNum(e.LatitudeSecondary) || null,
+    lon2: pickNum(e.LongitudeSecondary) || null,
     poly: keepLine && e.EncodedPolyline ? String(e.EncodedPolyline).slice(0, 8000) : null,
     reported: unixMs(e.Reported),
     start: unixMs(e.StartDate),
@@ -584,7 +584,7 @@ async function pollEvents() {
       try {
         const raw = await fetchEvents(src);
         if (!raw) continue;
-        const list = raw.map(e => trimEvent(src, e, now)).filter(e => e.lat !== null && e.lon !== null && e.type);
+        const list = raw.map(e => trimEvent(src, e, now)).filter(e => e.lat !== null && e.lon !== null && !(Math.abs(e.lat) < 0.5 && Math.abs(e.lon) < 0.5) && e.type);
         await storeEvents(list);
         eventState.lastOk[src] = new Date(now).toISOString();
         eventState.counts[src] = list.length;
