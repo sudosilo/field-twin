@@ -620,18 +620,19 @@
   .mi-row { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 
   /* ---- twin tabs: switch between the Teal map and the Violet inventory ---- */
-  :root { --tabs-h: 46px; }
+  :root { --tabs-h: 38px; }
   #map { top: calc(var(--head-h) + var(--tabs-h)); }
   #twinTabs {
     position: absolute; top: var(--head-h); left: 0; right: 0; height: var(--tabs-h);
-    display: flex; background: var(--tint); border-bottom: 2px solid var(--text); z-index: 1000;
+    display: flex; background: #ffffff; border-bottom: 2px solid var(--text); z-index: 1000;
   }
   #twinTabs button {
     flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: transparent;
     color: var(--text-dim); font-size: 15px; font-weight: 800; text-transform: none; letter-spacing: 0.3px; box-shadow: none;
   }
   #twinTabs button::first-letter { text-transform: none; }
-  #twinTabs button.on { color: var(--accent); box-shadow: inset 0 -4px 0 var(--accent); background: #ffffff; }
+  #twinTabs button { background: #ffffff; font-size: 14px; }
+  #twinTabs button.on { color: var(--accent); box-shadow: inset 0 -4px 0 var(--text); background: #ffffff; }
   #violetView {
     position: absolute; top: calc(var(--head-h) + var(--tabs-h)); left: 0; right: 0; bottom: 0;
     background: #eef4fb; z-index: 1005; display: none;
