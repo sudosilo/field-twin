@@ -641,6 +641,7 @@
   .hz-label { display: block; margin: 8px 14px 2px 14px; font-size: 12px; color: var(--text-dim); }
   #hzDays, #hzYears { display: block; width: calc(100% - 28px); margin: 0 14px 6px 14px; }
   .hz-pop b { color: var(--accent); }
+  .here-btn { display: flex !important; align-items: center; justify-content: center; color: var(--accent) !important; }
 </style>
 </head>
 <body>
@@ -677,6 +678,7 @@
   <h3>Capture</h3>
   <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
   <button class="secondary" id="milesToggleBtn">ODOMETER BUTTON IS OFF</button>
+  <button class="secondary" id="hereToggleBtn">MY LOCATION DOT IS ON</button>
   <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
@@ -2177,11 +2179,97 @@ async function checkMilitary(lat, lon) {
 
 function getPosition() {
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
+    navigator.geolocation.getCurrentPosition(pos => { hereShow(pos); resolve(pos); }, reject, {
       enableHighAccuracy: true,
       timeout: 15000
     });
   });
+}
+
+const HERE_EVERY_MS = 5 * 60 * 1000;
+let hereOn = true, hereDot = null, hereRing = null, hereAt = 0, hereTimer = null, hereBusy = false;
+
+function hereAgo() {
+  if (!hereAt) return 'not found yet';
+  const m = Math.round((Date.now() - hereAt) / 60000);
+  return m < 1 ? 'just now' : m === 1 ? 'a minute ago' : m + ' minutes ago';
+}
+
+function hereShow(pos) {
+  if (!hereOn || !map || !pos || !pos.coords) return;
+  const ll = [pos.coords.latitude, pos.coords.longitude];
+  const acc = Math.min(pos.coords.accuracy || 0, 3000);
+  hereAt = pos.timestamp || Date.now();
+  if (!hereRing) hereRing = L.circle(ll, { radius: acc, color: '#0b4ea2', weight: 1, opacity: 0.4, fillColor: '#0b4ea2', fillOpacity: 0.08, interactive: false }).addTo(map);
+  else hereRing.setLatLng(ll).setRadius(acc);
+  if (!hereDot) {
+    hereDot = L.circleMarker(ll, { radius: 8, color: '#ffffff', weight: 3, fillColor: '#0b4ea2', fillOpacity: 1 }).addTo(map);
+    hereDot.bindPopup(() => 'You were here ' + hereAgo() + '. The dot moves each time the app checks your position, about every five minutes while the app is open.');
+  } else hereDot.setLatLng(ll);
+  hereDot.bringToFront();
+}
+
+function hereCheck(center) {
+  if (!hereOn || hereBusy || !navigator.geolocation) return;
+  if (document.visibilityState === 'hidden') return;
+  hereBusy = true;
+  navigator.geolocation.getCurrentPosition(pos => {
+    hereBusy = false;
+    hereShow(pos);
+    if (center) map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 14));
+  }, () => { hereBusy = false; if (center) setStatus('position not available'); }, {
+    enableHighAccuracy: Boolean(center),
+    timeout: 20000,
+    maximumAge: center ? 0 : 4 * 60 * 1000
+  });
+}
+
+function hereSchedule() {
+  if (hereTimer) { clearInterval(hereTimer); hereTimer = null; }
+  if (!hereOn) return;
+  hereTimer = setInterval(() => hereCheck(false), HERE_EVERY_MS);
+}
+
+function hereApply() {
+  document.getElementById('hereToggleBtn').textContent = hereOn ? 'MY LOCATION DOT IS ON' : 'MY LOCATION DOT IS OFF';
+  if (!hereOn) {
+    if (hereDot) { map.removeLayer(hereDot); hereDot = null; }
+    if (hereRing) { map.removeLayer(hereRing); hereRing = null; }
+  }
+  hereSchedule();
+}
+
+function initHere() {
+  try { hereOn = localStorage.getItem('hereOn') !== '0'; } catch (e) {}
+  const Locate = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      const bar = L.DomUtil.create('div', 'leaflet-bar');
+      const a = L.DomUtil.create('a', 'here-btn', bar);
+      a.href = '#';
+      a.title = 'Show where I am';
+      a.setAttribute('aria-label', 'Show where I am');
+      a.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+      L.DomEvent.on(a, 'click', ev => {
+        L.DomEvent.stop(ev);
+        if (!hereOn) { hereOn = true; try { localStorage.setItem('hereOn', '1'); } catch (e) {} hereApply(); }
+        hereCheck(true);
+      });
+      return bar;
+    }
+  });
+  map.addControl(new Locate());
+  document.getElementById('hereToggleBtn').addEventListener('click', () => {
+    hereOn = !hereOn;
+    try { localStorage.setItem('hereOn', hereOn ? '1' : '0'); } catch (e) {}
+    hereApply();
+    if (hereOn) hereCheck(false);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && hereOn && Date.now() - hereAt > HERE_EVERY_MS) hereCheck(false);
+  });
+  hereApply();
+  hereCheck(false);
 }
 
 async function forceUpdate() {
@@ -3971,6 +4059,8 @@ function showInfo() {
   html += '<div>Every item line is saved with the receipt and can be searched. On the Edit screen of a receipt, the items box has one item per line, the name, then a bar, then the price. Read items from the photo sends the saved photo to the reading service again and fills the box.</div>';
   html += '<div class="question">Mileage</div>';
   html += '<div>In the menu under Capture, the Odometer button switch turns the Miles button on and off. Press Miles any time during the day and type the number on the odometer, plus the vehicle, work or personal, and a note if you want. The app saves that number with the time and one reading of where the phone is. It does not follow the phone between readings, so it does not drain the battery or heat the phone. Mileage in the menu lists every reading by day, the miles driven since the reading before it on the same vehicle, the straight line distance between those two spots, work and personal totals, and Save spreadsheet writes all of it to a file. Miles between two readings count as work or personal according to the later reading.</div>';
+  html += '<div class="question">Your location dot</div>';
+  html += '<div>A blue dot shows where you are, with a faint blue ring showing how close the reading is. To save battery and keep the phone cool, the app does not follow you live. It checks your position once when the app opens, then about every five minutes while the app is on screen, and not at all while it is in the background. The dot also moves whenever Log, Receipt or Miles reads your position. The target button under the zoom buttons checks your position right away and centers the map on you. Tap the dot to see how long ago it was placed. My location dot in the menu under Capture turns the dot and the checks on and off.</div>';
   html += '<div class="question">Map</div>';
   html += '<div>Each entry is drawn as a road sign shape with a picture inside. The shape and tint show the kind of place, and every one is listed under Color key at the bottom of the menu. Receipts show as a price tag with the total. Odometer readings show as a blue rectangle sign. Signs that sit close together merge into a blue circle with a count. Tap the circle to zoom in and spread them apart. Tap any sign to open that entry.</div>';
   html += '<div class="question">Opening, editing, moving and deleting</div>';
@@ -4432,6 +4522,7 @@ async function init() {
   document.getElementById('pinPlaceCancel').addEventListener('click', cancelPinPlacement);
 
   applyMilesToggle();
+  initHere();
   initRoadButtons();
   initHazards();
   document.getElementById('milesToggleBtn').addEventListener('click', () => {
