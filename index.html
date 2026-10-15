@@ -618,6 +618,26 @@
   #actionBar.three #updateBtn, #actionBar.three #receiptDockBtn { padding: 0 14px; }
   .mi-day { margin-top: 14px; padding-top: 10px; border-top: 2px solid var(--text); font-weight: 800; }
   .mi-row { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+
+  /* ---- twin tabs: switch between the Teal map and the Violet inventory ---- */
+  :root { --tabs-h: 46px; }
+  #map { top: calc(var(--head-h) + var(--tabs-h)); }
+  #twinTabs {
+    position: absolute; top: var(--head-h); left: 0; right: 0; height: var(--tabs-h);
+    display: flex; background: var(--tint); border-bottom: 2px solid var(--text); z-index: 1000;
+  }
+  #twinTabs button {
+    flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: transparent;
+    color: var(--text-dim); font-size: 15px; font-weight: 800; text-transform: none; letter-spacing: 0.3px; box-shadow: none;
+  }
+  #twinTabs button::first-letter { text-transform: none; }
+  #twinTabs button.on { color: var(--accent); box-shadow: inset 0 -4px 0 var(--accent); background: #ffffff; }
+  #violetView {
+    position: absolute; top: calc(var(--head-h) + var(--tabs-h)); left: 0; right: 0; bottom: 0;
+    background: #eef4fb; z-index: 1005; display: none;
+  }
+  #violetView.open { display: block; }
+  #violetView iframe { width: 100%; height: 100%; border: 0; display: block; }
 </style>
 </head>
 <body>
@@ -630,6 +650,12 @@
   </div>
   <button id="infoBtn">i</button>
 </header>
+
+<div id="twinTabs">
+  <button id="tabTeal" class="on">Field map</button>
+  <button id="tabViolet">Inventory</button>
+</div>
+<div id="violetView"></div>
 
 <div id="actionBar">
   <div class="radar" id="radar">
@@ -661,6 +687,8 @@
   <button class="secondary" id="roadQualityBtn">ROAD QUALITY IS OFF</button>
   <button class="secondary" id="roadHeatBtn">TRAVEL HEAT MAP IS OFF</button>
   <button class="secondary" id="openCqBtn">OPEN CHASSISQUIVER</button>
+  <h3>Inventory</h3>
+  <button class="secondary" id="openVioletBtn">OPEN FIELD TWIN VIOLET</button>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
@@ -3311,6 +3339,7 @@ function showMileage() {
 const CQ_URL = 'https://vogxdikogfaxhwcgajfg.supabase.co';
 const CQ_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvZ3hkaWtvZ2ZheGh3Y2dhamZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTk4MDAsImV4cCI6MjEwNjk3NTgwMH0.fUosu3JdsUI5GFnQjDbOxfYCWO1hfijQO3O8lJVsU98';
 const CQ_SITE = 'https://chassisquiver.vercel.app/';
+const VIOLET_SITE = 'https://field-twin-violet.vercel.app/';
 let cqClient = null, cqRuns = null, cqLoading = null;
 let roadLayer = null, heatLayer = null;
 const roadView = { quality: false, heat: false };
@@ -3429,6 +3458,7 @@ function initRoadButtons() {
   document.getElementById('roadQualityBtn').addEventListener('click', () => { roadView.quality = !roadView.quality; refreshRoadLayers(); });
   document.getElementById('roadHeatBtn').addEventListener('click', () => { roadView.heat = !roadView.heat; refreshRoadLayers(); });
   document.getElementById('openCqBtn').addEventListener('click', () => { window.open(CQ_SITE, '_blank', 'noopener'); });
+  document.getElementById('openVioletBtn').addEventListener('click', () => { window.open(VIOLET_SITE, '_blank', 'noopener'); });
   if (roadView.quality || roadView.heat) refreshRoadLayers();
 }
 
@@ -3539,6 +3569,7 @@ function showInfo() {
   html += '<div>Cameras shows Nevada highway cameras on the map. Tap a camera to watch it. The camera list comes from the Field Twin service on Railway, which checks the cameras once a day. Camera source holds the address of that service and its access token. The same address and token are used to read receipts. Service check shows whether the service is reachable, whether its receipt reader is set up, and whether a test receipt read goes through.</div>';
   html += '<div class="question">Roads from Chassisquiver</div>';
   html += '<div>Chassisquiver is a companion app at chassisquiver.vercel.app that rates road roughness from a phone mounted on the steering wheel. Road quality draws every shared Chassisquiver run on this map, colored from red for rough to green for smooth. Tap a colored road to see its name, score, rating and date. Travel heat map shades roads and stops by how often they show up, light blue for once and dark blue for often, using Chassisquiver runs and the entries in this app. Both switches stay the way you left them. Open Chassisquiver opens that app so you can set it up and record your own roads. Only runs saved as shared in Chassisquiver appear here.</div>';
+  html += '<div>The two tabs under the title switch between this map and Inventory. Inventory is Field Twin Violet, the parts and tools tracker, loaded right inside this page so you can flip back and forth without leaving. The tab you were on last opens next time. Open Field Twin Violet in the menu opens it on its own page.</div>';
   html += '<div class="question">Account and profile</div>';
   html += '<div>Account and profile is one page. Type your email and a sign in link arrives in your inbox. Opening that link on this phone signs you in. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. Sync now uploads and downloads right away. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
   html += '<div class="question">Points and trophies</div>';
@@ -4044,6 +4075,35 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 init();
+</script>
+<script>
+// Twin tabs: Field map is this app, Inventory is Field Twin Violet loaded in place so switching never leaves the page.
+(function () {
+  const TAB_KEY = 'fieldTwinTab';
+  const teal = document.getElementById('tabTeal');
+  const violet = document.getElementById('tabViolet');
+  const view = document.getElementById('violetView');
+  function show(which) {
+    const inv = which === 'violet';
+    teal.classList.toggle('on', !inv);
+    violet.classList.toggle('on', inv);
+    if (inv && !view.firstChild) {
+      const f = document.createElement('iframe');
+      f.src = VIOLET_SITE;
+      f.title = 'Field Twin Violet inventory';
+      f.allow = 'camera; clipboard-write; geolocation';
+      view.appendChild(f);
+    }
+    view.classList.toggle('open', inv);
+    try { localStorage.setItem(TAB_KEY, which); } catch (e) {}
+    if (!inv && typeof map !== 'undefined' && map && map.invalidateSize) setTimeout(() => map.invalidateSize(), 50);
+  }
+  teal.addEventListener('click', () => show('teal'));
+  violet.addEventListener('click', () => show('violet'));
+  let start = 'teal';
+  try { start = localStorage.getItem(TAB_KEY) || 'teal'; } catch (e) {}
+  show(start);
+})();
 </script>
 </body>
 </html>
