@@ -1173,10 +1173,20 @@ function showAccount() {
     html += '<button id="syncNowBtn">SYNC NOW</button>';
     html += '<button class="secondary" id="signOutBtn">SIGN OUT</button>';
     html += '</div>';
+    html += '<div class="question">Set or change your password</div>';
+    html += '<div class="meta-line">This password belongs to your Field Twin account, the same one Inventory uses. After you set it here, it signs you in on any phone, in Field Twin and in Inventory.</div>';
+    html += '<input type="password" id="newPass" autocomplete="new-password">';
+    html += '<div class="meta-line" id="passMsg"></div>';
+    html += '<div class="panel-actions"><button class="secondary" id="savePassBtn">SAVE PASSWORD</button></div>';
   } else {
-    html += '<div>Enter your email. A sign in link arrives in your inbox. Opening that link on this phone signs you in, and every entry on this phone uploads to your account.</div>';
+    html += '<div>This is your own Field Twin account, stored on your Field Twin server, and the same account Inventory uses. It is not tied to any outside sign in service. Your email is the account name, and it works on every phone.</div>';
+    html += '<div class="question">Email</div>';
     html += '<input type="text" id="authEmail" inputmode="email" autocomplete="email">';
-    html += '<div class="panel-actions"><button id="sendLinkBtn">SEND LINK</button></div>';
+    html += '<div class="question">Password</div>';
+    html += '<input type="password" id="authPass" autocomplete="current-password">';
+    html += '<div class="meta-line" id="authMsg"></div>';
+    html += '<div class="panel-actions"><button id="passSignInBtn">SIGN IN</button><button class="secondary" id="sendLinkBtn">EMAIL ME A LINK</button></div>';
+    html += '<div class="meta-line">If the password is refused, the account may never have had one set. Press Email me a link, open the link on this phone, then set a password on this page.</div>';
   }
   if (cloudUser) {
     html += '<div class="meta-line">Your points and trophies are counted from the entries saved to this email, so they follow you to any phone you sign in on.</div>';
@@ -1204,12 +1214,49 @@ function showAccount() {
       });
       if (res.error) {
         sendBtn.disabled = false;
-        sendBtn.textContent = 'SEND LINK';
+        sendBtn.textContent = 'EMAIL ME A LINK';
         setStatus('link failed, ' + res.error.message);
       } else {
         sendBtn.textContent = 'LINK SENT';
         setStatus('check your email for the sign in link');
       }
+    });
+  }
+  const passIn = document.getElementById('passSignInBtn');
+  if (passIn) {
+    passIn.addEventListener('click', async () => {
+      const email = (document.getElementById('authEmail').value || '').trim();
+      const pass = document.getElementById('authPass').value || '';
+      const msg = document.getElementById('authMsg');
+      if (!email || !pass) { msg.textContent = 'Type your email and password.'; return; }
+      passIn.disabled = true;
+      passIn.textContent = 'SIGNING IN';
+      const res = await sb.auth.signInWithPassword({ email: email, password: pass });
+      if (res.error) {
+        passIn.disabled = false;
+        passIn.textContent = 'SIGN IN';
+        msg.textContent = /invalid/i.test(res.error.message) ? 'That email and password did not match. If this account was made with an email link, it has no password yet. Press Email me a link instead.' : res.error.message;
+        return;
+      }
+      cloudUser = res.data.user;
+      setStatus('signed in, syncing');
+      await cloudPull();
+      await cloudPush();
+      showAccount();
+    });
+  }
+  const savePass = document.getElementById('savePassBtn');
+  if (savePass) {
+    savePass.addEventListener('click', async () => {
+      const pass = document.getElementById('newPass').value || '';
+      const msg = document.getElementById('passMsg');
+      if (pass.length < 6) { msg.textContent = 'Use at least six characters.'; return; }
+      savePass.disabled = true;
+      const res = await sb.auth.updateUser({ password: pass });
+      savePass.disabled = false;
+      if (res.error) { msg.textContent = res.error.message; return; }
+      document.getElementById('newPass').value = '';
+      msg.textContent = 'Password saved. It now works on every phone, in Field Twin and in Inventory.';
     });
   }
   const syncBtn = document.getElementById('syncNowBtn');
@@ -4098,7 +4145,7 @@ function showInfo() {
   html += '<div class="question">Road hazards</div>';
   html += '<div>Under Road hazards in the menu, Crashes shows crashes and other incidents reported by the Nevada and Arizona state road departments, as red dots. Construction shows road work in orange and full closures in dark red, drawn along the affected stretch of road when the state provides it. A solid mark is happening now, and a faded or dashed mark has cleared. The first list under those switches picks how far back to show, from a day up to two years. Show hazards picks the area: within a hundred miles of Las Vegas, within a hundred miles of where the phone is, or everywhere. The area applies to crashes, construction and fatal crashes. The state road departments only publish what is happening right now, so the Field Twin service checks them every ten minutes and saves every report it sees. History builds up from the day that service update went live, which is why longer spans fill in over time. Fatal crash history shows fatal crashes from federal crash records as dark red dots, going back as many years as you pick. Those records are released about a year or more after the year ends, so the newest year is never the current one. Tap any dot or line to read the details, plus a count of crashes and fatal crashes within half a mile of that spot, which is a quick way to judge how risky a stretch of road is. Arizona crashes and construction show up once an Arizona road department key is added to the service.</div>';
   html += '<div class="question">Account and profile</div>';
-  html += '<div>Account and profile is one page. Type your email and a sign in link arrives in your inbox. Opening that link on this phone signs you in. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. Sync now uploads and downloads right away. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
+  html += '<div>Account and profile is one page. The account is your own Field Twin account on your Field Twin server, the same one Inventory uses, and it is not tied to any outside sign in service. Sign in with your email and password, or press Email me a link and open the link on this phone. Once signed in, you can set or change your password on the same page, and that password then works on every phone. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. Sync now uploads and downloads right away. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
   html += '<div class="question">Points and trophies</div>';
   html += '<div>Each entry earns points for being saved, more for each answered question, more for a photo, and a large bonus the first time you reach a place. Going back to a place you already logged earns half. Airstrips, airports, government buildings and roadside memorials earn extra. A place with enough answers across visits counts as fully documented and earns a bonus. Trophies are awarded for counts of entries, places, photos, miles of ground covered and kinds of places logged. Points and trophies are counted from your saved entries, so they belong to your account.</div>';
   html += '<div class="question">Using the app without an account</div>';
