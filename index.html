@@ -638,6 +638,9 @@
   }
   #violetView.open { display: block; }
   #violetView iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .hz-label { display: block; margin: 8px 14px 2px 14px; font-size: 12px; color: var(--text-dim); }
+  #hzDays, #hzYears { display: block; width: calc(100% - 28px); margin: 0 14px 6px 14px; }
+  .hz-pop b { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -690,6 +693,14 @@
   <button class="secondary" id="openCqBtn">OPEN CHASSISQUIVER</button>
   <h3>Inventory</h3>
   <button class="secondary" id="openVioletBtn">OPEN FIELD TWIN VIOLET</button>
+  <h3>Road hazards</h3>
+  <button class="secondary" id="hzCrashBtn">CRASHES ARE OFF</button>
+  <button class="secondary" id="hzWorkBtn">CONSTRUCTION IS OFF</button>
+  <label class="hz-label" for="hzDays">Crashes and construction from the last</label>
+  <select id="hzDays"><option value="1">day</option><option value="7">week</option><option value="30" selected>thirty days</option><option value="90">three months</option><option value="365">year</option><option value="730">two years</option></select>
+  <button class="secondary" id="hzFatalBtn">FATAL CRASH HISTORY IS OFF</button>
+  <label class="hz-label" for="hzYears">Fatal crashes from the last</label>
+  <select id="hzYears"><option value="1">year on record</option><option value="3">three years on record</option><option value="5" selected>five years on record</option><option value="8">eight years on record</option></select>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
@@ -3463,6 +3474,171 @@ function initRoadButtons() {
   if (roadView.quality || roadView.heat) refreshRoadLayers();
 }
 
+const hz = { crashes: false, work: false, fatal: false, days: 30, years: 5 };
+let hzEvents = null, hzEventsAt = 0, hzEventsDays = 0, hzFatal = null, hzFatalYears = 0, hzInfo = null;
+let hzCrashLayer = null, hzWorkLayer = null, hzFatalLayer = null, hzTimer = null;
+
+function hzBase() { return getApiBase().replace(/\/+$/, ''); }
+
+function decodePolyline(str) {
+  const pts = [];
+  let i = 0, lat = 0, lon = 0;
+  while (i < str.length) {
+    let b, shift = 0, res = 0;
+    do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << shift; shift += 5; } while (b >= 32 && i < str.length);
+    lat += (res & 1) ? ~(res >> 1) : (res >> 1);
+    shift = 0; res = 0;
+    do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << shift; shift += 5; } while (b >= 32 && i < str.length);
+    lon += (res & 1) ? ~(res >> 1) : (res >> 1);
+    pts.push([lat / 1e5, lon / 1e5]);
+  }
+  return pts;
+}
+
+function milesBetween(a, b, c, d) {
+  const R = 3958.8, t = Math.PI / 180;
+  const h = Math.sin((c - a) * t / 2) ** 2 + Math.cos(a * t) * Math.cos(c * t) * Math.sin((d - b) * t / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function hzRiskLine(lat, lon) {
+  const near = (list, r) => (list || []).filter(x => Math.abs(x.lat - lat) < 0.02 && Math.abs(x.lon - lon) < 0.02 && milesBetween(lat, lon, x.lat, x.lon) <= r).length;
+  const crashes = hzEvents ? near(hzEvents.filter(e => e.type === 'accidentsAndIncidents'), 0.5) : null;
+  const fatal = hzFatal ? near(hzFatal, 0.5) : null;
+  let out = '';
+  if (crashes !== null) out += '<br>Crashes and incidents within half a mile in this window: <b>' + crashes + '</b>';
+  if (fatal !== null) out += '<br>Fatal crashes on record within half a mile: <b>' + fatal + '</b>';
+  return out;
+}
+
+function hzWhen(ms) { return ms ? new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; }
+
+function hzEventPopup(e) {
+  const kind = e.type === 'accidentsAndIncidents' ? 'Crash or incident' : e.type === 'closures' ? 'Closure' : 'Construction';
+  return '<div class="hz-pop"><b>' + kind + '</b>' + (e.active ? ', happening now' : ', cleared') +
+    '<br>' + escapeHtml([e.road, e.dir].filter(Boolean).join(' ')) +
+    (e.desc ? '<br>' + escapeHtml(e.desc) : '') +
+    (e.lanes ? '<br>Lanes: ' + escapeHtml(e.lanes) : '') +
+    (e.closure ? '<br>Full closure' : '') +
+    '<br>Reported ' + hzWhen(e.reported || e.start || e.firstSeen) +
+    (e.end ? '<br>Planned end ' + hzWhen(e.end) : '') +
+    (!e.active ? '<br>Last listed ' + hzWhen(e.lastSeen) : '') +
+    '<br>Source: ' + (e.src === 'az' ? 'Arizona' : 'Nevada') + ' state road department' +
+    hzRiskLine(e.lat, e.lon) + '</div>';
+}
+
+function hzFatalPopup(c) {
+  return '<div class="hz-pop"><b>Fatal crash</b><br>' + escapeHtml(c.date) + (c.time ? ' at ' + c.time : '') +
+    (c.road ? '<br>' + escapeHtml(c.road) : '') +
+    '<br>' + c.fatals + (c.fatals === 1 ? ' death' : ' deaths') + (c.vehicles ? ', ' + c.vehicles + ' vehicles' : '') +
+    '<br>Source: federal fatal crash records' + hzRiskLine(c.lat, c.lon) + '</div>';
+}
+
+async function hzLoadEvents(force) {
+  const base = hzBase();
+  if (!base) throw new Error('set the service address under Camera source first');
+  if (!force && hzEvents && hzEventsDays === hz.days && Date.now() - hzEventsAt < 5 * 60 * 1000) return;
+  const r = await fetch(base + '/events?days=' + hz.days);
+  if (r.status === 404) throw new Error('the service needs the latest update');
+  if (!r.ok) throw new Error('service status ' + r.status);
+  const j = await r.json();
+  hzEvents = j.events || [];
+  hzInfo = j;
+  hzEventsAt = Date.now();
+  hzEventsDays = hz.days;
+}
+
+async function hzLoadFatal() {
+  if (hzFatal && hzFatalYears === hz.years) return;
+  const base = hzBase();
+  if (!base) throw new Error('set the service address under Camera source first');
+  const r = await fetch(base + '/crashes?years=' + hz.years);
+  if (r.status === 404) throw new Error('the service needs the latest update');
+  if (!r.ok) throw new Error('service status ' + r.status);
+  const j = await r.json();
+  hzFatal = j.crashes || [];
+  hzFatalYears = hz.years;
+}
+
+function hzDraw() {
+  [hzCrashLayer, hzWorkLayer, hzFatalLayer].forEach(l => { if (l) map.removeLayer(l); });
+  hzCrashLayer = hzWorkLayer = hzFatalLayer = null;
+  if (hz.fatal && hzFatal) {
+    hzFatalLayer = L.layerGroup();
+    hzFatal.forEach(c => {
+      L.circleMarker([c.lat, c.lon], { radius: 4 + Math.min(4, c.fatals), color: '#0a1b2e', weight: 1.5, fillColor: '#7a1020', fillOpacity: 0.75 })
+        .bindPopup(() => hzFatalPopup(c)).addTo(hzFatalLayer);
+    });
+    hzFatalLayer.addTo(map);
+  }
+  if (hz.work && hzEvents) {
+    hzWorkLayer = L.layerGroup();
+    hzEvents.filter(e => e.type !== 'accidentsAndIncidents').forEach(e => {
+      const color = e.type === 'closures' ? '#b00020' : '#e07b00';
+      const style = { color: color, weight: 6, opacity: e.active ? 0.9 : 0.4, dashArray: e.active ? null : '6 8', lineCap: 'round' };
+      let line = null;
+      if (e.poly) { try { const pts = decodePolyline(e.poly); if (pts.length > 1) line = L.polyline(pts, style); } catch (err) {} }
+      if (!line && Number.isFinite(e.lat2) && Number.isFinite(e.lon2) && (e.lat2 !== e.lat || e.lon2 !== e.lon)) line = L.polyline([[e.lat, e.lon], [e.lat2, e.lon2]], style);
+      const dot = L.circleMarker([e.lat, e.lon], { radius: 7, color: '#0a1b2e', weight: 2, fillColor: color, fillOpacity: e.active ? 0.95 : 0.45 });
+      if (line) line.bindPopup(() => hzEventPopup(e)).addTo(hzWorkLayer);
+      dot.bindPopup(() => hzEventPopup(e)).addTo(hzWorkLayer);
+    });
+    hzWorkLayer.addTo(map);
+  }
+  if (hz.crashes && hzEvents) {
+    hzCrashLayer = L.layerGroup();
+    hzEvents.filter(e => e.type === 'accidentsAndIncidents').forEach(e => {
+      L.circleMarker([e.lat, e.lon], { radius: e.active ? 8 : 6, color: '#0a1b2e', weight: 2, fillColor: '#d32f2f', fillOpacity: e.active ? 0.95 : 0.4 })
+        .bindPopup(() => hzEventPopup(e)).addTo(hzCrashLayer);
+    });
+    hzCrashLayer.addTo(map);
+  }
+}
+
+function hzButtons() {
+  document.getElementById('hzCrashBtn').textContent = hz.crashes ? 'CRASHES ARE ON' : 'CRASHES ARE OFF';
+  document.getElementById('hzWorkBtn').textContent = hz.work ? 'CONSTRUCTION IS ON' : 'CONSTRUCTION IS OFF';
+  document.getElementById('hzFatalBtn').textContent = hz.fatal ? 'FATAL CRASH HISTORY IS ON' : 'FATAL CRASH HISTORY IS OFF';
+  document.getElementById('hzDays').value = String(hz.days);
+  document.getElementById('hzYears').value = String(hz.years);
+}
+
+async function hzRefresh(force) {
+  hzButtons();
+  try { localStorage.setItem('hazardView', JSON.stringify(hz)); } catch (e) {}
+  if (hzTimer) { clearInterval(hzTimer); hzTimer = null; }
+  if (!hz.crashes && !hz.work && !hz.fatal) { hzDraw(); return; }
+  const msgs = [];
+  if (hz.crashes || hz.work) {
+    setStatus('loading crashes and construction');
+    try {
+      await hzLoadEvents(force);
+      const c = hzEvents.filter(e => e.type === 'accidentsAndIncidents').length;
+      const w = hzEvents.length - c;
+      if (hz.crashes) msgs.push(c + ' crashes');
+      if (hz.work) msgs.push(w + ' construction');
+      hzTimer = setInterval(() => hzRefresh(true), 10 * 60 * 1000);
+    } catch (e) { msgs.push('hazards did not load, ' + e.message); }
+  }
+  if (hz.fatal) {
+    setStatus('loading fatal crash history');
+    try { await hzLoadFatal(); msgs.push(hzFatal.length + ' fatal crashes'); } catch (e) { msgs.push('fatal history did not load, ' + e.message); }
+  }
+  hzDraw();
+  setStatus(msgs.join(', '));
+}
+
+function initHazards() {
+  try { Object.assign(hz, JSON.parse(localStorage.getItem('hazardView') || '{}')); } catch (e) {}
+  hzButtons();
+  document.getElementById('hzCrashBtn').addEventListener('click', () => { hz.crashes = !hz.crashes; hzRefresh(false); });
+  document.getElementById('hzWorkBtn').addEventListener('click', () => { hz.work = !hz.work; hzRefresh(false); });
+  document.getElementById('hzFatalBtn').addEventListener('click', () => { hz.fatal = !hz.fatal; hzRefresh(false); });
+  document.getElementById('hzDays').addEventListener('change', e => { hz.days = Number(e.target.value) || 30; hzRefresh(true); });
+  document.getElementById('hzYears').addEventListener('change', e => { hz.years = Number(e.target.value) || 5; hzFatal = null; hzRefresh(false); });
+  if (hz.crashes || hz.work || hz.fatal) hzRefresh(false);
+}
+
 function showSpend() {
   const panel = document.getElementById('panel');
   const rs = entries.filter(e => e.category === 'receipt' && e.receipt);
@@ -3773,6 +3949,8 @@ function showInfo() {
   html += '<div class="question">Roads from Chassisquiver</div>';
   html += '<div>Chassisquiver is a companion app at chassisquiver.vercel.app that rates road roughness from a phone mounted on the steering wheel. Road quality draws every shared Chassisquiver run on this map, colored from red for rough to green for smooth. Tap a colored road to see its name, score, rating and date. Travel heat map shades roads and stops by how often they show up, light blue for once and dark blue for often, using Chassisquiver runs and the entries in this app. Both switches stay the way you left them. Open Chassisquiver opens that app so you can set it up and record your own roads. Only runs saved as shared in Chassisquiver appear here.</div>';
   html += '<div>The two tabs under the title switch between this map and Inventory. Inventory is Field Twin Violet, the parts and tools tracker, loaded right inside this page so you can flip back and forth without leaving. The tab you were on last opens next time. Open Field Twin Violet in the menu opens it on its own page.</div>';
+  html += '<div class="question">Road hazards</div>';
+  html += '<div>Under Road hazards in the menu, Crashes shows crashes and other incidents reported by the Nevada and Arizona state road departments, as red dots. Construction shows road work in orange and full closures in dark red, drawn along the affected stretch of road when the state provides it. A solid mark is happening now, and a faded or dashed mark has cleared. The list under those switches picks how far back to show, from a day up to two years. The state road departments only publish what is happening right now, so the Field Twin service checks them every ten minutes and saves every report it sees. History builds up from the day that service update went live, which is why longer spans fill in over time. Fatal crash history shows fatal crashes from federal crash records as dark red dots, going back as many years as you pick. Those records are released about a year or more after the year ends, so the newest year is never the current one. Tap any dot or line to read the details, plus a count of crashes and fatal crashes within half a mile of that spot, which is a quick way to judge how risky a stretch of road is. Arizona crashes and construction show up once an Arizona road department key is added to the service.</div>';
   html += '<div class="question">Account and profile</div>';
   html += '<div>Account and profile is one page. Type your email and a sign in link arrives in your inbox. Opening that link on this phone signs you in. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. Sync now uploads and downloads right away. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
   html += '<div class="question">Points and trophies</div>';
@@ -4216,6 +4394,7 @@ async function init() {
 
   applyMilesToggle();
   initRoadButtons();
+  initHazards();
   document.getElementById('milesToggleBtn').addEventListener('click', () => {
     try { localStorage.setItem('milesOn', milesOn() ? '0' : '1'); } catch (e) {}
     applyMilesToggle();
