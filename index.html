@@ -652,8 +652,8 @@
   #settingsBtn[aria-expanded="true"] .chev { transform: rotate(-135deg); margin-top: -3px; }
   #settingsBox { background: var(--tint); padding: 4px 0 8px 0; border-bottom: 1px solid var(--line); }
   #settingsBox button.secondary { background: var(--tint); }
-  .ext-row { display: flex; gap: 8px; padding: 6px 14px 10px 14px; }
-  #sideMenu .ext-row button.ext { flex: 1 1 0; text-transform: none; width: auto; min-height: 46px; padding: 6px 8px; text-align: center; font-size: 14px; line-height: 1.15; font-weight: 800; background: var(--accent); color: #ffffff; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); }
+  .ext-row { display: flex; flex-direction: column; gap: 10px; padding: 6px 14px 12px 14px; }
+  #sideMenu .ext-row button.ext { flex: 0 0 auto; width: 100%; height: 46px; text-transform: none; width: auto; min-height: 46px; padding: 6px 8px; text-align: center; font-size: 14px; line-height: 1.15; font-weight: 800; background: var(--accent); color: #ffffff; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); }
   #sideMenu .ext-row button.ext:active { box-shadow: none; transform: translate(3px, 3px); }
   #sideMenu .ext-row button.ext::first-letter { text-transform: none; }
 </style>
@@ -693,6 +693,13 @@
   <button class="secondary" id="receiptBtn">RECEIPT</button>
   <button class="secondary tg" id="milesToggleBtn" aria-pressed="false"><span>ODOMETER</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hereToggleBtn" aria-pressed="false"><span>LOCATION</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <h3>Roads</h3>
+  <button class="secondary tg" id="roadQualityBtn" aria-pressed="false"><span>QUALITY</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="roadHeatBtn" aria-pressed="false"><span>HEAT MAP</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <h3>Road hazards</h3>
+  <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
@@ -701,13 +708,6 @@
   <button class="secondary" id="mileageBtn">MILEAGE</button>
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
-  <h3>Roads</h3>
-  <button class="secondary tg" id="roadQualityBtn" aria-pressed="false"><span>QUALITY</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="roadHeatBtn" aria-pressed="false"><span>HEAT MAP</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <h3>Road hazards</h3>
-  <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Other apps</h3>
   <div class="ext-row"><button class="ext" id="openCqBtn">Chassisquiver</button><button class="ext" id="openVioletBtn">Field Twin Violet</button></div>
   <h3>Your data</h3>
