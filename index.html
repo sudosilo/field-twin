@@ -676,6 +676,7 @@
   <button class="secondary" id="milesToggleBtn">ODOMETER BUTTON IS OFF</button>
   <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
+  <button class="secondary" id="dayLogBtn">DAY LOG</button>
   <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="mileageBtn">MILEAGE</button>
@@ -3500,6 +3501,206 @@ function showSpend() {
   document.getElementById('closeSpendBtn').addEventListener('click', closePanel);
 }
 
+function dayLogN(n, word) {
+  return n + ' ' + word + (n === 1 ? '' : 's');
+}
+
+function dayLogTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function dayLogGap(mins) {
+  if (mins < 60) return mins + ' min';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h + ' hr' + (m ? ' ' + m + ' min' : '');
+}
+
+function dayLogDays() {
+  const set = {};
+  entries.forEach(e => { if (e.timestamp) set[localDay(e.timestamp)] = (set[localDay(e.timestamp)] || 0) + 1; });
+  return set;
+}
+
+function dayLogDetail(e) {
+  if (e.category === 'receipt' && e.receipt) {
+    return (e.receipt.store || 'unnamed store') + ', $' + (Number(e.receipt.total) || 0).toFixed(2) + (e.receipt.work ? ', work' : ', personal');
+  }
+  if (e.category === 'odometer' && e.odometer) {
+    const n = (e.answers || [])[3];
+    return 'odometer ' + e.odometer.reading + (e.odometer.vehicle ? ', ' + e.odometer.vehicle : '') + (e.odometer.work ? ', work' : ', personal') + (n ? ', note: ' + n : '');
+  }
+  const asked = (e.questions || []).length;
+  let d = asked ? dayLogAnswered(e) + ' of ' + asked + ' questions answered' : 'no form';
+  if (e.context) d += ', note: ' + (e.context.length > 90 ? e.context.slice(0, 90) + '...' : e.context);
+  return d;
+}
+
+function dayLogAnswered(e) {
+  return (e.answers || []).filter(a => a && String(a).trim() !== '').length;
+}
+
+function buildDayLog(dk) {
+  entries.forEach(odoFromAnswers);
+  const list = entries.filter(e => e.timestamp && localDay(e.timestamp) === dk)
+    .slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const label = new Date(dk + 'T12:00:00').toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const r = { dk: dk, label: label, list: list, lines: [], gaps: [] };
+  if (!list.length) return r;
+
+  const first = list[0], last = list[list.length - 1];
+  const spanMin = Math.round((new Date(last.timestamp) - new Date(first.timestamp)) / 60000);
+  const cats = {};
+  const sites = {};
+  let ground = 0, prevPos = null, photos = 0, asked = 0, answered = 0, noPos = 0;
+  list.forEach(e => {
+    const c = e.category || 'general';
+    cats[c] = (cats[c] || 0) + 1;
+    if (hasPos(e)) {
+      sites[siteKey(e)] = true;
+      if (prevPos) ground += milesBetween(prevPos.lat, prevPos.lon, e.lat, e.lon);
+      prevPos = e;
+    } else noPos++;
+    if (e.photo || e.photoPath) photos++;
+    if (c !== 'receipt' && c !== 'odometer') {
+      asked += (e.questions || []).length;
+      answered += dayLogAnswered(e);
+    }
+  });
+
+  const rs = list.filter(e => e.category === 'receipt' && e.receipt);
+  let spent = 0, work = 0, personal = 0, saved = 0, tax = 0;
+  const byStore = {};
+  rs.forEach(e => {
+    const t = Number(e.receipt.total) || 0;
+    spent += t;
+    saved += Number(e.receipt.saved) || 0;
+    tax += Number(e.receipt.tax) || 0;
+    if (e.receipt.work) work += t; else personal += t;
+    const k = e.receipt.store || 'unnamed store';
+    byStore[k] = (byStore[k] || 0) + t;
+  });
+
+  const legs = mileageLegs().filter(g => localDay(g.entry.timestamp) === dk);
+  let workMi = 0, persMi = 0;
+  legs.forEach(g => { if (g.miles > 0) { if (g.entry.odometer.work) workMi += g.miles; else persMi += g.miles; } });
+  const odos = list.filter(e => e.category === 'odometer');
+
+  r.summary = [
+    (list.length === 1 ? '1 entry' : list.length + ' entries') + ' from ' + dayLogTime(first.timestamp) + ' to ' + dayLogTime(last.timestamp) + ', ' + dayLogGap(spanMin) + ' on the clock',
+    dayLogN(Object.keys(sites).length, 'distinct place') + ', ' + (Math.round(ground * 10) / 10) + ' miles between entries in a straight line',
+    'Miles driven by odometer: ' + (odos.length ? (Math.round((workMi + persMi) * 10) / 10) + ' (work ' + (Math.round(workMi * 10) / 10) + ', personal ' + (Math.round(persMi * 10) / 10) + ')' : 'unknown'),
+    'Spent: $' + spent.toFixed(2) + ' on ' + dayLogN(rs.length, 'receipt') + ' (work $' + work.toFixed(2) + ', personal $' + personal.toFixed(2) + ', tax $' + tax.toFixed(2) + ', saved $' + saved.toFixed(2) + ')',
+    'Questions answered: ' + answered + ' of ' + asked + ', photos: ' + photos
+  ];
+  r.kinds = Object.keys(cats).sort((a, b) => cats[b] - cats[a]).map(k => ((CATEGORIES[k] || CATEGORIES.general).label) + ' ' + cats[k]);
+  r.stores = Object.keys(byStore).sort((a, b) => byStore[b] - byStore[a]).map(k => k + ' $' + byStore[k].toFixed(2));
+
+  let prevT = null;
+  list.forEach(e => {
+    const t = new Date(e.timestamp);
+    const gap = prevT === null ? null : Math.round((t - prevT) / 60000);
+    if (gap !== null && gap >= 120) r.gaps.push('Nothing logged for ' + dayLogGap(gap) + ', from ' + dayLogTime(prevT) + ' to ' + dayLogTime(t));
+    prevT = t;
+    const m = CATEGORIES[e.category || 'general'] || CATEGORIES.general;
+    r.lines.push({ entry: e, time: dayLogTime(e.timestamp), gap: gap, kind: m.label, icon: m.icon, place: e.addressLabel || 'no address', detail: dayLogDetail(e) });
+  });
+
+  if (!odos.length) r.gaps.push('No odometer readings, so miles driven are unknown');
+  else if (!legs.some(g => g.miles > 0)) r.gaps.push('Odometer readings exist but none follows an earlier reading on the same vehicle, so miles driven are unknown');
+  if (!rs.length) r.gaps.push('No receipts captured');
+  const badRs = rs.filter(e => !e.receipt.store || !(Number(e.receipt.total) > 0)).length;
+  if (badRs) r.gaps.push(dayLogN(badRs, 'receipt') + ' missing a store name or total');
+  const seen = {};
+  let dupes = 0;
+  rs.forEach(e => {
+    const k = (e.receipt.store || '') + '|' + (Number(e.receipt.total) || 0).toFixed(2) + '|' + dayLogTime(e.timestamp);
+    if (seen[k]) dupes++; else seen[k] = true;
+  });
+  if (dupes) r.gaps.push(dayLogN(dupes, 'receipt') + ' matching another on store, total and time, likely duplicate');
+  const blank = list.filter(e => ['receipt', 'odometer', 'none'].indexOf(e.category) === -1 && (e.questions || []).length && dayLogAnswered(e) === 0).length;
+  if (blank) r.gaps.push(dayLogN(blank, 'stop') + ' with no questions answered');
+  if (noPos) r.gaps.push((noPos === 1 ? '1 entry' : noPos + ' entries') + ' with no location');
+  return r;
+}
+
+function dayLogText(r) {
+  const out = ['FIELD TWIN DAY LOG', r.label, ''];
+  if (!r.list.length) { out.push('No entries on this day.'); return out.join('\n'); }
+  out.push('SUMMARY');
+  r.summary.forEach(s => out.push(s));
+  out.push('Kinds of stops: ' + r.kinds.join(', '));
+  if (r.stores.length) out.push('By store: ' + r.stores.join(', '));
+  out.push('', 'TIMELINE');
+  r.lines.forEach(l => {
+    out.push(l.time + (l.gap !== null ? ' (+' + dayLogGap(l.gap) + ')' : '') + ', ' + l.kind + ', ' + l.place + ', ' + l.detail);
+  });
+  out.push('', 'NOT CAPTURED');
+  if (r.gaps.length) r.gaps.forEach(g => out.push(g)); else out.push('Nothing flagged.');
+  return out.join('\n');
+}
+
+function showDayLog(dk) {
+  const panel = document.getElementById('panel');
+  dk = dk || localDay(new Date());
+  const days = dayLogDays();
+  const keys = Object.keys(days).sort();
+  const prev = keys.filter(k => k < dk).pop() || '';
+  const next = keys.filter(k => k > dk)[0] || '';
+  const r = buildDayLog(dk);
+
+  let html = '<h2>DAY LOG</h2>';
+  html += '<div class="meta-line">' + escapeHtml(r.label) + '</div>';
+  html += '<input type="date" id="dlDate" value="' + dk + '" style="width:100%;padding:10px;font:inherit;margin:6px 0;border:1px solid var(--line);background:var(--panel);color:var(--text);">';
+  html += '<div class="panel-actions" style="margin-top:6px;"><button class="secondary" id="dlPrev"' + (prev ? '' : ' disabled') + '>EARLIER DAY</button><button class="secondary" id="dlNext"' + (next ? '' : ' disabled') + '>LATER DAY</button></div>';
+  html += '<div class="meta-line">The earlier and later buttons skip to the nearest day that has entries. ' + keys.length + ' days have entries.</div>';
+
+  if (!r.list.length) {
+    html += '<div class="question">No entries on this day</div>';
+  } else {
+    html += '<div style="font-size:30px;color:var(--accent);margin:10px 0 0;">' + r.list.length + '</div><div class="meta-line">entries</div>';
+    html += '<div class="question">Summary</div>';
+    r.summary.forEach(s => { html += '<div class="meta-line">' + escapeHtml(s) + '</div>'; });
+    html += '<div class="meta-line">Kinds of stops: ' + escapeHtml(r.kinds.join(', ')) + '</div>';
+    if (r.stores.length) html += '<div class="meta-line">By store: ' + escapeHtml(r.stores.join(', ')) + '</div>';
+    html += '<div class="question">Timeline</div>';
+    r.lines.forEach((l, i) => {
+      html += '<div class="mi-row" data-dl="' + i + '">' + l.icon + ' ' + l.time + (l.gap !== null ? ', ' + dayLogGap(l.gap) + ' after the last entry' : ', first entry') +
+        '<br>' + escapeHtml(l.kind) + ', ' + escapeHtml(l.detail) + '<br><span class="meta-line">' + escapeHtml(l.place) + '</span></div>';
+    });
+    html += '<div class="question">Not captured</div>';
+    if (r.gaps.length) r.gaps.forEach(g => { html += '<div class="meta-line" style="color:#b00020;">' + escapeHtml(g) + '</div>'; });
+    else html += '<div class="meta-line">Nothing flagged.</div>';
+  }
+  html += '<div class="meta-line" id="dlMsg"></div>';
+  html += '<div class="panel-actions"><button id="dlCopyBtn">COPY LOG</button><button class="secondary" id="dlCloseBtn">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+
+  document.getElementById('dlCloseBtn').addEventListener('click', closePanel);
+  document.getElementById('dlDate').addEventListener('change', ev => { if (ev.target.value) showDayLog(ev.target.value); });
+  document.getElementById('dlPrev').addEventListener('click', () => { if (prev) showDayLog(prev); });
+  document.getElementById('dlNext').addEventListener('click', () => { if (next) showDayLog(next); });
+  panel.querySelectorAll('[data-dl]').forEach(el => {
+    el.addEventListener('click', () => showEntry(r.lines[parseInt(el.getAttribute('data-dl'), 10)].entry, true));
+  });
+  document.getElementById('dlCopyBtn').addEventListener('click', async () => {
+    const text = dayLogText(r);
+    const msg = document.getElementById('dlMsg');
+    try {
+      await navigator.clipboard.writeText(text);
+      msg.textContent = 'Day log copied.';
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); msg.textContent = 'Day log copied.'; } catch (x) { msg.textContent = 'Copy blocked by the browser.'; }
+      ta.remove();
+    }
+  });
+}
+
 function profileHtml() {
   const stats = scoreEntries(entries);
   const trophies = computeTrophies(stats, entries);
@@ -3563,6 +3764,8 @@ function showInfo() {
   html += '<div>Search in the menu looks through store names, addresses, notes, answers and receipt items. You can narrow it by kind of place, by a date range, by work or personal, by a lowest and highest receipt amount, and by whether it has a photo, and you can change the sort order. Show on map draws only the results on the map, and Show all on the bar at the top of the map brings everything back. Save as sheet writes the results to a spreadsheet file. Reset clears every filter.</div>';
   html += '<div class="question">History</div>';
   html += '<div>History lists every entry, newest first. Tap a line to open it.</div>';
+  html += '<div class="question">Day log</div>';
+  html += '<div>Day log in the menu shows one day at a time, today first. It adds up the entries, the hours between the first and last, distinct places, straight line miles between entries, miles driven from odometer readings, money spent by work and personal and by store, and questions answered. The timeline lists every entry in order with the time since the one before it. Tap a line to open that entry. Not captured lists what the day is missing, such as stretches of two hours or more with no entries, no odometer readings, no receipts, receipts without a store or total, stops with no answers, and entries with no location. Earlier day and Later day skip to the nearest day with entries, and the date box jumps to any day. Copy log puts the whole day on the clipboard as plain text.</div>';
   html += '<div class="question">Spend</div>';
   html += '<div>Spend adds up every receipt: the total spent, work and personal totals, money saved, and a list by store with visits and amounts.</div>';
   html += '<div class="question">Traffic cameras</div>';
@@ -4021,6 +4224,11 @@ async function init() {
   document.getElementById('mileageBtn').addEventListener('click', () => {
     closeMenu();
     showMileage();
+  });
+
+  document.getElementById('dayLogBtn').addEventListener('click', () => {
+    closeMenu();
+    showDayLog();
   });
 
   document.getElementById('spendBtn').addEventListener('click', () => {
