@@ -639,9 +639,22 @@
   #violetView.open { display: block; }
   #violetView iframe { width: 100%; height: 100%; border: 0; display: block; }
   .hz-label { display: block; margin: 8px 14px 2px 14px; font-size: 12px; color: var(--text-dim); }
-  #hzDays, #hzYears { display: block; width: calc(100% - 28px); margin: 0 14px 6px 14px; }
+  #hzDays, #hzYears, #hzArea { display: block; box-sizing: border-box; max-width: calc(100% - 28px); width: calc(100% - 28px); margin: 0 14px 6px 14px; }
   .hz-pop b { color: var(--accent); }
   .here-btn { display: flex !important; align-items: center; justify-content: center; color: var(--accent) !important; }
+  #sideMenu button.tg, #sideMenu #settingsBtn { position: relative; padding-right: 72px; }
+  .tg-sw { position: absolute; right: 14px; top: 50%; width: 46px; height: 26px; margin-top: -13px; border: 2px solid var(--text); border-radius: 14px; background: #ffffff; box-sizing: border-box; }
+  .tg-sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); }
+  button.tg[aria-pressed="true"] .tg-sw { background: var(--accent); border-color: var(--accent); }
+  button.tg[aria-pressed="true"] .tg-sw::after { left: 22px; background: #ffffff; }
+  .chev { position: absolute; right: 22px; top: 50%; width: 10px; height: 10px; margin-top: -8px; border-right: 3px solid var(--text); border-bottom: 3px solid var(--text); transform: rotate(45deg); }
+  #settingsBtn[aria-expanded="true"] .chev { transform: rotate(-135deg); margin-top: -3px; }
+  #settingsBox { background: var(--tint); padding: 4px 0 8px 0; border-bottom: 1px solid var(--line); }
+  #settingsBox button.secondary { background: var(--tint); }
+  .ext-row { display: flex; gap: 8px; padding: 6px 14px 10px 14px; }
+  #sideMenu .ext-row button.ext { flex: 1 1 0; text-transform: none; width: auto; min-height: 46px; padding: 6px 8px; text-align: center; font-size: 14px; line-height: 1.15; font-weight: 800; background: var(--accent); color: #ffffff; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); }
+  #sideMenu .ext-row button.ext:active { box-shadow: none; transform: translate(3px, 3px); }
+  #sideMenu .ext-row button.ext::first-letter { text-transform: none; }
 </style>
 </head>
 <body>
@@ -676,9 +689,9 @@
 <div id="menuOverlay"></div>
 <div id="sideMenu">
   <h3>Capture</h3>
-  <button class="secondary" id="receiptBtn">NEW RECEIPT</button>
-  <button class="secondary" id="milesToggleBtn">ODOMETER BUTTON IS OFF</button>
-  <button class="secondary" id="hereToggleBtn">MY LOCATION DOT IS ON</button>
+  <button class="secondary" id="receiptBtn">RECEIPT</button>
+  <button class="secondary tg" id="milesToggleBtn" aria-pressed="false"><span>ODOMETER</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hereToggleBtn" aria-pressed="false"><span>LOCATION</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
@@ -687,29 +700,31 @@
   <button class="secondary" id="mileageBtn">MILEAGE</button>
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
-  <button class="secondary" id="camKeyBtn">CAMERA SOURCE</button>
-  <button class="secondary" id="checkBtn">SERVICE CHECK</button>
   <h3>Roads</h3>
-  <button class="secondary" id="roadQualityBtn">ROAD QUALITY IS OFF</button>
-  <button class="secondary" id="roadHeatBtn">TRAVEL HEAT MAP IS OFF</button>
-  <button class="secondary" id="openCqBtn">OPEN CHASSISQUIVER</button>
-  <h3>Inventory</h3>
-  <button class="secondary" id="openVioletBtn">OPEN FIELD TWIN VIOLET</button>
+  <button class="secondary tg" id="roadQualityBtn" aria-pressed="false"><span>QUALITY</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="roadHeatBtn" aria-pressed="false"><span>HEAT MAP</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Road hazards</h3>
-  <button class="secondary" id="hzCrashBtn">CRASHES ARE OFF</button>
-  <button class="secondary" id="hzWorkBtn">CONSTRUCTION IS OFF</button>
-  <label class="hz-label" for="hzDays">Crashes and construction from the last</label>
-  <select id="hzDays"><option value="1">day</option><option value="7">week</option><option value="30" selected>thirty days</option><option value="90">three months</option><option value="365">year</option><option value="730">two years</option></select>
-  <label class="hz-label" for="hzArea">Show hazards</label>
-  <select id="hzArea"><option value="vegas" selected>within a hundred miles of Las Vegas</option><option value="me">within a hundred miles of where I am</option><option value="all">everywhere</option></select>
-  <button class="secondary" id="hzFatalBtn">FATAL CRASH HISTORY IS OFF</button>
-  <label class="hz-label" for="hzYears">Fatal crashes from the last</label>
-  <select id="hzYears"><option value="1">year on record</option><option value="3">three years on record</option><option value="5" selected>five years on record</option><option value="8">eight years on record</option></select>
+  <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <h3>Other apps</h3>
+  <div class="ext-row"><button class="ext" id="openCqBtn">Chassisquiver</button><button class="ext" id="openVioletBtn">Field Twin Violet</button></div>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
   <button class="secondary" id="importBtn">IMPORT</button>
   <input type="file" id="importInput" accept="application/json">
+  <button class="secondary" id="settingsBtn" aria-expanded="false"><span>SETTINGS</span><i class="chev" aria-hidden="true"></i></button>
+  <div id="settingsBox" hidden>
+    <label class="hz-label" for="hzDays">Crashes and construction from the last</label>
+    <select id="hzDays"><option value="1">day</option><option value="7">week</option><option value="30" selected>thirty days</option><option value="90">three months</option><option value="365">year</option><option value="730">two years</option></select>
+    <label class="hz-label" for="hzArea">Show road hazards within a hundred miles, or everywhere</label>
+    <select id="hzArea"><option value="vegas" selected>near Las Vegas</option><option value="me">near me</option><option value="all">everywhere</option></select>
+    <label class="hz-label" for="hzYears">Crash history from the last</label>
+    <select id="hzYears"><option value="1">year on record</option><option value="3">three years on record</option><option value="5" selected>five years on record</option><option value="8">eight years on record</option></select>
+    <button class="secondary" id="camKeyBtn">SERVICE ADDRESS</button>
+    <button class="secondary" id="checkBtn">SERVICE CHECK</button>
+  </div>
   <h3>Color key</h3>
   <div id="legendRows"></div>
 </div>
@@ -2263,6 +2278,11 @@ function getPosition() {
   });
 }
 
+function setToggle(id, on) {
+  const b = document.getElementById(id);
+  if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 const HERE_EVERY_MS = 5 * 60 * 1000;
 let hereOn = true, hereDot = null, hereRing = null, hereAt = 0, hereTimer = null, hereBusy = false;
 
@@ -2308,7 +2328,7 @@ function hereSchedule() {
 }
 
 function hereApply() {
-  document.getElementById('hereToggleBtn').textContent = hereOn ? 'MY LOCATION DOT IS ON' : 'MY LOCATION DOT IS OFF';
+  setToggle('hereToggleBtn', hereOn);
   if (!hereOn) {
     if (hereDot) { map.removeLayer(hereDot); hereDot = null; }
     if (hereRing) { map.removeLayer(hereRing); hereRing = null; }
@@ -2759,7 +2779,7 @@ async function toggleCameras() {
 
 function showCameraKeyPanel() {
   const panel = document.getElementById('panel');
-  let html = '<h2>CAMERA SOURCE</h2>';
+  let html = '<h2>SERVICE ADDRESS</h2>';
   html += '<div>Address of the Field Twin service. Leave it blank to use the address built into the app. No key is stored on this phone, the service holds it.</div>';
   html += '<input type="text" id="apiBaseInput" placeholder="xxxxxxxx.up.railway.app" value="' + escapeHtml((() => { try { return localStorage.getItem(API_BASE_KEY) || ''; } catch (e) { return ''; } })()) + '">';
   html += '<div class="question">Access token. Leave it blank when you are signed in under Account and profile, the receipt reader accepts your account instead.</div>';
@@ -3352,7 +3372,7 @@ function applyMilesToggle() {
   const on = milesOn();
   document.getElementById('milesDockBtn').style.display = on ? '' : 'none';
   document.getElementById('actionBar').classList.toggle('three', on);
-  document.getElementById('milesToggleBtn').textContent = on ? 'ODOMETER BUTTON IS ON' : 'ODOMETER BUTTON IS OFF';
+  setToggle('milesToggleBtn', on);
 }
 
 function odoList() {
@@ -3629,8 +3649,8 @@ function drawTravelHeat(runs) {
 }
 
 function applyRoadButtons() {
-  document.getElementById('roadQualityBtn').textContent = roadView.quality ? 'ROAD QUALITY IS ON' : 'ROAD QUALITY IS OFF';
-  document.getElementById('roadHeatBtn').textContent = roadView.heat ? 'TRAVEL HEAT MAP IS ON' : 'TRAVEL HEAT MAP IS OFF';
+  setToggle('roadQualityBtn', roadView.quality);
+  setToggle('roadHeatBtn', roadView.heat);
 }
 
 async function refreshRoadLayers() {
@@ -3723,7 +3743,7 @@ function hzFatalPopup(c) {
 
 async function hzLoadEvents(force) {
   const base = hzBase();
-  if (!base) throw new Error('set the service address under Camera source first');
+  if (!base) throw new Error('set the service address under Settings first');
   if (!force && hzEvents && hzEventsDays === hz.days && Date.now() - hzEventsAt < 5 * 60 * 1000) return;
   const r = await fetch(base + '/events?days=' + hz.days);
   if (r.status === 404) throw new Error('the service needs the latest update');
@@ -3738,7 +3758,7 @@ async function hzLoadEvents(force) {
 async function hzLoadFatal() {
   if (hzFatal && hzFatalYears === hz.years) return;
   const base = hzBase();
-  if (!base) throw new Error('set the service address under Camera source first');
+  if (!base) throw new Error('set the service address under Settings first');
   const r = await fetch(base + '/crashes?years=' + hz.years);
   if (r.status === 404) throw new Error('the service needs the latest update');
   if (!r.ok) throw new Error('service status ' + r.status);
@@ -3813,9 +3833,9 @@ function hzDraw() {
 }
 
 function hzButtons() {
-  document.getElementById('hzCrashBtn').textContent = hz.crashes ? 'CRASHES ARE ON' : 'CRASHES ARE OFF';
-  document.getElementById('hzWorkBtn').textContent = hz.work ? 'CONSTRUCTION IS ON' : 'CONSTRUCTION IS OFF';
-  document.getElementById('hzFatalBtn').textContent = hz.fatal ? 'FATAL CRASH HISTORY IS ON' : 'FATAL CRASH HISTORY IS OFF';
+  setToggle('hzCrashBtn', hz.crashes);
+  setToggle('hzWorkBtn', hz.work);
+  setToggle('hzFatalBtn', hz.fatal);
   document.getElementById('hzDays').value = String(hz.days);
   document.getElementById('hzYears').value = String(hz.years);
   document.getElementById('hzArea').value = hz.area;
@@ -4139,53 +4159,24 @@ function showProfile() { showAccount(); }
 function showInfo() {
   const panel = document.getElementById('panel');
   let html = '<h2>ABOUT</h2>';
-  html += '<div class="question">What this app is</div>';
-  html += '<div>Field Twin is a notebook on a map. Every stop, receipt and odometer reading you save becomes a sign on the map that you can open, edit, search and add up later.</div>';
-  html += '<div class="question">The bottom of the screen</div>';
-  html += '<div>Log saves where you are right now and opens a short form for that kind of place. Receipt photographs a receipt and reads it. Miles appears only when the odometer button is turned on in the menu, and saves an odometer reading. The small bars at the left fill up while the app is finding your position and the address.</div>';
-  html += '<div class="question">Logging a stop</div>';
-  html += '<div>Press Log. The app reads your position, looks up the address, works out what kind of place it is, and opens a form for that kind of place. Gas stations, grocery stores, fast food, parcel lockers and the other place types each have their own pool of questions, and each visit shows a different set from that pool, so going back to the same place fills in new detail instead of repeating questions. No answer is required. You can attach a photo. A place the app cannot identify is saved as a silent log with no form.</div>';
+  html += '<div class="question">Field Twin</div>';
+  html += '<div>A notebook on a map. Stops, receipts and odometer readings become signs you can open, edit, search and add up.</div>';
+  html += '<div class="question">Bottom buttons</div>';
+  html += '<div>Log saves where you are and opens a short form for that kind of place. Receipt photographs a receipt and reads the store, totals, date, address and items. Miles saves an odometer reading, and appears when Odometer is switched on in the menu.</div>';
   html += '<div class="question">Receipts</div>';
-  html += '<div>Press Receipt, or New receipt in the menu, and photograph a receipt. The app sends the picture to the Field Twin reading service, which returns the store, total, savings, tax, date, time, address and every item line. If that service cannot be reached, a reader built into the phone tries instead and the form says so. Fields the app was unsure about are highlighted so you can fix them before saving. The app guesses work or personal from the time on the receipt, weekdays during work hours count as work, and you can change it. The entry is filed under the date printed on the receipt, not the day you photographed it.</div>';
-  html += '<div class="question">Where the receipt pin goes</div>';
-  html += '<div>The receipt form has a choice between My location and Receipt address. My location puts the pin where the phone is standing. Receipt address looks up the address printed on the receipt. If the phone has no position, Receipt address is chosen for you.</div>';
-  html += '<div class="question">Receipt items</div>';
-  html += '<div>Every item line is saved with the receipt and can be searched. On the Edit screen of a receipt, the items box has one item per line, the name, then a bar, then the price. Read items from the photo sends the saved photo to the reading service again and fills the box.</div>';
-  html += '<div class="question">Mileage</div>';
-  html += '<div>In the menu under Capture, the Odometer button switch turns the Miles button on and off. Press Miles any time during the day and type the number on the odometer, plus the vehicle, work or personal, and a note if you want. The app saves that number with the time and one reading of where the phone is. It does not follow the phone between readings, so it does not drain the battery or heat the phone. Mileage in the menu lists every reading by day, the miles driven since the reading before it on the same vehicle, the straight line distance between those two spots, work and personal totals, and Save spreadsheet writes all of it to a file. Miles between two readings count as work or personal according to the later reading.</div>';
-  html += '<div class="question">Your location dot</div>';
-  html += '<div>A blue dot shows where you are, with a faint blue ring showing how close the reading is. To save battery and keep the phone cool, the app does not follow you live. It checks your position once when the app opens, then about every five minutes while the app is on screen, and not at all while it is in the background. The dot also moves whenever Log, Receipt or Miles reads your position. The target button under the zoom buttons checks your position right away and centers the map on you. Tap the dot to see how long ago it was placed. My location dot in the menu under Capture turns the dot and the checks on and off.</div>';
+  html += '<div>Fields the reader was unsure of are highlighted. The pin goes at your location or the receipt address, your choice. The entry is filed under the date printed on the receipt.</div>';
   html += '<div class="question">Map</div>';
-  html += '<div>Each entry is drawn as a road sign shape with a picture inside. The shape and tint show the kind of place, and every one is listed under Color key at the bottom of the menu. Receipts show as a price tag with the total. Odometer readings show as a blue rectangle sign. Signs that sit close together merge into a blue circle with a count. Tap the circle to zoom in and spread them apart. Tap any sign to open that entry.</div>';
-  html += '<div class="question">Opening, editing, moving and deleting</div>';
-  html += '<div>Tap a sign on the map, or a line in History, Search or Mileage, to open an entry. Edit changes any answer, the date and time, the address, the items and the notes. Changing a receipt address offers to move the pin to it. The four arrows button at the top right of an entry moves the pin. Press it, then tap the map at the correct spot. Delete is on the Edit screen. Tap Delete, then tap it again to confirm. The entry and its photo are removed from this phone and from your account.</div>';
-  html += '<div class="question">Search</div>';
-  html += '<div>Search in the menu looks through store names, addresses, notes, answers and receipt items. You can narrow it by kind of place, by a date range, by work or personal, by a lowest and highest receipt amount, and by whether it has a photo, and you can change the sort order. Show on map draws only the results on the map, and Show all on the bar at the top of the map brings everything back. Save as sheet writes the results to a spreadsheet file. Reset clears every filter.</div>';
-  html += '<div class="question">History</div>';
-  html += '<div>History lists every entry, newest first. Tap a line to open it.</div>';
-  html += '<div class="question">Day log</div>';
-  html += '<div>Day log in the menu shows one day at a time, today first. It adds up the entries, the hours between the first and last, distinct places, straight line miles between entries, miles driven from odometer readings, money spent by work and personal and by store, and questions answered. The timeline lists every entry in order with the time since the one before it. Tap a line to open that entry. Not captured lists what the day is missing, such as stretches of two hours or more with no entries, no odometer readings, no receipts, receipts without a store or total, stops with no answers, and entries with no location. Earlier day and Later day skip to the nearest day with entries, and the date box jumps to any day. Copy log puts the whole day on the clipboard as plain text.</div>';
-  html += '<div class="question">Spend</div>';
-  html += '<div>Spend adds up every receipt: the total spent, work and personal totals, money saved, and a list by store with visits and amounts.</div>';
-  html += '<div class="question">Traffic cameras</div>';
-  html += '<div>Cameras shows Nevada highway cameras on the map. Tap a camera to watch it. The camera list comes from the Field Twin service on Railway, which checks the cameras once a day. The address of that service is built into the app, so every phone finds it without setup. Camera source can point a phone at a different address, and can hold an access token. The receipt reader only works for someone signed in under Account and profile, or for a phone that has the access token saved, so strangers cannot spend your reading credits. Service check shows whether the service is reachable, whether its receipt reader is set up, and whether a test receipt read goes through.</div>';
-  html += '<div class="question">Roads from Chassisquiver</div>';
-  html += '<div>Chassisquiver is a companion app at chassisquiver.vercel.app that rates road roughness from a phone mounted on the steering wheel. Road quality draws every shared Chassisquiver run on this map, colored from red for rough to green for smooth. Tap a colored road to see its name, score, rating and date. Travel heat map shades roads and stops by how often they show up, light blue for once and dark blue for often, using Chassisquiver runs and the entries in this app. Both switches stay the way you left them. Open Chassisquiver opens that app so you can set it up and record your own roads. Only runs saved as shared in Chassisquiver appear here.</div>';
-  html += '<div>The two tabs under the title switch between this map and Inventory. Inventory is Field Twin Violet, the parts and tools tracker, loaded right inside this page so you can flip back and forth without leaving. The tab you were on last opens next time. Open Field Twin Violet in the menu opens it on its own page.</div>';
+  html += '<div>Sign shapes show the kind of place, listed under Color key. Receipts show as price tags. Nearby signs merge into a numbered circle, tap to spread them out. The blue dot is you, checked about every five minutes while the app is open, and the target button checks right now.</div>';
+  html += '<div class="question">Entries</div>';
+  html += '<div>Tap a sign to open it. Edit changes anything, Delete is on the Edit screen, and the four arrows button moves the pin.</div>';
+  html += '<div class="question">Menu</div>';
+  html += '<div>Search, Day log, History, Spend and Mileage look back over your entries. Cameras shows Nevada highway cameras. Quality and Heat map draw road roughness and how often you travel a road. Crashes, Construction and Crash history show road hazards, and Settings picks how far back and how wide an area. Switches stay the way you leave them.</div>';
   html += '<div class="question">Road hazards</div>';
-  html += '<div>Under Road hazards in the menu, Crashes shows crashes and other incidents reported by the Nevada and Arizona state road departments, as red dots. Construction shows road work in orange and full closures in dark red, drawn along the affected stretch of road when the state provides it. A solid mark is happening now, and a faded or dashed mark has cleared. The first list under those switches picks how far back to show, from a day up to two years. Show hazards picks the area: within a hundred miles of Las Vegas, within a hundred miles of where the phone is, or everywhere. The area applies to crashes, construction and fatal crashes. The state road departments only publish what is happening right now, so the Field Twin service checks them every ten minutes and saves every report it sees. History builds up from the day that service update went live, which is why longer spans fill in over time. Fatal crash history shows fatal crashes from federal crash records as dark red dots, going back as many years as you pick. Those records are released about a year or more after the year ends, so the newest year is never the current one. Tap any dot or line to read the details, plus a count of crashes and fatal crashes within half a mile of that spot, which is a quick way to judge how risky a stretch of road is. Arizona crashes and construction show up once an Arizona road department key is added to the service.</div>';
-  html += '<div class="question">Account and profile</div>';
-  html += '<div>Account and profile is one page. The account is your own Field Twin account on your Field Twin server, the same one Inventory uses, and it is not tied to any outside sign in service. Sign in with your email and password, or press Email me a link and open the link on this phone. Once signed in, you can set or change your password on the same page, and that password then works on every phone. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. The app syncs on its own when it opens, when you come back to it, and after every save. Sync now does it right away. Sync goes both ways: entries made on this phone upload, entries made on another phone download, and an entry deleted on one phone is removed from the others at their next sync. The page shows how many entries are on this phone and how many are in your account, and once a sync finishes those match. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
-  html += '<div class="question">Points and trophies</div>';
-  html += '<div>Each entry earns points for being saved, more for each answered question, more for a photo, and a large bonus the first time you reach a place. Going back to a place you already logged earns half. Airstrips, airports, government buildings and roadside memorials earn extra. A place with enough answers across visits counts as fully documented and earns a bonus. Trophies are awarded for counts of entries, places, photos, miles of ground covered and kinds of places logged. Points and trophies are counted from your saved entries, so they belong to your account.</div>';
-  html += '<div class="question">Using the app without an account</div>';
-  html += '<div>Signing in is optional. Without it, everything stays in this browser on this phone, nothing is uploaded, and entries older than thirty days are dropped. Clearing this browser\'s site data erases anything that was never exported or uploaded.</div>';
-  html += '<div class="question">Export and import</div>';
-  html += '<div>Export saves every entry on this phone to a file you can store anywhere. Import reads that file back in and skips anything already here, so nothing is doubled.</div>';
-  html += '<div class="question">Phone tag</div>';
-  html += '<div>Each browser makes up a random tag the first time the app opens, shown on the Account and profile page. The tag is stamped on each entry so entries from different phones can be told apart after an import or a sign in. It is not read from the phone itself.</div>';
-  html += '<div class="question">Duplicate protection</div>';
-  html += '<div>Saving the same answers at the same spot within thirty seconds is ignored, so a double tap does not create a second copy.</div>';
+  html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
+  html += '<div class="question">Your account and the other apps</div>';
+  html += '<div>Field Twin Violet and Chassisquiver are separate apps that feed this map. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Chassisquiver runs on its own Supabase project with its own account, and Field Twin reads the runs shared there. The blue buttons under Other apps open the other two, and the Inventory tab shows Field Twin Violet inside this page.</div>';
+  html += '<div class="question">Sync</div>';
+  html += '<div>Signed in, everything saves to your account and matches across phones, deletes included. Account and profile shows the counts, your points and trophies, and where to set a password. Without an account, entries stay on this phone for thirty days, and Export and Import move them by file.</div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -4619,6 +4610,11 @@ async function init() {
   document.getElementById('pinPlaceCancel').addEventListener('click', cancelPinPlacement);
 
   applyMilesToggle();
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    const box = document.getElementById('settingsBox');
+    box.hidden = !box.hidden;
+    document.getElementById('settingsBtn').setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+  });
   initHere();
   initRoadButtons();
   initHazards();
