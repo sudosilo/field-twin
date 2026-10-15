@@ -1084,21 +1084,47 @@ async function cloudPush() {
   }
 }
 
+let cloudCount = null;
+let lastPullAt = 0;
+
 async function cloudPull() {
   if (!cloudReady()) return;
   try {
     await cloudDeletePending();
     const goneNow = getDeletedIds();
-    const res = await sb.from('entries').select('*').order('ts', { ascending: false });
-    if (res.error) throw new Error(res.error.message);
-    const rec = await sb.from('receipts').select('*');
+    async function allRows(table, order) {
+      const out = [];
+      for (let from = 0; from < 100000; from += 1000) {
+        let q = sb.from(table).select('*');
+        if (order) q = q.order(order, { ascending: false });
+        const r = await q.range(from, from + 999);
+        if (r.error) throw new Error(r.error.message);
+        const rows = r.data || [];
+        out.push(...rows);
+        if (rows.length < 1000) break;
+      }
+      return out;
+    }
+    const res = { data: await allRows('entries', 'ts') };
+    const recRows = await allRows('receipts', null);
     const receiptMap = {};
-    (rec.data || []).forEach(r => { receiptMap[r.entry_id] = r; });
+    recRows.forEach(r => { receiptMap[r.entry_id] = r; });
+    cloudCount = res.data.length;
+    const remoteIds = new Set(res.data.map(r => r.id));
+    const syncedBefore = getSyncedIds();
+    const dirtyBefore = getDirtyIds();
+    const goneElsewhere = entries.filter(e => e.id && syncedBefore.has(e.id) && !remoteIds.has(e.id) && !dirtyBefore.has(e.id));
+    if (goneElsewhere.length) {
+      const drop = new Set(goneElsewhere.map(e => e.id));
+      entries = entries.filter(e => !drop.has(e.id));
+      drop.forEach(id => { syncedBefore.delete(id); photoRemove(id); });
+      setSyncedIds(syncedBefore);
+    }
     const have = {};
     entries.forEach(e => { have[e.id] = e; });
     const synced = getSyncedIds();
     const dirtyNow = getDirtyIds();
-    let added = 0;
+    let added = goneElsewhere.length;
     (res.data || []).forEach(r => {
       if (goneNow.has(r.id)) return;
       synced.add(r.id);
@@ -1148,6 +1174,7 @@ async function cloudPull() {
       await saveEntriesLocal();
       renderMarkers();
     }
+    lastPullAt = Date.now();
     setStatus(entries.length + ' entries, cloud synced');
   } catch (err) {
     setStatus('cloud pull failed, ' + err.message);
@@ -1169,6 +1196,7 @@ function showAccount() {
     const pending = entries.filter(e => !getSyncedIds().has(e.id)).length;
     html += '<div class="meta-line">signed in as ' + escapeHtml(cloudUser.email || '') + '</div>';
     html += '<div class="meta-line">' + (pending ? pending + ' entries waiting to upload' : 'everything is uploaded') + '</div>';
+    html += '<div class="meta-line">' + entries.length + ' entries on this phone' + (cloudCount !== null ? ', ' + cloudCount + ' in your account' : '') + (lastPullAt ? ', last synced ' + new Date(lastPullAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '') + '</div>';
     html += '<div class="panel-actions">';
     html += '<button id="syncNowBtn">SYNC NOW</button>';
     html += '<button class="secondary" id="signOutBtn">SIGN OUT</button>';
@@ -1263,8 +1291,10 @@ function showAccount() {
   if (syncBtn) {
     syncBtn.addEventListener('click', async () => {
       syncBtn.disabled = true;
+      syncBtn.textContent = 'SYNCING';
       await cloudPull();
       await cloudPush();
+      await cloudPull();
       showAccount();
     });
   }
@@ -1403,7 +1433,7 @@ function scoreEntries(list) {
     const fields = answeredCount(e);
 
     let points = 5 + fields * 3;
-    if (e.photo) { points += 15; photos++; }
+    if (e.photo || e.photoPath) { points += 15; photos++; }
     if (!seenSites[key]) {
       points += 40;
       seenSites[key] = true;
@@ -4145,7 +4175,7 @@ function showInfo() {
   html += '<div class="question">Road hazards</div>';
   html += '<div>Under Road hazards in the menu, Crashes shows crashes and other incidents reported by the Nevada and Arizona state road departments, as red dots. Construction shows road work in orange and full closures in dark red, drawn along the affected stretch of road when the state provides it. A solid mark is happening now, and a faded or dashed mark has cleared. The first list under those switches picks how far back to show, from a day up to two years. Show hazards picks the area: within a hundred miles of Las Vegas, within a hundred miles of where the phone is, or everywhere. The area applies to crashes, construction and fatal crashes. The state road departments only publish what is happening right now, so the Field Twin service checks them every ten minutes and saves every report it sees. History builds up from the day that service update went live, which is why longer spans fill in over time. Fatal crash history shows fatal crashes from federal crash records as dark red dots, going back as many years as you pick. Those records are released about a year or more after the year ends, so the newest year is never the current one. Tap any dot or line to read the details, plus a count of crashes and fatal crashes within half a mile of that spot, which is a quick way to judge how risky a stretch of road is. Arizona crashes and construction show up once an Arizona road department key is added to the service.</div>';
   html += '<div class="question">Account and profile</div>';
-  html += '<div>Account and profile is one page. The account is your own Field Twin account on your Field Twin server, the same one Inventory uses, and it is not tied to any outside sign in service. Sign in with your email and password, or press Email me a link and open the link on this phone. Once signed in, you can set or change your password on the same page, and that password then works on every phone. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. Sync now uploads and downloads right away. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
+  html += '<div>Account and profile is one page. The account is your own Field Twin account on your Field Twin server, the same one Inventory uses, and it is not tied to any outside sign in service. Sign in with your email and password, or press Email me a link and open the link on this phone. Once signed in, you can set or change your password on the same page, and that password then works on every phone. Once signed in, every entry, photo, receipt and odometer reading is saved to your account and comes back on any phone where you sign in. The app syncs on its own when it opens, when you come back to it, and after every save. Sync now does it right away. Sync goes both ways: entries made on this phone upload, entries made on another phone download, and an entry deleted on one phone is removed from the others at their next sync. The page shows how many entries are on this phone and how many are in your account, and once a sync finishes those match. Below that are your points, coverage, a count for each kind of place, and trophies.</div>';
   html += '<div class="question">Points and trophies</div>';
   html += '<div>Each entry earns points for being saved, more for each answered question, more for a photo, and a large bonus the first time you reach a place. Going back to a place you already logged earns half. Airstrips, airports, government buildings and roadside memorials earn extra. A place with enough answers across visits counts as fully documented and earns a bonus. Trophies are awarded for counts of entries, places, photos, miles of ground covered and kinds of places logged. Points and trophies are counted from your saved entries, so they belong to your account.</div>';
   html += '<div class="question">Using the app without an account</div>';
@@ -4545,6 +4575,9 @@ async function init() {
   }
   setStatus(scoreEntries(entries).total + ' points, ' + entries.length + ' entries' + (cloudUser ? ', signed in' : ''));
   if (cloudUser) cloudPull().then(cloudPush);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && cloudUser && Date.now() - lastPullAt > 2 * 60 * 1000) cloudPull().then(cloudPush);
+  });
   window.addEventListener('online', () => { if (cloudUser) cloudPush(); });
 
   document.getElementById('updateBtn').addEventListener('click', forceUpdate);
