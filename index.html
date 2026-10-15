@@ -2533,8 +2533,23 @@ function setApiToken(v) {
   try { localStorage.setItem('apiToken', v); } catch (e) {}
 }
 
+const DEFAULT_API_BASE = 'https://fieldtwin-api-production.up.railway.app';
+
 function getApiBase() {
-  try { return localStorage.getItem(API_BASE_KEY) || ''; } catch (e) { return ''; }
+  try { return localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE; } catch (e) { return DEFAULT_API_BASE; }
+}
+
+async function apiAuthHeaders(headers) {
+  const tok = getApiToken();
+  if (tok) { headers['Authorization'] = 'Bearer ' + tok; return 'token'; }
+  if (sb && cloudUser) {
+    try {
+      const r = await sb.auth.getSession();
+      const at = r.data && r.data.session ? r.data.session.access_token : '';
+      if (at) { headers['Authorization'] = 'Bearer ' + at; return 'account'; }
+    } catch (e) {}
+  }
+  return 'none';
 }
 
 function setApiBase(v) {
@@ -2668,9 +2683,9 @@ async function toggleCameras() {
 function showCameraKeyPanel() {
   const panel = document.getElementById('panel');
   let html = '<h2>CAMERA SOURCE</h2>';
-  html += '<div>Address of the Field Twin camera service. No key is stored on this phone, the service holds it.</div>';
-  html += '<input type="text" id="apiBaseInput" placeholder="xxxxxxxx.up.railway.app" value="' + escapeHtml(getApiBase()) + '">';
-  html += '<div class="question">Access token, leave blank if the service does not require one</div>';
+  html += '<div>Address of the Field Twin service. Leave it blank to use the address built into the app. No key is stored on this phone, the service holds it.</div>';
+  html += '<input type="text" id="apiBaseInput" placeholder="xxxxxxxx.up.railway.app" value="' + escapeHtml((() => { try { return localStorage.getItem(API_BASE_KEY) || ''; } catch (e) { return ''; } })()) + '">';
+  html += '<div class="question">Access token. Leave it blank when you are signed in under Account and profile, the receipt reader accepts your account instead.</div>';
   html += '<input type="text" id="apiTokenInput" value="' + escapeHtml(getApiToken()) + '">';
   html += '<div class="panel-actions">';
   html += '<button id="saveApiBaseBtn">SAVE</button>';
@@ -2699,8 +2714,10 @@ async function serviceCheck() {
   const base = getApiBase().replace(/\/+$/, '');
   const tok = getApiToken();
   let html = '<h2>SERVICE CHECK</h2>';
-  html += '<div class="meta-line">' + escapeHtml(base || 'no address set') + '</div>';
-  html += '<div class="meta-line">token ' + (tok ? 'saved, ' + tok.length + ' characters' : 'not set') + '</div>';
+  let stored = '';
+  try { stored = localStorage.getItem(API_BASE_KEY) || ''; } catch (e) {}
+  html += '<div class="meta-line">' + escapeHtml(base) + (stored ? ', typed in on this phone' : ', built into the app') + '</div>';
+  html += '<div class="meta-line">receipt reader access: ' + (tok ? 'access token saved on this phone' : (cloudUser ? 'your signed in account' : 'none, sign in under Account and profile')) + '</div>';
   html += '<div id="checkRows"></div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeCheckBtn">CLOSE</button></div>';
   panel.innerHTML = html;
@@ -2735,13 +2752,13 @@ async function serviceCheck() {
   const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   try {
     const headers = { 'Content-Type': 'application/json' };
-    if (tok) headers['Authorization'] = 'Bearer ' + tok;
+    await apiAuthHeaders(headers);
     const r = await fetch(base + '/receipts/extract', {
       method: 'POST', headers: headers, body: JSON.stringify({ image: pixel })
     });
     let detail = '';
     try { const j = await r.json(); detail = j.error ? ', ' + j.error : ''; } catch (e2) {}
-    if (r.status === 401) detail = ', token rejected';
+    if (r.status === 401) detail = tok ? ', access token rejected' : (cloudUser ? ', account not accepted, the service needs the latest update' : ', not signed in');
     if (r.status === 404) detail = ', endpoint not deployed';
     if (r.status === 413) detail = ', payload too large';
     row('extract call', 'status ' + r.status + detail);
@@ -2772,14 +2789,14 @@ async function extractWithVision(photoData) {
   if (!base) throw new Error('no service address set');
   const root = base.replace(/\/+$/, '');
   const headers = { 'Content-Type': 'application/json' };
-  const tok = getApiToken();
-  if (tok) headers['Authorization'] = 'Bearer ' + tok;
+  const how = await apiAuthHeaders(headers);
   const small = await shrinkDataUrl(photoData, 1100, 0.6);
   const res = await fetch(root + '/receipts/extract', {
     method: 'POST',
     headers: headers,
     body: JSON.stringify({ image: small })
   });
+  if (res.status === 401) throw new Error(how === 'none' ? 'sign in under Account and profile so the receipt reader knows it is you' : 'the receipt reader did not accept this phone, sign in again under Account and profile');
   if (!res.ok) throw new Error('service returned ' + res.status);
   const data = await res.json();
   return data.receipt || {};
@@ -4074,7 +4091,7 @@ function showInfo() {
   html += '<div class="question">Spend</div>';
   html += '<div>Spend adds up every receipt: the total spent, work and personal totals, money saved, and a list by store with visits and amounts.</div>';
   html += '<div class="question">Traffic cameras</div>';
-  html += '<div>Cameras shows Nevada highway cameras on the map. Tap a camera to watch it. The camera list comes from the Field Twin service on Railway, which checks the cameras once a day. Camera source holds the address of that service and its access token. The same address and token are used to read receipts. Service check shows whether the service is reachable, whether its receipt reader is set up, and whether a test receipt read goes through.</div>';
+  html += '<div>Cameras shows Nevada highway cameras on the map. Tap a camera to watch it. The camera list comes from the Field Twin service on Railway, which checks the cameras once a day. The address of that service is built into the app, so every phone finds it without setup. Camera source can point a phone at a different address, and can hold an access token. The receipt reader only works for someone signed in under Account and profile, or for a phone that has the access token saved, so strangers cannot spend your reading credits. Service check shows whether the service is reachable, whether its receipt reader is set up, and whether a test receipt read goes through.</div>';
   html += '<div class="question">Roads from Chassisquiver</div>';
   html += '<div>Chassisquiver is a companion app at chassisquiver.vercel.app that rates road roughness from a phone mounted on the steering wheel. Road quality draws every shared Chassisquiver run on this map, colored from red for rough to green for smooth. Tap a colored road to see its name, score, rating and date. Travel heat map shades roads and stops by how often they show up, light blue for once and dark blue for often, using Chassisquiver runs and the entries in this app. Both switches stay the way you left them. Open Chassisquiver opens that app so you can set it up and record your own roads. Only runs saved as shared in Chassisquiver appear here.</div>';
   html += '<div>The two tabs under the title switch between this map and Inventory. Inventory is Field Twin Violet, the parts and tools tracker, loaded right inside this page so you can flip back and forth without leaving. The tab you were on last opens next time. Open Field Twin Violet in the menu opens it on its own page.</div>';

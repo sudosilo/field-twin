@@ -126,10 +126,31 @@ const RECEIPT_PROMPT = [
   'Never invent values that are not visible.'
 ].join(' ');
 
+const SB_URL = process.env.SUPABASE_URL || 'https://zasyjjoypkpvyqdueums.supabase.co';
+const SB_ANON = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphc3lqam95cGtwdnlxZHVldW1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMjk1NjQsImV4cCI6MjEwNjgwNTU2NH0.PZrUvG4qsTpMQeihXbbzaFYUAAJ9YV7FtxLTkcQGFVI';
+const okSessions = new Map();
+
+async function isSignedInUser(token) {
+  if (!token || token.split('.').length !== 3) return false;
+  const hit = okSessions.get(token);
+  if (hit && hit > Date.now()) return true;
+  try {
+    const r = await fetch(SB_URL + '/auth/v1/user', { headers: { apikey: SB_ANON, Authorization: 'Bearer ' + token } });
+    if (!r.ok) return false;
+    const u = await r.json();
+    if (!u || !u.id) return false;
+    okSessions.set(token, Date.now() + 10 * 60 * 1000);
+    if (okSessions.size > 500) okSessions.delete(okSessions.keys().next().value);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 app.post('/receipts/extract', async (req, res) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   const required = process.env.API_TOKEN || '';
-  if (required && token !== required) return res.sendStatus(401);
+  if (required && token !== required && !(await isSignedInUser(token))) return res.sendStatus(401);
   if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'vision key not configured' });
 
   const image = req.body && req.body.image;
