@@ -672,6 +672,7 @@
 <div id="twinTabs">
   <button id="tabTeal" class="on">Field map</button>
   <button id="tabViolet">Inventory</button>
+  <button id="tabRoads">Roads</button>
 </div>
 <div id="violetView"></div>
 
@@ -709,7 +710,7 @@
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">CAMERAS</button>
   <h3>Other apps</h3>
-  <div class="ext-row"><button class="ext" id="openCqBtn">Chassisquiver</button><button class="ext" id="openVioletBtn">Field Twin Violet</button></div>
+  <div class="ext-row"><button class="ext" id="openCqBtn">Field Twin Glaucous</button><button class="ext" id="openVioletBtn">Field Twin Violet</button></div>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
   <button class="secondary" id="exportBtn">EXPORT</button>
@@ -3596,7 +3597,7 @@ function roadPopup(r) {
     (typeof r.rating === 'number' ? '<br>Your rating ' + r.rating + ' of ten' : '') +
     '<br>' + d.toLocaleDateString() + (r.miles ? ', ' + Number(r.miles).toFixed(1) + ' miles' : '') +
     (r.vehicle && r.vehicle.type ? '<br>' + escapeHtml(String(r.vehicle.type)) : '') +
-    '<br><a href="' + CQ_SITE + '" target="_blank" rel="noopener">Open in Chassisquiver</a>';
+    '<br><a href="' + CQ_SITE + '" target="_blank" rel="noopener">Open in Field Twin Glaucous</a>';
 }
 
 function drawRoadQuality(runs) {
@@ -3658,12 +3659,12 @@ async function refreshRoadLayers() {
   applyRoadButtons();
   try { localStorage.setItem('roadView', JSON.stringify(roadView)); } catch (e) {}
   if (!roadView.quality && !roadView.heat) { drawRoadQuality([]); drawTravelHeat([]); return; }
-  setStatus('loading roads from Chassisquiver');
+  setStatus('loading roads from Field Twin Glaucous');
   try {
     const runs = await loadCqRuns();
     drawTravelHeat(runs);
     drawRoadQuality(runs);
-    setStatus(runs.length ? runs.length + ' road runs from Chassisquiver' : 'no shared road runs in Chassisquiver yet');
+    setStatus(runs.length ? runs.length + ' road runs from Field Twin Glaucous' : 'no shared road runs in Field Twin Glaucous yet');
   } catch (err) {
     setStatus('roads did not load, ' + err.message);
   }
@@ -4175,7 +4176,7 @@ function showInfo() {
   html += '<div class="question">Road hazards</div>';
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
-  html += '<div>Field Twin Violet and Chassisquiver are separate apps that feed this map. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Chassisquiver runs on its own Supabase project with its own account, and Field Twin reads the runs shared there. The blue buttons under Other apps open the other two, and the Inventory tab shows Field Twin Violet inside this page.</div>';
+  html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
   html += '<div class="question">Sync</div>';
   html += '<div>Signed in, everything saves to your account and matches across phones, deletes included. Account and profile shows the counts, your points and trophies, and where to set a password. Without an account, entries stay on this phone for thirty days, and Export and Import move them by file.</div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
@@ -4710,9 +4711,12 @@ init();
     if (!inv && typeof map !== 'undefined' && map && map.invalidateSize) setTimeout(() => map.invalidateSize(), 50);
   }
   teal.addEventListener('click', () => show('teal'));
+  document.getElementById('tabRoads').addEventListener('click', () => { window.location.href = CQ_SITE; });
   violet.addEventListener('click', () => show('violet'));
   let start = 'teal';
   try { start = localStorage.getItem(TAB_KEY) || 'teal'; } catch (e) {}
+  if (location.hash === '#map') start = 'teal';
+  if (location.hash === '#inventory') start = 'violet';
   show(start);
 })();
 </script>
