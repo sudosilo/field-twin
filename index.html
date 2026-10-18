@@ -3280,11 +3280,30 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
 
   document.getElementById('cancelReceiptBtn').addEventListener('click', closePanel);
 
+  let dupeOk = false;
   document.getElementById('saveReceiptBtn').addEventListener('click', async function () {
     const btn = this;
     if (btn.disabled) return;
-    btn.disabled = true;
     const v = id => (document.getElementById(id).value || '').trim();
+    if (!dupeOk) {
+      const dupes = receiptDupes({ total: parseFloat(v('rTotal')), store: v('rStore'), date: v('rDate'), time: v('rTime'), lat: lat, lon: lon }, null);
+      if (dupes.length) {
+        dupeOk = true;
+        let box = document.getElementById('dupeBox');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'dupeBox';
+          box.style.cssText = 'margin:10px 0;padding:10px;border:2px solid #b00020;border-radius:8px;background:#fff4f4;font-size:14px;';
+          btn.closest('.panel-actions').before(box);
+        }
+        box.innerHTML = '<b style="color:#b00020;">This looks like a receipt you already saved.</b><br>' + dupes.map(d => receiptLine(d)).join('<br>') +
+          '<br>Press Save receipt again to save it anyway, or Cancel to drop this one.';
+        box.scrollIntoView({ block: 'center' });
+        setStatus('possible duplicate receipt');
+        return;
+      }
+    }
+    btn.disabled = true;
 
     let useLat = lat, useLon = lon, useLabel = addressLabel, locSrc = lat === null ? 'none' : 'phone';
     const typedAddr = v('rAddr');
@@ -3882,6 +3901,56 @@ function initHazards() {
   if (hz.crashes || hz.work || hz.fatal) hzRefresh(false);
 }
 
+function storeKey(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function sameStore(a, b) {
+  const x = storeKey(a), y = storeKey(b);
+  if (!x || !y) return false;
+  return x === y || (x.length >= 4 && y.length >= 4 && (x.indexOf(y) !== -1 || y.indexOf(x) !== -1));
+}
+
+// A receipt counts as a likely duplicate when the total matches to the cent and one more thing lines up:
+// the printed date and time, the printed date and the store, or (no date) the store within a quarter mile.
+function receiptDupes(r, skipId) {
+  const cents = Math.round((Number(r.total) || 0) * 100);
+  if (!cents) return [];
+  return entries.filter(e => {
+    if (e.id === skipId || e.category !== 'receipt' || !e.receipt) return false;
+    if (Math.round((Number(e.receipt.total) || 0) * 100) !== cents) return false;
+    const a = e.answers || [];
+    const d = String(a[4] || '').trim(), t = String(a[5] || '').trim();
+    const store = sameStore(e.receipt.store, r.store);
+    if (r.date && d && r.date === d) {
+      if (r.time && t) return r.time.slice(0, 5) === t.slice(0, 5);
+      return store || !r.store || !e.receipt.store;
+    }
+    if (r.date && d) return false;
+    if (!store) return false;
+    if (hasPos(e) && Number.isFinite(r.lat) && Number.isFinite(r.lon)) return milesBetween(e.lat, e.lon, r.lat, r.lon) <= 0.25;
+    return true;
+  });
+}
+
+function receiptDupePairs() {
+  const rs = entries.filter(e => e.category === 'receipt' && e.receipt);
+  const pairs = [], seen = new Set();
+  rs.forEach(e => {
+    const a = e.answers || [];
+    receiptDupes({ total: e.receipt.total, store: e.receipt.store, date: String(a[4] || '').trim(), time: String(a[5] || '').trim(), lat: e.lat, lon: e.lon }, e.id).forEach(o => {
+      const k = [e.id, o.id].sort().join('|');
+      if (!seen.has(k)) { seen.add(k); pairs.push([e, o]); }
+    });
+  });
+  return pairs;
+}
+
+function receiptLine(e) {
+  const a = e.answers || [];
+  return escapeHtml((e.receipt.store || 'Unnamed store') + ', $' + (Number(e.receipt.total) || 0).toFixed(2) + ', ' + ([a[4], a[5]].filter(Boolean).join(' ') || new Date(e.timestamp).toLocaleDateString()));
+}
+
 function showSpend() {
   const panel = document.getElementById('panel');
   const rs = entries.filter(e => e.category === 'receipt' && e.receipt);
@@ -3913,11 +3982,23 @@ function showSpend() {
             (s.saved ? ', saved $' + s.saved.toFixed(2) : '') + '</div>';
   });
   if (!rs.length) html += '<div class="meta-line">no receipts captured yet</div>';
+  const pairs = receiptDupePairs();
+  if (pairs.length) {
+    html += '<div class="question">Possible duplicates</div>';
+    html += '<div class="meta-line">Same total to the cent, plus the same printed date and time, or the same date and store. Tap one to open it, and delete the extra from its Edit screen.</div>';
+    pairs.forEach(([a, b]) => {
+      html += '<div style="padding:8px 0;border-bottom:1px solid var(--line);"><div class="meta-line" data-dupe="' + a.id + '" style="cursor:pointer;color:var(--accent);">' + receiptLine(a) + '</div><div class="meta-line" data-dupe="' + b.id + '" style="cursor:pointer;color:var(--accent);">' + receiptLine(b) + '</div></div>';
+    });
+  }
   html += '<div class="panel-actions"><button class="secondary" id="closeSpendBtn">CLOSE</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
   document.getElementById('closeSpendBtn').addEventListener('click', closePanel);
+  panel.querySelectorAll('[data-dupe]').forEach(el => el.addEventListener('click', () => {
+    const e = entries.find(x => x.id === el.getAttribute('data-dupe'));
+    if (e) showEntry(e, true);
+  }));
 }
 
 function dayLogN(n, word) {
@@ -4166,7 +4247,7 @@ function showInfo() {
   html += '<div class="question">Bottom buttons</div>';
   html += '<div>Log saves where you are and opens a short form for that kind of place. Receipt photographs a receipt and reads the store, totals, date, address and items. Miles saves an odometer reading, and appears when Odometer is switched on in the menu.</div>';
   html += '<div class="question">Receipts</div>';
-  html += '<div>Fields the reader was unsure of are highlighted. The pin goes at your location or the receipt address, your choice. The entry is filed under the date printed on the receipt.</div>';
+  html += '<div>Fields the reader was unsure of are highlighted. The pin goes at your location or the receipt address, your choice. The entry is filed under the date printed on the receipt. Before saving, the app checks for a receipt you already saved with the same total plus the same printed date and time, or the same date and store, or with no date the same store nearby, and warns you. Spend lists any likely duplicates already saved.</div>';
   html += '<div class="question">Map</div>';
   html += '<div>Sign shapes show the kind of place, listed under Color key. Receipts show as price tags. Nearby signs merge into a numbered circle, tap to spread them out. The blue dot is you, checked about every five minutes while the app is open, and the target button checks right now.</div>';
   html += '<div class="question">Entries</div>';
