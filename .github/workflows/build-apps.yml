@@ -1,0 +1,102 @@
+# Builds the Field Twin Android app and publishes it as a GitHub release.
+name: Build apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "index.html"
+      - "src-tauri/**"
+      - ".github/workflows/build-apps.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apps
+  cancel-in-progress: false
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "tag=v1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Find Android NDK
+        run: |
+          if [ -n "$ANDROID_NDK_LATEST_HOME" ] && [ -d "$ANDROID_NDK_LATEST_HOME" ]; then
+            echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          else
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" > /dev/null
+            echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare app files
+        run: |
+          mkdir -p dist
+          cp index.html dist/
+          node src-tauri/scripts/set-version.cjs "${{ steps.v.outputs.version }}"
+      - name: Build Android app
+        run: |
+          set -o pipefail
+          {
+            echo "Using NDK at $NDK_HOME"
+            npm init -y > /dev/null
+            npm pkg set scripts.tauri=tauri
+            npm install --no-save @tauri-apps/cli@2
+            npm run tauri -- icon src-tauri/app-icon.png
+            npm run tauri -- android init --ci
+            npm run tauri -- icon src-tauri/app-icon.png
+            node src-tauri/scripts/patch-android.cjs
+            npm run tauri -- android build --apk --target aarch64 --target armv7
+          } 2>&1 | tee android-build.log
+      - name: Keep the build log if it failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tail -n 400 android-build.log > field-twin-build-log.txt 2>/dev/null || echo "no log" > field-twin-build-log.txt
+          gh release create "build-log" -R "${{ github.repository }}" --prerelease --title "Field Twin build log" --notes "Latest failed Android build." 2>/dev/null || true
+          gh release upload "build-log" -R "${{ github.repository }}" --clobber field-twin-build-log.txt
+      - name: Sign APK
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$KS_PASS" ]; then
+            echo "::error::Signing key secrets are missing. Run the one-time signing key setup from Termux."
+            exit 1
+          fi
+          APK=$(find src-tauri/gen/android -name "*release*.apk" | head -1)
+          echo "$KS" | base64 -d > ks.p12
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -p -f 4 "$APK" aligned.apk
+          "$BT/apksigner" sign --ks ks.p12 --ks-type PKCS12 --ks-pass env:KS_PASS \
+            --out "field-twin-v${{ steps.v.outputs.version }}.apk" aligned.apk
+          "$BT/apksigner" verify "field-twin-v${{ steps.v.outputs.version }}.apk"
+          rm -f ks.p12
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" -R "${{ github.repository }}" \
+            --target "${{ github.sha }}" --latest \
+            --title "Field Twin ${{ steps.v.outputs.version }}" \
+            --notes "Android app built from commit ${{ github.sha }}." \
+            "field-twin-v${{ steps.v.outputs.version }}.apk"

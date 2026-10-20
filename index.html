@@ -656,6 +656,23 @@
   #sideMenu .ext-row button.ext { flex: 0 0 auto; width: 100%; height: 46px; text-transform: none; width: auto; min-height: 46px; padding: 6px 8px; text-align: center; font-size: 14px; line-height: 1.15; font-weight: 800; background: var(--accent); color: #ffffff; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); }
   #sideMenu .ext-row button.ext:active { box-shadow: none; transform: translate(3px, 3px); }
   #sideMenu .ext-row button.ext::first-letter { text-transform: none; }
+  #panel.odo-lock {
+    position: fixed;
+    top: 0;
+    max-height: none;
+    height: 100%;
+    z-index: 6000;
+    border-radius: 0;
+    border-top: 8px solid var(--accent);
+  }
+  .odo-lock-note {
+    background: var(--accent);
+    color: #ffffff;
+    padding: 10px 12px;
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    border-radius: 8px;
+  }
 </style>
 </head>
 <body>
@@ -694,6 +711,8 @@
   <button class="secondary" id="receiptBtn">RECEIPT</button>
   <button class="secondary tg" id="milesToggleBtn" aria-pressed="false"><span>ODOMETER</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hereToggleBtn" aria-pressed="false"><span>LOCATION</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg native-only" id="autoTrackBtn" aria-pressed="false" hidden><span>AUTO TRACK</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg native-only" id="odoPromptBtn" aria-pressed="false" hidden><span>ODOMETER PROMPTS</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Roads</h3>
   <button class="secondary tg" id="roadQualityBtn" aria-pressed="false"><span>QUALITY</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="roadHeatBtn" aria-pressed="false"><span>HEAT MAP</span><i class="tg-sw" aria-hidden="true"></i></button>
@@ -724,6 +743,14 @@
     <select id="hzArea"><option value="vegas" selected>near Las Vegas</option><option value="me">near me</option><option value="all">everywhere</option></select>
     <label class="hz-label" for="hzYears">Crash history from the last</label>
     <select id="hzYears"><option value="1">year on record</option><option value="3">three years on record</option><option value="5" selected>five years on record</option><option value="8">eight years on record</option></select>
+    <div class="native-only" hidden>
+      <label class="hz-label" for="odoFrom">Odometer prompts start at</label>
+      <select id="odoFrom"></select>
+      <label class="hz-label" for="odoUntil">Odometer prompts stop at</label>
+      <select id="odoUntil"></select>
+      <label class="hz-label" for="odoGap">Time between odometer prompts</label>
+      <select id="odoGap"><option value="30,75">half an hour to an hour and a quarter</option><option value="60,150" selected>an hour to two and a half hours</option><option value="120,240">two to four hours</option></select>
+    </div>
     <button class="secondary" id="camKeyBtn">SERVICE ADDRESS</button>
     <button class="secondary" id="checkBtn">SERVICE CHECK</button>
   </div>
@@ -3402,7 +3429,10 @@ function odoList() {
     .slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 }
 
-function showOdometer() {
+function showOdometer(locked) {
+  locked = locked === true;
+  if (odoLocked && !locked) return;
+  odoLocked = false;
   const panel = document.getElementById('panel');
   const list = odoList();
   const last = list[list.length - 1];
@@ -3411,6 +3441,7 @@ function showOdometer() {
   let vehicle = '';
   try { vehicle = localStorage.getItem('milesVehicle') || ''; } catch (e) {}
   let html = '<h2>ODOMETER</h2>';
+  if (locked) html += '<div class="odo-lock-note">Reading due. Field Twin stays on this screen until the number goes in.</div>';
   html += '<div class="meta-line">' + (last ? 'Last reading ' + last.odometer.reading + ' on ' + new Date(last.timestamp).toLocaleString() : 'No readings saved yet') + '</div>';
   html += '<div class="question">Number on the odometer right now</div>';
   html += '<input type="text" id="odoReading" inputmode="decimal" autocomplete="off">';
@@ -3423,10 +3454,11 @@ function showOdometer() {
   html += '</div>';
   html += '<div class="question">Notes</div><textarea id="odoNotes"></textarea>';
   html += '<div class="meta-line" id="odoMsg" style="color:#b00020;"></div>';
-  html += '<div class="panel-actions"><button id="odoSaveBtn">SAVE READING</button><button class="secondary" id="odoCancelBtn">CANCEL</button></div>';
+  html += '<div class="panel-actions"><button id="odoSaveBtn">SAVE READING</button>' + (locked ? '' : '<button class="secondary" id="odoCancelBtn">CANCEL</button>') + '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
+  if (locked) { panel.classList.add('odo-lock'); odoLocked = true; setTimeout(() => { const i = document.getElementById('odoReading'); if (i) i.focus(); }, 300); }
   let isWork = cls.work;
   panel.querySelectorAll('#odoWork .qopt').forEach(el => {
     el.addEventListener('click', () => {
@@ -3435,7 +3467,7 @@ function showOdometer() {
       isWork = el.getAttribute('data-work') === '1';
     });
   });
-  document.getElementById('odoCancelBtn').addEventListener('click', closePanel);
+  if (!locked) document.getElementById('odoCancelBtn').addEventListener('click', closePanel);
   document.getElementById('odoSaveBtn').addEventListener('click', async function () {
     const btn = this;
     const reading = parseFloat((document.getElementById('odoReading').value || '').replace(/,/g, ''));
@@ -3478,6 +3510,8 @@ function showOdometer() {
     entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     await saveEntries();
     renderMarkers();
+    odoLocked = false;
+    try { if (window.FieldTwinNative) window.FieldTwinNative.odoSaved(); } catch (e) {}
     closePanel();
     setStatus('odometer ' + reading + ' saved' + (lat === null ? ', no location fix' : ''));
   });
@@ -4088,7 +4122,7 @@ function buildDayLog(dk) {
   r.summary = [
     (list.length === 1 ? '1 entry' : list.length + ' entries') + ' from ' + dayLogTime(first.timestamp) + ' to ' + dayLogTime(last.timestamp) + ', ' + dayLogGap(spanMin) + ' on the clock',
     dayLogN(Object.keys(sites).length, 'distinct place') + ', ' + (Math.round(ground * 10) / 10) + ' miles between entries in a straight line',
-    'Miles driven by odometer: ' + (odos.length ? (Math.round((workMi + persMi) * 10) / 10) + ' (work ' + (Math.round(workMi * 10) / 10) + ', personal ' + (Math.round(persMi * 10) / 10) + ')' : 'unknown'),
+    (window.FieldTwinNative ? 'Miles driven by phone GPS: ' + (() => { try { return window.FieldTwinNative.dayMiles(dk); } catch (e) { return 'unknown'; } })() + '. ' : '') + 'Miles driven by odometer: ' + (odos.length ? (Math.round((workMi + persMi) * 10) / 10) + ' (work ' + (Math.round(workMi * 10) / 10) + ', personal ' + (Math.round(persMi * 10) / 10) + ')' : 'unknown'),
     'Spent: $' + spent.toFixed(2) + ' on ' + dayLogN(rs.length, 'receipt') + ' (work $' + work.toFixed(2) + ', personal $' + personal.toFixed(2) + ', tax $' + tax.toFixed(2) + ', saved $' + saved.toFixed(2) + ')',
     'Questions answered: ' + answered + ' of ' + asked + ', photos: ' + photos
   ];
@@ -4577,8 +4611,11 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+let odoLocked = false;
+
 function closePanel() {
-  document.getElementById('panel').classList.remove('open');
+  if (odoLocked) return;
+  document.getElementById('panel').classList.remove('open', 'odo-lock');
   document.getElementById('panel').innerHTML = '';
   pendingEntry = null;
 }
@@ -4767,7 +4804,201 @@ window.addEventListener('unhandledrejection', (e) => {
   setStatus('PROMISE ERROR: ' + msg);
 });
 
-init();
+window.fieldTwinReady = init();
+</script>
+<script>
+// Phone app extras: when Field Twin runs inside its Android app, window.FieldTwinNative is the phone side.
+// It tracks location in the background, turns twenty minute parks into stops, adds up GPS miles,
+// and raises odometer prompts that lock this screen until a reading is saved.
+(function () {
+  const N = window.FieldTwinNative;
+  if (!N) return;
+  try { N.hello(); } catch (e) { return; }
+  document.querySelectorAll('.native-only').forEach(el => { el.hidden = false; });
+
+  // Location comes from the phone service, which keeps running with the screen off.
+  const geo = navigator.geolocation;
+  const realGet = geo && geo.getCurrentPosition ? geo.getCurrentPosition.bind(geo) : null;
+  function nativeFix(maxAgeMs) {
+    try {
+      const f = JSON.parse(N.lastFix() || 'null');
+      if (f && Date.now() - f.t <= maxAgeMs) {
+        return { coords: { latitude: f.lat, longitude: f.lon, accuracy: f.acc, altitude: null, altitudeAccuracy: null, heading: null, speed: f.speed >= 0 ? f.speed : null }, timestamp: f.t };
+      }
+    } catch (e) {}
+    return null;
+  }
+  if (geo) {
+    geo.getCurrentPosition = function (ok, fail, opts) {
+      const now = nativeFix(90000);
+      if (now) { ok(now); return; }
+      let done = false;
+      const started = Date.now();
+      const limit = (opts && opts.timeout) || 20000;
+      const poll = setInterval(() => {
+        const f = nativeFix(90000);
+        if (f && !done) { done = true; clearInterval(poll); ok(f); }
+        else if (Date.now() - started > limit && !done) {
+          done = true; clearInterval(poll);
+          const old = nativeFix(30 * 60000);
+          if (old) ok(old);
+          else if (realGet) realGet(ok, fail, opts);
+          else if (fail) fail({ code: 3, message: 'no location fix yet' });
+        }
+      }, 1000);
+      if (realGet) realGet(p => { if (!done) { done = true; clearInterval(poll); ok(p); } }, () => {}, opts);
+    };
+    geo.watchPosition = function (ok) {
+      let lastT = 0;
+      return setInterval(() => {
+        const f = nativeFix(120000);
+        if (f && f.timestamp !== lastT) { lastT = f.timestamp; ok(f); }
+      }, 5000);
+    };
+    geo.clearWatch = function (id) { clearInterval(id); };
+  }
+
+  // Stops: each long park becomes a regular entry, named after the closest place already logged.
+  const SITE_RADIUS_M = 150;
+  function metersApart(aLat, aLon, bLat, bLon) {
+    const R = 6371000, toR = Math.PI / 180;
+    const dLat = (bLat - aLat) * toR, dLon = (bLon - aLon) * toR;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function nearestSite(lat, lon) {
+    let best = null, bestD = Infinity;
+    entries.forEach(e => {
+      if (!hasPos(e) || e.category === 'odometer' || e.category === 'receipt' || e.placeType === 'auto stop') return;
+      const d = metersApart(lat, lon, e.lat, e.lon);
+      if (d < bestD && d <= SITE_RADIUS_M) { bestD = d; best = e; }
+    });
+    if (!best) entries.forEach(e => {
+      if (!hasPos(e) || e.placeType !== 'auto stop') return;
+      const d = metersApart(lat, lon, e.lat, e.lon);
+      if (d < bestD && d <= SITE_RADIUS_M) { bestD = d; best = e; }
+    });
+    return best;
+  }
+  function clock(t) { return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  let importing = false;
+  async function importStops() {
+    if (importing) return;
+    importing = true;
+    try {
+      let stays = [];
+      try { stays = JSON.parse(N.getStays() || '[]'); } catch (e) { stays = []; }
+      if (!stays.length) return;
+      const have = new Set(entries.map(e => e.id));
+      const done = [];
+      let added = 0;
+      for (const st of stays) {
+        const id = 'stop-' + st.id;
+        done.push(st.id);
+        if (have.has(id)) continue;
+        const site = nearestSite(st.lat, st.lon);
+        let label = site ? (site.addressLabel || '') : '';
+        if (!label) {
+          try { const g = await reverseGeocode(st.lat, st.lon); label = formatAddress(g.address || {}) || 'parked spot'; } catch (e) { label = 'parked spot'; }
+        }
+        const cat = site && CATEGORIES[site.category] && site.category !== 'none' ? site.category : 'general';
+        const mins = Math.max(1, Math.round((st.leftAt - st.arrivedAt) / 60000));
+        entries.unshift({
+          id: id,
+          timestamp: new Date(st.arrivedAt).toISOString(),
+          lat: st.lat, lon: st.lon,
+          addressLabel: label,
+          locSrc: 'phone app',
+          placeType: 'auto stop',
+          confidence: 4,
+          formType: 'category',
+          category: cat,
+          questions: ['Arrived', 'Left', 'Minutes parked', 'GPS miles since the last stop', 'Matched a logged place', 'Notes'],
+          answers: [clock(st.arrivedAt), clock(st.leftAt), String(mins), String(st.milesBefore || 0), site ? 'Yes' : 'No', ''],
+          context: 'Logged automatically from a stop of ' + mins + ' minutes',
+          icon: (CATEGORIES[cat] || CATEGORIES.general).icon,
+          twinId: TWIN_ID
+        });
+        have.add(id);
+        added++;
+      }
+      if (added) {
+        entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        await saveEntries();
+        renderMarkers();
+        setStatus(added === 1 ? 'one stop logged automatically' : added + ' stops logged automatically');
+      }
+      N.ackStays(JSON.stringify(done));
+    } finally {
+      importing = false;
+    }
+  }
+
+  // Odometer prompts: a tapped prompt, or opening the app while one is due, locks the screen on the odometer form.
+  function checkOdometer() {
+    let action = '';
+    try { action = N.takeAction(); } catch (e) {}
+    let due = false;
+    try { due = N.odoDue(); } catch (e) {}
+    if ((action === 'odo' || due) && !odoLocked) showOdometer(true);
+  }
+
+  function wake() {
+    if (document.visibilityState !== 'visible') return;
+    checkOdometer();
+    importStops();
+  }
+  Promise.resolve(window.fieldTwinReady).catch(() => {}).then(() => {
+    document.addEventListener('visibilitychange', wake);
+    setInterval(wake, 60000);
+    setTimeout(wake, 800);
+  });
+
+  // Menu switches and prompt hours.
+  function readSettings() { try { return JSON.parse(N.getPromptSettings()); } catch (e) { return { on: true, start: 7, end: 18, minGap: 60, maxGap: 150 }; } }
+  function paint() {
+    let t = true;
+    try { t = N.isTracking(); } catch (e) {}
+    setToggle('autoTrackBtn', t);
+    setToggle('odoPromptBtn', readSettings().on !== false);
+  }
+  const hourName = h => h === 0 ? 'midnight' : h === 12 ? 'noon' : h < 12 ? h + ' in the morning' : (h - 12) + (h < 18 ? ' in the afternoon' : ' at night');
+  const from = document.getElementById('odoFrom'), until = document.getElementById('odoUntil'), gap = document.getElementById('odoGap');
+  for (let h = 0; h < 24; h++) {
+    from.add(new Option(hourName(h), String(h)));
+    until.add(new Option(hourName(h), String(h)));
+  }
+  const cur = readSettings();
+  from.value = String(cur.start);
+  until.value = String(cur.end);
+  const gv = cur.minGap + ',' + cur.maxGap;
+  if ([...gap.options].some(o => o.value === gv)) gap.value = gv;
+  function saveSettings(extra) {
+    const s = readSettings();
+    s.start = parseInt(from.value, 10);
+    s.end = parseInt(until.value, 10);
+    const g = gap.value.split(',');
+    s.minGap = parseInt(g[0], 10);
+    s.maxGap = parseInt(g[1], 10);
+    Object.assign(s, extra || {});
+    N.setPromptSettings(JSON.stringify(s));
+    paint();
+  }
+  [from, until, gap].forEach(el => el.addEventListener('change', () => saveSettings()));
+  document.getElementById('autoTrackBtn').addEventListener('click', () => {
+    let t = true;
+    try { t = N.isTracking(); } catch (e) {}
+    N.setTracking(!t);
+    setTimeout(paint, 300);
+    setStatus(t ? 'auto track off' : 'auto track on');
+  });
+  document.getElementById('odoPromptBtn').addEventListener('click', () => {
+    const on = readSettings().on !== false;
+    saveSettings({ on: !on });
+    setStatus(on ? 'odometer prompts off' : 'odometer prompts on');
+  });
+  paint();
+})();
 </script>
 <script>
 // Twin tabs: Field map is this app, Inventory is Field Twin Violet loaded in place so switching never leaves the page.
