@@ -147,6 +147,9 @@
     color: var(--accent);
     margin: 0 0 10px 0;
   }
+  .twin-picks { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+  .twin-pick { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+  .twin-pick input { width: 22px; height: 22px; accent-color: #0b4ea2; }
   .meta-line {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
@@ -1245,6 +1248,12 @@ function showAccount() {
     html += '<button id="syncNowBtn">SYNC NOW</button>';
     html += '<button class="secondary" id="signOutBtn">SIGN OUT</button>';
     html += '</div>';
+    html += '<div class="question">Sign in the other two apps</div>';
+    html += '<div class="meta-line">Type your password once and the boxes you check are signed in with this same email. Inventory picks it up right away, Roads the next time you open it.</div>';
+    html += '<input type="password" id="twinPass" autocomplete="current-password">';
+    html += twinBoxes(false);
+    html += '<div class="meta-line" id="twinMsg"></div>';
+    html += '<div class="panel-actions"><button class="secondary" id="twinSignBtn">SIGN THEM IN</button></div>';
     html += '<div class="question">Set or change your password</div>';
     html += '<div class="meta-line">This password belongs to your Field Twin account, the same one Inventory uses. After you set it here, it signs you in on any phone, in Field Twin and in Inventory.</div>';
     html += '<input type="password" id="newPass" autocomplete="new-password">';
@@ -1256,6 +1265,7 @@ function showAccount() {
     html += '<input type="text" id="authEmail" inputmode="email" autocomplete="email">';
     html += '<div class="question">Password</div>';
     html += '<input type="password" id="authPass" autocomplete="current-password">';
+    html += twinBoxes(true);
     html += '<div class="meta-line" id="authMsg"></div>';
     html += '<div class="panel-actions"><button id="passSignInBtn">SIGN IN</button><button class="secondary" id="sendLinkBtn">EMAIL ME A LINK</button></div>';
     html += '<div class="meta-line">If the password is refused, the account may never have had one set. Press Email me a link, open the link on this phone, then set a password on this page.</div>';
@@ -1301,8 +1311,18 @@ function showAccount() {
       const pass = document.getElementById('authPass').value || '';
       const msg = document.getElementById('authMsg');
       if (!email || !pass) { msg.textContent = 'Type your email and password.'; return; }
+      const pick = twinReadBoxes(true);
+      if (!pick.teal && !pick.violet && !pick.glaucous) { msg.textContent = 'Check at least one app.'; return; }
       passIn.disabled = true;
       passIn.textContent = 'SIGNING IN';
+      if (!pick.teal) {
+        const failedOnly = await twinSignOthers(email, pass, pick);
+        passIn.disabled = false;
+        passIn.textContent = 'SIGN IN';
+        const okOnly = [pick.violet && !failedOnly.includes('Violet') ? 'Violet' : '', pick.glaucous && !failedOnly.includes('Glaucous') ? 'Glaucous' : ''].filter(Boolean);
+        msg.textContent = (okOnly.length ? 'Signed in to ' + okOnly.join(' and ') + '. ' : '') + (failedOnly.length ? failedOnly.join(' and ') + ' refused that email and password.' : '');
+        return;
+      }
       const res = await sb.auth.signInWithPassword({ email: email, password: pass });
       if (res.error) {
         passIn.disabled = false;
@@ -1311,7 +1331,8 @@ function showAccount() {
         return;
       }
       cloudUser = res.data.user;
-      setStatus('signed in, syncing');
+      const failed = (pick.violet || pick.glaucous) ? await twinSignOthers(email, pass, pick) : [];
+      setStatus(failed.length ? 'signed in, but ' + failed.join(' and ') + ' refused that password' : 'signed in, syncing');
       await cloudPull();
       await cloudPush();
       showAccount();
@@ -1342,9 +1363,28 @@ function showAccount() {
       showAccount();
     });
   }
+  const twinBtn = document.getElementById('twinSignBtn');
+  if (twinBtn) {
+    twinBtn.addEventListener('click', async () => {
+      const pass = document.getElementById('twinPass').value || '';
+      const msg = document.getElementById('twinMsg');
+      const pick = twinReadBoxes(false);
+      if (!pass) { msg.textContent = 'Type your password.'; return; }
+      if (!pick.violet && !pick.glaucous) { msg.textContent = 'Check at least one app.'; return; }
+      twinBtn.disabled = true;
+      twinBtn.textContent = 'SIGNING IN';
+      const failed = await twinSignOthers(cloudUser.email, pass, pick);
+      twinBtn.disabled = false;
+      twinBtn.textContent = 'SIGN THEM IN';
+      document.getElementById('twinPass').value = '';
+      const ok = [pick.violet && !failed.includes('Violet') ? 'Violet' : '', pick.glaucous && !failed.includes('Glaucous') ? 'Glaucous' : ''].filter(Boolean);
+      msg.textContent = (ok.length ? ok.join(' and ') + ' signed in. ' : '') + (failed.length ? failed.join(' and ') + ' refused that password.' : '');
+    });
+  }
   const outBtn = document.getElementById('signOutBtn');
   if (outBtn) {
     outBtn.addEventListener('click', async () => {
+      twinSignOutOthers();
       await sb.auth.signOut();
       cloudUser = null;
       setStatus('signed out');
@@ -3611,6 +3651,96 @@ const CQ_URL = 'https://vogxdikogfaxhwcgajfg.supabase.co';
 const CQ_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvZ3hkaWtvZ2ZheGh3Y2dhamZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTk4MDAsImV4cCI6MjEwNjk3NTgwMH0.fUosu3JdsUI5GFnQjDbOxfYCWO1hfijQO3O8lJVsU98';
 const CQ_SITE = 'https://field-twin-glaucous.vercel.app/';
 const VIOLET_SITE = 'https://field-twin-violet.vercel.app/';
+const VIOLET_ORIGIN = 'https://field-twin-violet.vercel.app';
+
+// One sign in for all three Field Twin apps. Violet uses this same account system, Glaucous has its own
+// with the same email and password. Each app gets its own fresh login, held here until that app opens.
+const TWIN_HAND_KEY = 'fieldTwinHandoff';
+const TWIN_PICK_KEY = 'fieldTwinSignInto';
+function twinHand() { try { return JSON.parse(localStorage.getItem(TWIN_HAND_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function twinHandSave(h) { try { localStorage.setItem(TWIN_HAND_KEY, JSON.stringify(h)); } catch (e) {} }
+function twinPick() {
+  try { const p = JSON.parse(localStorage.getItem(TWIN_PICK_KEY) || 'null'); if (p) return p; } catch (e) {}
+  return { teal: true, violet: true, glaucous: true };
+}
+function twinPickSave(p) { try { localStorage.setItem(TWIN_PICK_KEY, JSON.stringify(p)); } catch (e) {} }
+function twinBoxes(withTeal) {
+  const p = twinPick();
+  const box = (id, on, label) => '<label class="twin-pick"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '> ' + label + '</label>';
+  return '<div class="question">Sign in to</div><div class="twin-picks">' +
+    (withTeal ? box('pickTeal', p.teal !== false, 'Field Twin Teal, the map') : '') +
+    box('pickViolet', p.violet !== false, 'Field Twin Violet, the inventory') +
+    box('pickGlaucous', p.glaucous !== false, 'Field Twin Glaucous, the roads') + '</div>';
+}
+function twinReadBoxes(withTeal) {
+  const on = id => { const el = document.getElementById(id); return Boolean(el && el.checked); };
+  const old = twinPick();
+  const p = { teal: withTeal ? on('pickTeal') : old.teal !== false, violet: on('pickViolet'), glaucous: on('pickGlaucous') };
+  twinPickSave(p);
+  return p;
+}
+async function twinLogin(url, key, email, pass) {
+  try {
+    const c = window.supabase.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'fieldtwin-hand-' + Date.now().toString(36) } });
+    const r = await c.auth.signInWithPassword({ email: email, password: pass });
+    if (r.error || !r.data || !r.data.session) return null;
+    return { at: r.data.session.access_token, rt: r.data.session.refresh_token, email: r.data.user.email };
+  } catch (e) { return null; }
+}
+// Signs Violet and Glaucous in with the same email and password. Returns the names that failed.
+async function twinSignOthers(email, pass, pick) {
+  const h = twinHand();
+  const failed = [];
+  if (pick.violet) {
+    const v = await twinLogin(SUPABASE_URL, SUPABASE_ANON, email, pass);
+    if (v) { h.violet = v; delete h.violetOut; } else failed.push('Violet');
+  }
+  if (pick.glaucous) {
+    const g = await twinLogin(CQ_URL, CQ_ANON, email, pass);
+    if (g) { h.glaucous = g; delete h.glaucousOut; } else failed.push('Glaucous');
+  }
+  twinHandSave(h);
+  twinSendViolet();
+  return failed;
+}
+function twinSignOutOthers() {
+  const p = twinPick();
+  const h = twinHand();
+  delete h.violet; delete h.glaucous;
+  if (p.violet !== false) h.violetOut = true;
+  if (p.glaucous !== false) h.glaucousOut = true;
+  twinHandSave(h);
+  twinSendViolet();
+}
+function twinVioletFrame() { const f = document.querySelector('#violetView iframe'); return f && f.contentWindow ? f.contentWindow : null; }
+function twinSendViolet() {
+  const w = twinVioletFrame();
+  if (!w) return;
+  const h = twinHand();
+  if (h.violet) w.postMessage({ type: 'fieldtwin-session', at: h.violet.at, rt: h.violet.rt, email: h.violet.email }, VIOLET_ORIGIN);
+  else if (h.violetOut) w.postMessage({ type: 'fieldtwin-signout' }, VIOLET_ORIGIN);
+}
+window.addEventListener('message', e => {
+  if (e.origin !== VIOLET_ORIGIN || !e.data || typeof e.data !== 'object') return;
+  const h = twinHand();
+  if (e.data.type === 'fieldtwin-ready') twinSendViolet();
+  else if (e.data.type === 'fieldtwin-session-ok') { delete h.violet; twinHandSave(h); }
+  else if (e.data.type === 'fieldtwin-signout-ok') { delete h.violetOut; twinHandSave(h); }
+});
+// Opens Glaucous and hands it the waiting login, or the sign out, in the part of the address that never leaves the phone.
+function openGlaucous() {
+  const h = twinHand();
+  let url = CQ_SITE;
+  if (h.glaucous) {
+    url += '#ft_at=' + encodeURIComponent(h.glaucous.at) + '&ft_rt=' + encodeURIComponent(h.glaucous.rt) + '&ft_email=' + encodeURIComponent(h.glaucous.email || '');
+    delete h.glaucous;
+  } else if (h.glaucousOut) {
+    url += '#ft_signout=1';
+    delete h.glaucousOut;
+  }
+  twinHandSave(h);
+  window.location.href = url;
+}
 let cqClient = null, cqRuns = null, cqLoading = null;
 let roadLayer = null, heatLayer = null;
 const roadView = { quality: false, heat: false };
@@ -3728,7 +3858,7 @@ function initRoadButtons() {
   applyRoadButtons();
   document.getElementById('roadQualityBtn').addEventListener('click', () => { roadView.quality = !roadView.quality; refreshRoadLayers(); });
   document.getElementById('roadHeatBtn').addEventListener('click', () => { roadView.heat = !roadView.heat; refreshRoadLayers(); });
-  document.getElementById('openCqBtn').addEventListener('click', () => { window.location.href = CQ_SITE; });
+  document.getElementById('openCqBtn').addEventListener('click', openGlaucous);
   document.getElementById('openVioletBtn').addEventListener('click', () => { const ov = document.getElementById('menuOverlay'); if (ov) ov.click(); document.getElementById('tabViolet').click(); });
   if (roadView.quality || roadView.heat) refreshRoadLayers();
 }
@@ -4283,7 +4413,7 @@ function showInfo() {
   html += '<div class="question">Receipts</div>';
   html += '<div>Fields the reader was unsure of are highlighted. The pin goes at your location or the receipt address, your choice. The entry is filed under the date printed on the receipt. Before saving, the app checks for a receipt you already saved with the same total plus the same printed date and time, or the same date and store, or with no date the same store nearby, and warns you. Spend lists any likely duplicates already saved.</div>';
   html += '<div class="question">Map</div>';
-  html += '<div>Sign shapes show the kind of place, listed under Color key. Receipts show as price tags. Nearby signs merge into a numbered circle, tap to spread them out. The blue dot is you, checked about every five minutes while the app is open, and the target button checks right now.</div>';
+  html += '<div>Sign shapes show the kind of place, listed under Color key. Receipts show as price tags. Nearby signs merge into a numbered circle, tap to spread them out. The blue dot is you, checked about every five minutes in a browser and every five seconds in the phone app, and the target button checks right now.</div>';
   html += '<div class="question">Entries</div>';
   html += '<div>Tap a sign to open it. Edit changes anything, Delete is on the Edit screen, and the four arrows button moves the pin.</div>';
   html += '<div class="question">Menu</div>';
@@ -4292,6 +4422,8 @@ function showInfo() {
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
   html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
+  html += '<div class="question">One sign in for all three apps</div>';
+  html += '<div>New in version 1.0.6. The sign in screen under Account and profile has a check box for each app: Teal, the map, Violet, the inventory, and Glaucous, the roads. Check the ones you want and sign in once with your email and password. Violet signs in as soon as the Inventory tab opens, and Glaucous signs in the next time you tap Roads. If you are already signed in here, Account and profile has a Sign the other two in box that does the same with one password. Signing out here signs the checked apps out too. Glaucous keeps its own accounts, so it needs the same email and password as this app.</div>';
   html += '<div class="question">Sync</div>';
   html += '<div>Signed in, everything saves to your account and matches across phones, deletes included. Account and profile shows the counts, your points and trophies, and where to set a password. Without an account, entries stay on this phone for thirty days, and Export and Import move them by file.</div>';
   html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
@@ -5051,7 +5183,7 @@ window.fieldTwinReady = init();
     if (!inv && typeof map !== 'undefined' && map && map.invalidateSize) setTimeout(() => map.invalidateSize(), 50);
   }
   teal.addEventListener('click', () => show('teal'));
-  document.getElementById('tabRoads').addEventListener('click', () => { window.location.href = CQ_SITE; });
+  document.getElementById('tabRoads').addEventListener('click', openGlaucous);
   violet.addEventListener('click', () => show('violet'));
   let start = 'teal';
   try { start = localStorage.getItem(TAB_KEY) || 'teal'; } catch (e) {}
