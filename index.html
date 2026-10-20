@@ -3463,6 +3463,60 @@ function applyMilesToggle() {
   setToggle('milesToggleBtn', on);
 }
 
+// Calibration: every odometer reading is a fact. Between two readings the odometer says how far the truck went,
+// and the phone's GPS counter says how far GPS counted. Their ratio is the correction, averaged by miles over the
+// most recent stretches, and every new reading becomes the new starting point so errors never pile up.
+const M_PER_MI = 1609.344;
+function gpsAt(t) {
+  try { const v = window.FieldTwinNative ? Number(window.FieldTwinNative.gpsAt(t)) : -1; return isFinite(v) ? v : -1; } catch (e) { return -1; }
+}
+function gpsNowMeters() {
+  try { const v = window.FieldTwinNative ? Number(window.FieldTwinNative.gpsNow()) : -1; return isFinite(v) ? v : -1; } catch (e) { return -1; }
+}
+function calSegments() {
+  if (!window.FieldTwinNative) return [];
+  const list = odoList();
+  const segs = [];
+  for (let i = 1; i < list.length; i++) {
+    const a = list[i - 1], b = list[i];
+    if ((a.odometer.vehicle || '') !== (b.odometer.vehicle || '')) continue;
+    const ta = new Date(a.timestamp).getTime(), tb = new Date(b.timestamp).getTime();
+    const ga = gpsAt(ta), gb = gpsAt(tb);
+    if (ga < 0 || gb < 0) continue;
+    const odoMi = b.odometer.reading - a.odometer.reading;
+    const gpsMi = (gb - ga) / M_PER_MI;
+    const ratio = gpsMi > 0 ? odoMi / gpsMi : 0;
+    const used = odoMi >= 0.5 && odoMi <= 400 && gpsMi >= 0.3 && ratio >= 0.5 && ratio <= 3;
+    segs.push({ from: a, to: b, odoMi: odoMi, gpsMi: gpsMi, ratio: ratio, used: used });
+  }
+  return segs;
+}
+function calFactor() {
+  const used = calSegments().filter(g => g.used).slice(-20);
+  let o = 0, g = 0;
+  used.forEach(x => { o += x.odoMi; g += x.gpsMi; });
+  return { factor: g > 0 ? o / g : 1, count: used.length, odoMi: o, gpsMi: g };
+}
+// The odometer GPS expects at time t, built forward from the last reading at or before t.
+function calEstimate(t) {
+  if (!window.FieldTwinNative) return null;
+  const list = odoList().filter(e => new Date(e.timestamp).getTime() <= t);
+  const last = list[list.length - 1];
+  if (!last) return null;
+  const tl = new Date(last.timestamp).getTime();
+  const gl = gpsAt(tl), gt = t >= Date.now() - 1000 ? gpsNowMeters() : gpsAt(t);
+  if (gl < 0 || gt < 0) return null;
+  const cal = calFactor();
+  const gpsMi = Math.max(0, (gt - gl) / M_PER_MI);
+  return { reading: last.odometer.reading + gpsMi * cal.factor, gpsMi: gpsMi, from: last, factor: cal.factor, count: cal.count };
+}
+function calText() {
+  if (!window.FieldTwinNative) return '';
+  const c = calFactor();
+  if (!c.count) return 'GPS correction: waiting for two odometer readings with GPS tracking between them.';
+  return 'GPS correction: ' + c.factor.toFixed(3) + ', from ' + c.count + (c.count === 1 ? ' stretch' : ' stretches') + ' covering ' + Math.round(c.odoMi) + ' odometer miles.';
+}
+
 function odoList() {
   entries.forEach(odoFromAnswers);
   return entries.filter(e => e.category === 'odometer' && e.odometer && isFinite(e.odometer.reading))
@@ -3485,6 +3539,8 @@ function showOdometer(locked) {
   html += '<div class="meta-line">' + (last ? 'Last reading ' + last.odometer.reading + ' on ' + new Date(last.timestamp).toLocaleString() : 'No readings saved yet') + '</div>';
   html += '<div class="question">Number on the odometer right now</div>';
   html += '<input type="text" id="odoReading" inputmode="decimal" autocomplete="off">';
+  const est = calEstimate(Date.now());
+  if (est) html += '<div class="meta-line">GPS expects about ' + Math.round(est.reading).toLocaleString() + ', ' + (Math.round(est.gpsMi * est.factor * 10) / 10) + ' miles past the last reading. Type what the odometer shows, not this.</div>';
   html += '<div class="question">Vehicle</div>';
   html += '<input type="text" id="odoVehicle" value="' + escapeHtml(vehicle) + '">';
   html += '<div class="question">Work or personal, ' + cls.reason + '</div>';
@@ -3514,6 +3570,17 @@ function showOdometer(locked) {
     if (!isFinite(reading) || reading < 0) {
       document.getElementById('odoMsg').textContent = 'Type the number shown on the odometer.';
       return;
+    }
+    // A typo here would teach the correction a wrong fact, so a reading far from the GPS estimate needs a second tap.
+    const guess = calEstimate(Date.now());
+    if (guess && last && btn.dataset.confirmed !== String(reading)) {
+      const off = Math.abs(reading - guess.reading);
+      const room = Math.max(5, guess.gpsMi * 0.3);
+      if (reading < last.odometer.reading || off > room) {
+        btn.dataset.confirmed = String(reading);
+        document.getElementById('odoMsg').textContent = (reading < last.odometer.reading ? 'That is lower than the last reading of ' + last.odometer.reading + '.' : 'That is ' + Math.round(off) + ' miles away from what GPS expects.') + ' Check the number, then tap SAVE READING again to keep it.';
+        return;
+      }
     }
     btn.disabled = true;
     btn.textContent = 'LOCATING';
@@ -3553,7 +3620,15 @@ function showOdometer(locked) {
     odoLocked = false;
     try { if (window.FieldTwinNative) window.FieldTwinNative.odoSaved(); } catch (e) {}
     closePanel();
-    setStatus('odometer ' + reading + ' saved' + (lat === null ? ', no location fix' : ''));
+    let calNote = '';
+    if (window.FieldTwinNative && last) {
+      const seg = calSegments().find(g => g.to.id === entry.id);
+      if (seg) {
+        const c = calFactor();
+        calNote = ', odometer went ' + (Math.round(seg.odoMi * 10) / 10) + ' mi, GPS counted ' + (Math.round(seg.gpsMi * 10) / 10) + (seg.used ? ', correction now ' + c.factor.toFixed(3) : ', too far off to learn from');
+      }
+    }
+    setStatus('odometer ' + reading + ' saved' + (lat === null ? ', no location fix' : '') + calNote);
   });
 }
 
@@ -4252,7 +4327,7 @@ function buildDayLog(dk) {
   r.summary = [
     (list.length === 1 ? '1 entry' : list.length + ' entries') + ' from ' + dayLogTime(first.timestamp) + ' to ' + dayLogTime(last.timestamp) + ', ' + dayLogGap(spanMin) + ' on the clock',
     dayLogN(Object.keys(sites).length, 'distinct place') + ', ' + (Math.round(ground * 10) / 10) + ' miles between entries in a straight line',
-    (window.FieldTwinNative ? 'Miles driven by phone GPS: ' + (() => { try { return window.FieldTwinNative.dayMiles(dk); } catch (e) { return 'unknown'; } })() + '. ' : '') + 'Miles driven by odometer: ' + (odos.length ? (Math.round((workMi + persMi) * 10) / 10) + ' (work ' + (Math.round(workMi * 10) / 10) + ', personal ' + (Math.round(persMi * 10) / 10) + ')' : 'unknown'),
+    (window.FieldTwinNative ? (() => { try { const raw = Number(window.FieldTwinNative.dayMiles(dk)) || 0; const c = calFactor(); return 'Miles driven by phone GPS: ' + raw + (c.count ? ', corrected ' + (Math.round(raw * c.factor * 10) / 10) : '') + '. '; } catch (e) { return 'Miles driven by phone GPS: unknown. '; } })() : '') + 'Miles driven by odometer: ' + (odos.length ? (Math.round((workMi + persMi) * 10) / 10) + ' (work ' + (Math.round(workMi * 10) / 10) + ', personal ' + (Math.round(persMi * 10) / 10) + ')' : 'unknown'),
     'Spent: $' + spent.toFixed(2) + ' on ' + dayLogN(rs.length, 'receipt') + ' (work $' + work.toFixed(2) + ', personal $' + personal.toFixed(2) + ', tax $' + tax.toFixed(2) + ', saved $' + saved.toFixed(2) + ')',
     'Questions answered: ' + answered + ' of ' + asked + ', photos: ' + photos
   ];
@@ -4422,6 +4497,8 @@ function showInfo() {
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
   html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
+  html += '<div class="question">GPS calibration from your odometer readings</div>';
+  html += '<div>New in version 1.0.7. In the phone app, GPS keeps its own running mile count. Each odometer reading you save is treated as a fact: the app compares how far the odometer went since the last reading with how far GPS counted, and learns a correction from the last twenty stretches, weighted by miles. Every new reading becomes the new starting point, so GPS error never builds up past one stretch. The odometer form shows what GPS expects, and asks for a second tap when a reading is lower than the last one or far from the estimate, so a typo cannot teach it a wrong fact. The status line after saving shows the stretch and the new correction. The Day log shows raw and corrected GPS miles, auto stops record an estimated odometer on arrival, and tapping the blue dot shows the estimated odometer right now. GPS counting starts with this version, so the first correction appears after two readings with driving between them.</div>';
   html += '<div class="question">One sign in for all three apps</div>';
   html += '<div>New in version 1.0.6. The sign in screen under Account and profile has a check box for each app: Teal, the map, Violet, the inventory, and Glaucous, the roads. Check the ones you want and sign in once with your email and password. Violet signs in as soon as the Inventory tab opens, and Glaucous signs in the next time you tap Roads. If you are already signed in here, Account and profile has a Sign the other two in box that does the same with one password. Signing out here signs the checked apps out too. Glaucous keeps its own accounts, so it needs the same email and password as this app.</div>';
   html += '<div class="question">Sync</div>';
@@ -5005,7 +5082,8 @@ window.fieldTwinReady = init();
     let free = true; try { free = N.batteryFree(); } catch (e) {}
     if (!on) return 'Auto track is off.';
     if (!f) return 'Auto track is on and waiting for its first GPS fix.';
-    return 'Last GPS fix ' + ageText(Date.now() - f.t) + ', within ' + Math.round(f.acc) + ' meters. Phone GPS miles today: ' + mi + '.' + (free ? '' : ' Battery saving can pause tracking with the screen off.');
+    const est = calEstimate(Date.now());
+    return 'Last GPS fix ' + ageText(Date.now() - f.t) + ', within ' + Math.round(f.acc) + ' meters. Phone GPS miles today: ' + mi + '.' + (est ? ' Odometer should read about ' + Math.round(est.reading).toLocaleString() + '.' : '') + ' ' + calText() + (free ? '' : ' Battery saving can pause tracking with the screen off.');
   }
   let lastDotT = 0;
   setInterval(() => {
@@ -5073,8 +5151,8 @@ window.fieldTwinReady = init();
           confidence: 4,
           formType: 'category',
           category: cat,
-          questions: ['Arrived', 'Left', 'Minutes parked', 'GPS miles since the last stop', 'Matched a logged place', 'Notes'],
-          answers: [clock(st.arrivedAt), clock(st.leftAt), String(mins), String(st.milesBefore || 0), site ? 'Yes' : 'No', ''],
+          questions: ['Arrived', 'Left', 'Minutes parked', 'GPS miles since the last stop', 'Estimated odometer on arrival', 'Matched a logged place', 'Notes'],
+          answers: [clock(st.arrivedAt), clock(st.leftAt), String(mins), String(st.milesBefore || 0), (() => { const x = calEstimate(st.arrivedAt); return x ? String(Math.round(x.reading)) : 'unknown'; })(), site ? 'Yes' : 'No', ''],
           context: 'Logged automatically from a stop of ' + mins + ' minutes',
           icon: (CATEGORIES[cat] || CATEGORIES.general).icon,
           twinId: TWIN_ID

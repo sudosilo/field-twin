@@ -3,6 +3,7 @@ package app.fieldtwin.teal
 import android.app.NotificationManager
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import kotlin.random.Random
@@ -23,6 +24,45 @@ object FieldTwinState {
 
   fun dayMeters(ctx: Context): JSONObject =
     try { JSONObject(prefs(ctx).getString("dayMeters", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+
+  // GPS counter: a running total of GPS meters, like a second odometer, with a time log so the page
+  // can ask how far GPS counted between any two odometer readings and calibrate against them.
+  fun gpsTotal(ctx: Context): Double = prefs(ctx).getString("gpsTotal", "0")?.toDoubleOrNull() ?: 0.0
+
+  fun gpsLog(ctx: Context): JSONArray =
+    try { JSONArray(prefs(ctx).getString("gpsLog", "[]") ?: "[]") } catch (e: Exception) { JSONArray() }
+
+  fun addGpsMeters(ctx: Context, e: SharedPreferences.Editor, now: Long, meters: Double) {
+    val p = prefs(ctx)
+    val before = gpsTotal(ctx)
+    val total = before + meters
+    e.putString("gpsTotal", total.toString())
+    val log = gpsLog(ctx)
+    val lastT = if (log.length() > 0) log.getJSONArray(log.length() - 1).getLong(0) else 0L
+    // A point marks where driving resumed after a quiet spell, so time spent parked is not smeared into the drive.
+    if (now - lastT > 5L * 60000L) log.put(JSONArray().put(now - 1000L).put(before))
+    if (now - lastT >= 60000L || log.length() == 0) log.put(JSONArray().put(now).put(total))
+    else log.getJSONArray(log.length() - 1).put(0, now).put(1, total)
+    while (log.length() > 20000) log.remove(0)
+    e.putString("gpsLog", log.toString())
+    if (p.getLong("gpsSince", 0L) == 0L) e.putLong("gpsSince", now)
+  }
+
+  // GPS meters counted by time t, read off the log. Minus one when t is before the log starts.
+  fun gpsAt(ctx: Context, t: Long): Double {
+    val log = gpsLog(ctx)
+    if (log.length() == 0) return -1.0
+    val since = prefs(ctx).getLong("gpsSince", 0L)
+    if (since == 0L || t < since) return -1.0
+    var lo = 0; var hi = log.length() - 1
+    if (t >= log.getJSONArray(hi).getLong(0)) return gpsTotal(ctx)
+    if (t <= log.getJSONArray(0).getLong(0)) return log.getJSONArray(0).getDouble(1)
+    while (hi - lo > 1) { val m = (lo + hi) / 2; if (log.getJSONArray(m).getLong(0) <= t) lo = m else hi = m }
+    val a = log.getJSONArray(lo); val b = log.getJSONArray(hi)
+    val ta = a.getLong(0); val tb = b.getLong(0)
+    if (tb <= ta) return a.getDouble(1)
+    return a.getDouble(1) + (b.getDouble(1) - a.getDouble(1)) * (t - ta).toDouble() / (tb - ta).toDouble()
+  }
 
   fun promptSettings(ctx: Context): JSONObject {
     val d = JSONObject()

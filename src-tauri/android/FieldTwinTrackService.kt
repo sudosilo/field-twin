@@ -132,6 +132,7 @@ class FieldTwinTrackService : Service(), LocationListener {
           e.putString("dayMeters", dm.toString())
           e.putFloat("metersSinceStop", p.getFloat("metersSinceStop", 0f) + d)
           e.putString("lastGood", fix.toString())
+          FieldTwinState.addGpsMeters(this, e, now, d.toDouble())
         } else if (d > 25f) {
           e.putString("lastGood", fix.toString())
         }

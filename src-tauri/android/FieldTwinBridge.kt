@@ -161,6 +161,12 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
+  fun gpsAt(t: Double): Double = synchronized(FieldTwinState.lock) { FieldTwinState.gpsAt(activity, t.toLong()) }
+
+  @JavascriptInterface
+  fun gpsNow(): Double = FieldTwinState.gpsTotal(activity)
+
+  @JavascriptInterface
   fun batteryFree(): Boolean = isBatteryFree(activity)
 
   @JavascriptInterface
