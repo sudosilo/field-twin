@@ -4858,6 +4858,34 @@ window.fieldTwinReady = init();
     geo.clearWatch = function (id) { clearInterval(id); };
   }
 
+  // Live dot: in the app the blue dot follows the phone service every five seconds,
+  // and tapping it says how fresh the last fix is and how far the phone has driven today.
+  function ageText(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + ' seconds ago';
+    const m = Math.round(s / 60);
+    return m < 60 ? m + ' minutes ago' : Math.round(m / 60) + ' hours ago';
+  }
+  function trackLine() {
+    let f = null; try { f = JSON.parse(N.lastFix() || 'null'); } catch (e) {}
+    let on = true; try { on = N.isTracking(); } catch (e) {}
+    let mi = 0; try { mi = N.dayMiles((d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'))(new Date())); } catch (e) {}
+    let free = true; try { free = N.batteryFree(); } catch (e) {}
+    if (!on) return 'Auto track is off.';
+    if (!f) return 'Auto track is on and waiting for its first GPS fix.';
+    return 'Last GPS fix ' + ageText(Date.now() - f.t) + ', within ' + Math.round(f.acc) + ' meters. Phone GPS miles today: ' + mi + '.' + (free ? '' : ' Battery saving can pause tracking with the screen off.');
+  }
+  let lastDotT = 0;
+  setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    const f = nativeFix(30 * 60000);
+    if (f && f.timestamp !== lastDotT && typeof hereShow === 'function') {
+      lastDotT = f.timestamp;
+      hereShow(f);
+      if (hereDot && !hereDot._ftLive) { hereDot._ftLive = true; hereDot.unbindPopup(); hereDot.bindPopup(() => trackLine()); }
+    }
+  }, 5000);
+
   // Stops: each long park becomes a regular entry, named after the closest place already logged.
   const SITE_RADIUS_M = 150;
   function metersApart(aLat, aLon, bLat, bLon) {

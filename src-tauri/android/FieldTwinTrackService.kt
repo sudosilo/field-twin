@@ -32,7 +32,7 @@ class FieldTwinTrackService : Service(), LocationListener {
     const val STAY_MS = 20L * 60L * 1000L
     const val STAY_RADIUS_M = 150f
     const val TICK_MS = 60L * 1000L
-    const val FIX_MS = 20L * 1000L
+    const val FIX_MS = 15L * 1000L
   }
 
   private val handler = Handler(Looper.getMainLooper())
@@ -83,7 +83,7 @@ class FieldTwinTrackService : Service(), LocationListener {
     try { m.removeUpdates(this) } catch (e: Exception) {}
     try {
       if (m.isProviderEnabled(LocationManager.GPS_PROVIDER))
-        m.requestLocationUpdates(LocationManager.GPS_PROVIDER, FIX_MS, 10f, this, Looper.getMainLooper())
+        m.requestLocationUpdates(LocationManager.GPS_PROVIDER, FIX_MS, 0f, this, Looper.getMainLooper())
     } catch (e: Exception) { saveError(e) }
     try {
       if (m.isProviderEnabled(LocationManager.NETWORK_PROVIDER))

@@ -44,12 +44,31 @@ class FieldTwinBridge(private val activity: Activity) {
       else ActivityCompat.requestPermissions(activity, need.toTypedArray(), PERM_CODE)
     }
 
+    // Asks Android once to leave Field Twin out of battery saving so tracking keeps running with the screen off.
+    fun askBatteryOnce(ctx: Context) {
+      try {
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) return
+        val p = FieldTwinState.prefs(ctx)
+        if (p.getBoolean("batteryAsked", false)) return
+        p.edit().putBoolean("batteryAsked", true).apply()
+        val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + ctx.packageName))
+        if (ctx !is Activity) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i)
+      } catch (e: Exception) {}
+    }
+
+    fun isBatteryFree(ctx: Context): Boolean = try {
+      (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(ctx.packageName)
+    } catch (e: Exception) { false }
+
     fun startIfAllowed(ctx: Context) {
       if (!hasLocation(ctx)) return
       if (!FieldTwinState.prefs(ctx).getBoolean("trackingOn", true)) return
       try {
         val i = Intent(ctx, FieldTwinTrackService::class.java)
         ContextCompat.startForegroundService(ctx, i)
+        askBatteryOnce(ctx)
       } catch (e: Exception) {
         FieldTwinState.prefs(ctx).edit().putString("lastError", e.toString()).apply()
       }
@@ -140,6 +159,9 @@ class FieldTwinBridge(private val activity: Activity) {
   fun promptNow() {
     FieldTwinState.prefs(activity).edit().putLong("nextPromptAt", System.currentTimeMillis()).apply()
   }
+
+  @JavascriptInterface
+  fun batteryFree(): Boolean = isBatteryFree(activity)
 
   @JavascriptInterface
   fun lastError(): String = FieldTwinState.prefs(activity).getString("lastError", "") ?: ""

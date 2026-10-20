@@ -16,7 +16,8 @@ const perms = [
   "android.permission.FOREGROUND_SERVICE",
   "android.permission.FOREGROUND_SERVICE_LOCATION",
   "android.permission.POST_NOTIFICATIONS",
-  "android.permission.CAMERA"
+  "android.permission.CAMERA",
+  "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
 ];
 let add = "";
 for (const p of perms) if (!s.includes('"' + p + '"')) add += '    <uses-permission android:name="' + p + '" />\n';
