@@ -3728,8 +3728,8 @@ function initRoadButtons() {
   applyRoadButtons();
   document.getElementById('roadQualityBtn').addEventListener('click', () => { roadView.quality = !roadView.quality; refreshRoadLayers(); });
   document.getElementById('roadHeatBtn').addEventListener('click', () => { roadView.heat = !roadView.heat; refreshRoadLayers(); });
-  document.getElementById('openCqBtn').addEventListener('click', () => { window.open(CQ_SITE, '_blank', 'noopener'); });
-  document.getElementById('openVioletBtn').addEventListener('click', () => { window.open(VIOLET_SITE, '_blank', 'noopener'); });
+  document.getElementById('openCqBtn').addEventListener('click', () => { window.location.href = CQ_SITE; });
+  document.getElementById('openVioletBtn').addEventListener('click', () => { const ov = document.getElementById('menuOverlay'); if (ov) ov.click(); document.getElementById('tabViolet').click(); });
   if (roadView.quality || roadView.heat) refreshRoadLayers();
 }
 
