@@ -156,6 +156,9 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
+  fun trackMode(): String = FieldTwinState.prefs(activity).getString("trackMode", "moving") ?: "moving"
+
+  @JavascriptInterface
   fun setHome(json: String) {
     FieldTwinState.prefs(activity).edit().putString("home", json).apply()
   }

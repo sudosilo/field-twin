@@ -4540,6 +4540,8 @@ function showInfo() {
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
   html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
+  html += '<div class="question">Battery saving with the motion sensor</div>';
+  html += '<div>New in version 1.0.11. GPS now runs only while you are moving. After five minutes parked inside sixty meters, Field Twin turns GPS off and waits on the phone\'s motion sensor, a low power chip that wakes it the moment the truck starts traveling. A cheap network location check every ten minutes backs that up. Stops, departure times and odometer prompts work the same. Tap the blue dot to see whether tracking is moving or parked.</div>';
   html += '<div class="question">Your phones on the map, and home</div>';
   html += '<div>New in version 1.0.10. Every phone signed in to your account shows on the map as a round pin in that phone\'s color, so you can see where each phone was last. Pick each phone\'s color under Settings. A phone reports its spot every two minutes while Field Twin is open on it. Tap a pin to see how long ago it reported, and pins older than an hour fade. Under Settings, Set home here saves home as a two hundred meter circle that all your phones share. Inside it, parked stops are not logged and odometer prompts wait until you leave.</div>';
   html += '<div class="question">GPS calibration from your odometer readings</div>';
@@ -5127,6 +5129,8 @@ window.fieldTwinReady = init();
     let free = true; try { free = N.batteryFree(); } catch (e) {}
     if (!on) return 'Auto track is off.';
     if (!f) return 'Auto track is on and waiting for its first GPS fix.';
+    let mode = 'moving'; try { mode = N.trackMode(); } catch (e) {}
+    if (mode === 'parked') return 'Parked. GPS is off to save battery and turns back on when the motion sensor feels the truck move. Last spot checked ' + ageText(Date.now() - f.t) + '. Phone GPS miles today: ' + mi + '.';
     const est = calEstimate(Date.now());
     return 'Last GPS fix ' + ageText(Date.now() - f.t) + ', within ' + Math.round(f.acc) + ' meters. Phone GPS miles today: ' + mi + '.' + (est ? ' Odometer should read about ' + Math.round(est.reading).toLocaleString() + '.' : '') + ' ' + calText() + (free ? '' : ' Battery saving can pause tracking with the screen off.');
   }

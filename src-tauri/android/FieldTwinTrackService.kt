@@ -17,6 +17,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,6 +37,19 @@ class FieldTwinTrackService : Service(), LocationListener {
     const val STAY_RADIUS_M = 150f
     const val TICK_MS = 60L * 1000L
     const val FIX_MS = 15L * 1000L
+    const val STILL_MS = 5L * 60L * 1000L
+    const val STILL_M = 60f
+    const val PARKED_CHECK_MS = 10L * 60L * 1000L
+  }
+
+  // Battery: GPS runs only while the truck moves. After five minutes inside sixty meters the GPS shuts off
+  // and the phone waits on Android's significant motion sensor, a low power chip that fires when the phone
+  // starts traveling. A cheap network location check every ten minutes backs it up on phones without that sensor.
+  private var parked = false
+  private var moveAnchor: Location? = null
+  private var sensors: SensorManager? = null
+  private val motion = object : TriggerEventListener() {
+    override fun onTrigger(event: TriggerEvent?) { handler.post { wake() } }
   }
 
   private val handler = Handler(Looper.getMainLooper())
@@ -61,6 +78,7 @@ class FieldTwinTrackService : Service(), LocationListener {
       stopSelf()
       return START_NOT_STICKY
     }
+    parked = FieldTwinState.prefs(this).getString("trackMode", "moving") == "parked"
     startLocation()
     handler.removeCallbacks(tick)
     handler.post(tick)
@@ -71,6 +89,7 @@ class FieldTwinTrackService : Service(), LocationListener {
 
   override fun onDestroy() {
     handler.removeCallbacks(tick)
+    disarmMotion()
     try { lm?.removeUpdates(this) } catch (e: Exception) {}
     super.onDestroy()
   }
@@ -81,18 +100,87 @@ class FieldTwinTrackService : Service(), LocationListener {
     val m = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     lm = m
     try { m.removeUpdates(this) } catch (e: Exception) {}
+    if (parked) {
+      try {
+        if (m.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
+          m.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, PARKED_CHECK_MS, 0f, this, Looper.getMainLooper())
+      } catch (e: Exception) { saveError(e) }
+      armMotion()
+      return
+    }
+    disarmMotion()
     try {
       if (m.isProviderEnabled(LocationManager.GPS_PROVIDER))
-        m.requestLocationUpdates(LocationManager.GPS_PROVIDER, FIX_MS, 0f, this, Looper.getMainLooper())
+        m.requestLocationUpdates(LocationManager.GPS_PROVIDER, FIX_MS, 10f, this, Looper.getMainLooper())
     } catch (e: Exception) { saveError(e) }
     try {
       if (m.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-        m.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, FIX_MS * 3, 25f, this, Looper.getMainLooper())
+        m.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, FIX_MS * 4, 50f, this, Looper.getMainLooper())
     } catch (e: Exception) { saveError(e) }
   }
 
+  private fun armMotion() {
+    try {
+      val sm = sensors ?: (getSystemService(Context.SENSOR_SERVICE) as SensorManager).also { sensors = it }
+      val sig = sm.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION) ?: return
+      sm.requestTriggerSensor(motion, sig)
+    } catch (e: Exception) { saveError(e) }
+  }
+
+  private fun disarmMotion() {
+    try {
+      val sm = sensors ?: return
+      val sig = sm.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION) ?: return
+      sm.cancelTriggerSensor(motion, sig)
+    } catch (e: Exception) {}
+  }
+
+  private fun goParked() {
+    if (parked) return
+    parked = true
+    FieldTwinState.prefs(this).edit().putString("trackMode", "parked").putLong("lastInside", System.currentTimeMillis()).apply()
+    startLocation()
+  }
+
+  private fun wake() {
+    if (!parked) return
+    parked = false
+    moveAnchor = null
+    // Departure time: the stay ends when motion is first noticed, not when GPS gets its first fix.
+    FieldTwinState.prefs(this).edit().putString("trackMode", "moving").putLong("lastInside", System.currentTimeMillis()).apply()
+    startLocation()
+  }
+
   override fun onLocationChanged(loc: Location) {
-    try { handleFix(loc) } catch (e: Exception) { saveError(e) }
+    try {
+      if (parked) { parkedFix(loc); return }
+      handleFix(loc)
+      stillCheck(loc)
+    } catch (e: Exception) { saveError(e) }
+  }
+
+  // While moving: five minutes without leaving a sixty meter circle means parked.
+  private fun stillCheck(loc: Location) {
+    if (loc.hasAccuracy() && loc.accuracy > 75f) return
+    val a = moveAnchor
+    if (a == null || a.distanceTo(loc) > STILL_M) { moveAnchor = Location(loc).also { it.time = System.currentTimeMillis() }; return }
+    if (System.currentTimeMillis() - a.time >= STILL_MS) goParked()
+  }
+
+  // While parked: a network fix far from the parked spot wakes GPS back up, for phones whose motion sensor missed it.
+  private fun parkedFix(loc: Location) {
+    val p = FieldTwinState.prefs(this)
+    val fix = JSONObject()
+    val acc = if (loc.hasAccuracy()) loc.accuracy else 999f
+    fix.put("lat", loc.latitude); fix.put("lon", loc.longitude); fix.put("acc", acc.toDouble())
+    fix.put("t", System.currentTimeMillis()); fix.put("speed", -1.0)
+    val anchor = try { JSONObject(p.getString("anchor", "") ?: "") } catch (x: Exception) { null }
+    if (anchor == null) { wake(); return }
+    val d = dist(anchor.getDouble("lat"), anchor.getDouble("lon"), loc.latitude, loc.longitude)
+    if (d > maxOf(300f, acc * 2f)) { wake(); return }
+    // Still parked: refresh the time on the last spot so the map and home check stay current.
+    val last = try { JSONObject(p.getString("lastFix", "") ?: "") } catch (x: Exception) { null }
+    if (last != null) { last.put("t", System.currentTimeMillis()); p.edit().putString("lastFix", last.toString()).putLong("lastInside", System.currentTimeMillis()).apply() }
   }
 
   override fun onProviderEnabled(provider: String) { startLocation() }
