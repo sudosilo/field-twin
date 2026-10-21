@@ -64,6 +64,19 @@ object FieldTwinState {
     return a.getDouble(1) + (b.getDouble(1) - a.getDouble(1)) * (t - ta).toDouble() / (tb - ta).toDouble()
   }
 
+  // Home: odometer prompts wait while the phone sits inside this circle.
+  fun atHome(ctx: Context): Boolean {
+    try {
+      val p = prefs(ctx)
+      val h = JSONObject(p.getString("home", "") ?: "")
+      val f = JSONObject(p.getString("lastFix", "") ?: "")
+      if (System.currentTimeMillis() - f.getLong("t") > 30L * 60000L) return false
+      val r = FloatArray(1)
+      android.location.Location.distanceBetween(h.getDouble("lat"), h.getDouble("lon"), f.getDouble("lat"), f.getDouble("lon"), r)
+      return r[0] <= h.optDouble("r", 200.0)
+    } catch (e: Exception) { return false }
+  }
+
   fun promptSettings(ctx: Context): JSONObject {
     val d = JSONObject()
     d.put("on", true); d.put("start", 7); d.put("end", 18); d.put("minGap", 60); d.put("maxGap", 150); d.put("nag", 10)

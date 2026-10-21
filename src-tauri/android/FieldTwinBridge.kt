@@ -156,6 +156,11 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
+  fun setHome(json: String) {
+    FieldTwinState.prefs(activity).edit().putString("home", json).apply()
+  }
+
+  @JavascriptInterface
   fun promptNow() {
     FieldTwinState.prefs(activity).edit().putLong("nextPromptAt", System.currentTimeMillis()).apply()
   }

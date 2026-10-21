@@ -643,6 +643,9 @@
   #violetView.open { display: block; }
   #violetView iframe { width: 100%; height: 100%; border: 0; display: block; }
   .hz-label { display: block; margin: 8px 14px 2px 14px; font-size: 12px; color: var(--text-dim); }
+  #devColor { display: block; box-sizing: border-box; width: calc(100% - 28px); margin: 0 14px 6px 14px; }
+  .dev-pin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 0 2px #1b2433; }
+  .dev-pin.stale { opacity: 0.45; }
   #hzDays, #hzYears, #hzArea { display: block; box-sizing: border-box; max-width: calc(100% - 28px); width: calc(100% - 28px); margin: 0 14px 6px 14px; }
   .hz-pop b { color: var(--accent); }
   .here-btn { display: flex !important; align-items: center; justify-content: center; color: var(--accent) !important; }
@@ -754,6 +757,12 @@
       <label class="hz-label" for="odoGap">Time between odometer prompts</label>
       <select id="odoGap"><option value="30,75">half an hour to an hour and a quarter</option><option value="60,150" selected>an hour to two and a half hours</option><option value="120,240">two to four hours</option></select>
     </div>
+    <label class="hz-label" for="devColor">This phone's color on the map</label>
+    <select id="devColor"><option value="">not picked</option><option value="orange">orange</option><option value="blue">blue</option><option value="green">green</option><option value="red">red</option><option value="teal">teal</option><option value="violet">violet</option><option value="yellow">yellow</option><option value="pink">pink</option></select>
+    <label class="hz-label">Home, where stops and odometer prompts are skipped</label>
+    <div class="hz-label" id="homeText" style="margin-top:0;">No home set.</div>
+    <button class="secondary" id="homeSetBtn">SET HOME HERE</button>
+    <button class="secondary" id="homeClearBtn">CLEAR HOME</button>
     <button class="secondary" id="camKeyBtn">SERVICE ADDRESS</button>
     <button class="secondary" id="checkBtn">SERVICE CHECK</button>
   </div>
@@ -4531,6 +4540,8 @@ function showInfo() {
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
   html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
+  html += '<div class="question">Your phones on the map, and home</div>';
+  html += '<div>New in version 1.0.10. Every phone signed in to your account shows on the map as a round pin in that phone\'s color, so you can see where each phone was last. Pick each phone\'s color under Settings. A phone reports its spot every two minutes while Field Twin is open on it. Tap a pin to see how long ago it reported, and pins older than an hour fade. Under Settings, Set home here saves home as a two hundred meter circle that all your phones share. Inside it, parked stops are not logged and odometer prompts wait until you leave.</div>';
   html += '<div class="question">GPS calibration from your odometer readings</div>';
   html += '<div>New in version 1.0.7. In the phone app, GPS keeps its own running mile count. Each odometer reading you save is treated as a fact: the app compares how far the odometer went since the last reading with how far GPS counted, and learns a correction from the last twenty stretches, weighted by miles. Every new reading becomes the new starting point, so GPS error never builds up past one stretch. The odometer form shows what GPS expects, and asks for a second tap when a reading is lower than the last one or far from the estimate, so a typo cannot teach it a wrong fact. The status line after saving shows the stretch and the new correction. The Day log shows raw and corrected GPS miles, auto stops record an estimated odometer on arrival, and tapping the blue dot shows the estimated odometer right now. GPS counting starts with this version, so the first correction appears after two readings with driving between them.</div>';
   html += '<div class="question">One sign in for all three apps</div>';
@@ -5168,6 +5179,7 @@ window.fieldTwinReady = init();
         const id = 'stop-' + st.id;
         done.push(st.id);
         if (have.has(id)) continue;
+        if (typeof atHomePoint === 'function' && atHomePoint(st.lat, st.lon)) continue;
         const site = nearestSite(st.lat, st.lon);
         let label = site ? (site.addressLabel || '') : '';
         if (!label) {
@@ -5302,6 +5314,104 @@ window.fieldTwinReady = init();
   if (location.hash === '#map') start = 'teal';
   if (location.hash === '#inventory') start = 'violet';
   show(start);
+})();
+</script>
+<script>
+// Your phones on the map, and home. Each phone signed in to the account writes its own spot into the account's
+// profile under its own key, so phones never overwrite each other, and reads everyone else's back.
+const DEV_COLORS = { orange: '#f07a1a', blue: '#1265c9', green: '#2e9e4f', red: '#d93636', teal: '#14a3a3', violet: '#8a4fd6', yellow: '#e8c21a', pink: '#e2589c', '': '#8a94a6' };
+const HOME_KEY = 'fieldTwinHome', COLOR_KEY = 'fieldTwinDevColor';
+let devLayer = null, lastDevPost = 0, lastDevSpot = null;
+function homeGet() { try { return JSON.parse(localStorage.getItem(HOME_KEY) || 'null'); } catch (e) { return null; } }
+function homeApply(h) {
+  try { if (h) localStorage.setItem(HOME_KEY, JSON.stringify(h)); else localStorage.removeItem(HOME_KEY); } catch (e) {}
+  try { if (window.FieldTwinNative) window.FieldTwinNative.setHome(h ? JSON.stringify(h) : ''); } catch (e) {}
+  const t = document.getElementById('homeText');
+  if (t) t.textContent = h ? 'Home is set, a ' + h.r + ' meter circle.' : 'No home set.';
+}
+function metersBetween(aLat, aLon, bLat, bLon) {
+  const R = 6371000, k = Math.PI / 180;
+  const x = Math.sin((bLat - aLat) * k / 2) ** 2 + Math.cos(aLat * k) * Math.cos(bLat * k) * Math.sin((bLon - aLon) * k / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function atHomePoint(lat, lon) {
+  const h = homeGet();
+  return Boolean(h && isFinite(lat) && isFinite(lon) && metersBetween(h.lat, h.lon, lat, lon) <= (h.r || 200));
+}
+function devColor() { try { return localStorage.getItem(COLOR_KEY) || ''; } catch (e) { return ''; } }
+function mySpot() {
+  try {
+    if (window.FieldTwinNative) {
+      const f = JSON.parse(window.FieldTwinNative.lastFix() || 'null');
+      if (f && f.lat) return { lat: f.lat, lon: f.lon, acc: f.acc, t: f.t };
+    }
+  } catch (e) {}
+  if (typeof hereDot !== 'undefined' && hereDot) { const ll = hereDot.getLatLng(); return { lat: ll.lat, lon: ll.lng, acc: 0, t: hereAt || Date.now() }; }
+  return null;
+}
+function agoWords(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + (m === 1 ? ' minute ago' : ' minutes ago');
+  const h = Math.round(m / 60);
+  if (h < 48) return h + (h === 1 ? ' hour ago' : ' hours ago');
+  return Math.round(h / 24) + ' days ago';
+}
+async function devTick(force) {
+  if (!sb || !cloudUser || typeof map === 'undefined' || !map) return;
+  if (document.visibilityState === 'hidden' && !force) return;
+  const me = mySpot();
+  const meta = {};
+  const moved = me && (!lastDevSpot || metersBetween(lastDevSpot.lat, lastDevSpot.lon, me.lat, me.lon) > 100);
+  if (me && (force || moved || Date.now() - lastDevPost > 120000)) {
+    meta['dev_' + TWIN_ID] = { color: devColor(), lat: Math.round(me.lat * 1e5) / 1e5, lon: Math.round(me.lon * 1e5) / 1e5, acc: Math.round(me.acc || 0), t: me.t || Date.now(), app: Boolean(window.FieldTwinNative) };
+  }
+  const h = homeGet();
+  let info = null;
+  try {
+    if (Object.keys(meta).length) {
+      const r = await sb.auth.updateUser({ data: meta });
+      if (!r.error) { lastDevPost = Date.now(); lastDevSpot = me; info = r.data.user; }
+    }
+    if (!info) { const r = await sb.auth.getUser(); info = r.data ? r.data.user : null; }
+  } catch (e) { return; }
+  if (!info) return;
+  const um = info.user_metadata || {};
+  if (um.home && JSON.stringify(um.home) !== JSON.stringify(h)) homeApply(um.home);
+  if (!um.home && h && h.owner === 'shared') homeApply(null);
+  if (!devLayer) devLayer = L.layerGroup().addTo(map);
+  devLayer.clearLayers();
+  Object.keys(um).filter(k => k.indexOf('dev_') === 0 && k !== 'dev_' + TWIN_ID).forEach(k => {
+    const d = um[k];
+    if (!d || !isFinite(d.lat) || Date.now() - d.t > 14 * 86400000) return;
+    const stale = Date.now() - d.t > 3600000;
+    const color = DEV_COLORS[d.color || ''] || DEV_COLORS[''];
+    const icon = L.divIcon({ className: '', html: '<div class="dev-pin' + (stale ? ' stale' : '') + '" style="background:' + color + '"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+    const name = d.color ? d.color + ' phone' : 'A phone with no color picked';
+    L.marker([d.lat, d.lon], { icon: icon, zIndexOffset: 500 }).bindPopup(name + ', reported ' + agoWords(Date.now() - d.t) + (d.app ? ' from the Field Twin app' : ' from a browser') + '.').addTo(devLayer);
+  });
+}
+(function () {
+  const sel = document.getElementById('devColor');
+  sel.value = devColor();
+  sel.addEventListener('change', () => { try { localStorage.setItem(COLOR_KEY, sel.value); } catch (e) {} devTick(true); setStatus(sel.value ? 'this phone is ' + sel.value + ' on the map' : 'phone color cleared'); });
+  homeApply(homeGet());
+  document.getElementById('homeSetBtn').addEventListener('click', async () => {
+    const me = mySpot();
+    if (!me) { setStatus('no location yet, turn on Location and try again'); return; }
+    const h = { lat: Math.round(me.lat * 1e5) / 1e5, lon: Math.round(me.lon * 1e5) / 1e5, r: 200, owner: 'shared' };
+    homeApply(h);
+    try { if (sb && cloudUser) await sb.auth.updateUser({ data: { home: h } }); } catch (e) {}
+    setStatus('home saved for all your phones');
+  });
+  document.getElementById('homeClearBtn').addEventListener('click', async () => {
+    homeApply(null);
+    try { if (sb && cloudUser) await sb.auth.updateUser({ data: { home: null } }); } catch (e) {}
+    setStatus('home cleared');
+  });
+  const start = () => { devTick(true); setInterval(() => devTick(false), 60000); };
+  if (window.fieldTwinReady && window.fieldTwinReady.then) window.fieldTwinReady.then(start, start); else setTimeout(start, 3000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') devTick(true); });
 })();
 </script>
 </body>

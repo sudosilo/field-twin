@@ -189,6 +189,10 @@ class FieldTwinTrackService : Service(), LocationListener {
     val p = FieldTwinState.prefs(this)
     val s = FieldTwinState.promptSettings(this)
     val dueSince = p.getLong("odoDueSince", 0L)
+    if (FieldTwinState.atHome(this)) {
+      if (dueSince == 0L && now >= p.getLong("nextPromptAt", 0L)) FieldTwinState.scheduleNextPrompt(this)
+      return
+    }
     if (dueSince == 0L) {
       val next = p.getLong("nextPromptAt", 0L)
       if (next == 0L) { FieldTwinState.scheduleNextPrompt(this); return }
