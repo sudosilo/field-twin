@@ -112,16 +112,19 @@ jobs:
     steps:
       - name: probe
         run: |
-          B=https://fieldtwin-api-production.up.railway.app
-          curl -s $B/health; echo
-          for O in http://tauri.localhost https://tauri.localhost tauri://localhost https://field-twin-teal.vercel.app null; do
-            echo "== OPTIONS origin $O"
-            curl -s -o /dev/null -D - -X OPTIONS -H "Origin: $O" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,content-type" $B/receipts/extract | grep -i "^HTTP\|access-control-allow-origin"
-            echo "== POST origin $O"
-            curl -s -D - -o /tmp/b -X POST -H "Origin: $O" -H "Content-Type: application/json" -H "Authorization: Bearer x.y.z" --data '{"image":"data:image/jpeg;base64,AAAA"}' $B/receipts/extract | grep -i "^HTTP\|access-control-allow-origin"
-            head -c 200 /tmp/b; echo
-          done
-          echo "== big body"
-          head -c 400000 /dev/urandom | base64 -w0 > /tmp/img
-          printf '{"image":"data:image/jpeg;base64,%s"}' "$(cat /tmp/img)" > /tmp/body
-          curl -s -o /dev/null -w "%{http_code} %{size_upload}\n" -X POST -H "Origin: http://tauri.localhost" -H "Content-Type: application/json" -H "Authorization: Bearer x.y.z" --data-binary @/tmp/body $B/receipts/extract
+          {
+            B=https://fieldtwin-api-production.up.railway.app
+            curl -s $B/health; echo
+            for O in http://tauri.localhost https://tauri.localhost tauri://localhost https://field-twin-teal.vercel.app null; do
+              echo "== OPTIONS origin $O"
+              curl -s -o /dev/null -D - -X OPTIONS -H "Origin: $O" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,content-type" $B/receipts/extract | grep -i "^HTTP\|access-control-allow-origin"
+              echo "== POST origin $O"
+              curl -s -D - -o /tmp/b -X POST -H "Origin: $O" -H "Content-Type: application/json" -H "Authorization: Bearer x.y.z" --data '{"image":"data:image/jpeg;base64,AAAA"}' $B/receipts/extract | grep -i "^HTTP\|access-control-allow-origin"
+              head -c 200 /tmp/b; echo
+            done
+            echo "== big body"
+            head -c 400000 /dev/urandom | base64 -w0 > /tmp/img
+            printf '{"image":"data:image/jpeg;base64,%s"}' "$(cat /tmp/img)" > /tmp/body
+            curl -s -o /dev/null -w "%{http_code} %{size_upload}\n" -X POST -H "Origin: http://tauri.localhost" -H "Content-Type: application/json" -H "Authorization: Bearer x.y.z" --data-binary @/tmp/body $B/receipts/extract
+          } > /tmp/out 2>&1
+          echo "::notice title=probe::$(sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g' /tmp/out)"
