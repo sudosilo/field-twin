@@ -11,6 +11,9 @@ const ALLOWED = (process.env.ALLOWED_ORIGINS || '*')
   .map(s => s.trim())
   .filter(Boolean);
 
+// The Field Twin phone app loads from these addresses and is always allowed.
+const APP_ORIGINS = ['http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost', 'https://field-twin-teal.vercel.app'];
+
 process.on('unhandledRejection', err => {
   console.error('unhandled rejection', err && err.message ? err.message : err);
 });
@@ -45,7 +48,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (ALLOWED.indexOf('*') !== -1) {
     res.setHeader('Access-Control-Allow-Origin', '*');
-  } else if (origin && ALLOWED.indexOf(origin) !== -1) {
+  } else if (origin && (ALLOWED.indexOf(origin) !== -1 || APP_ORIGINS.indexOf(origin) !== -1)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }

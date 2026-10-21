@@ -2994,11 +2994,18 @@ async function extractWithVision(photoData) {
   const headers = { 'Content-Type': 'application/json' };
   let how = await apiAuthHeaders(headers);
   const small = await shrinkDataUrl(photoData, 1100, 0.6);
-  const send = () => fetch(root + '/receipts/extract', {
-    method: 'POST',
-    headers: headers,
-    body: JSON.stringify({ image: small })
-  });
+  // Coming back from the camera, Android can hold the network for a few seconds, which shows up as
+  // failed to fetch. Wait and try again up to three more times before giving up on the full reader.
+  const send = async () => {
+    let lastErr = null;
+    for (const wait of [0, 1500, 3000, 6000]) {
+      if (wait) { setStatus('reader not reachable yet, trying again'); await new Promise(r => setTimeout(r, wait)); }
+      try {
+        return await fetch(root + '/receipts/extract', { method: 'POST', headers: headers, body: JSON.stringify({ image: small }) });
+      } catch (e) { lastErr = e; }
+    }
+    throw new Error((lastErr && lastErr.message ? lastErr.message : 'failed to fetch') + ' after four tries, check signal and scan again');
+  };
   let res = await send();
   // A stale login gets one fresh try before falling back to the offline reader.
   if (res.status === 401 && how !== 'token') {
