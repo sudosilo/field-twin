@@ -2705,16 +2705,42 @@ function getApiBase() {
   try { return localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE; } catch (e) { return DEFAULT_API_BASE; }
 }
 
-async function apiAuthHeaders(headers) {
-  const tok = getApiToken();
-  if (tok) { headers['Authorization'] = 'Bearer ' + tok; return 'token'; }
-  if (sb && cloudUser) {
+// Finds this phone's login for the Field Twin service. Waking up from the camera can leave the account
+// half loaded for a moment, so it tries the live session, then a refresh, then the saved copy on the phone.
+function withTimeout(p, ms) { return Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]); }
+function storedAccessToken() {
+  try {
+    const ref = SUPABASE_URL.replace(/^https:\/\//, '').split('.')[0];
+    const raw = JSON.parse(localStorage.getItem('sb-' + ref + '-auth-token') || 'null');
+    const s = raw && (raw.currentSession || raw);
+    if (s && s.access_token && (!s.expires_at || s.expires_at * 1000 > Date.now() + 30000)) return s.access_token;
+  } catch (e) {}
+  return '';
+}
+async function accountToken(forceRefresh) {
+  if (!sb) return '';
+  if (!forceRefresh) {
     try {
-      const r = await sb.auth.getSession();
-      const at = r.data && r.data.session ? r.data.session.access_token : '';
-      if (at) { headers['Authorization'] = 'Bearer ' + at; return 'account'; }
+      const r = await withTimeout(sb.auth.getSession(), 4000);
+      const s = r && r.data ? r.data.session : null;
+      if (s && s.access_token && (!s.expires_at || s.expires_at * 1000 > Date.now() + 30000)) {
+        if (!cloudUser) cloudUser = s.user;
+        return s.access_token;
+      }
     } catch (e) {}
   }
+  try {
+    const r = await withTimeout(sb.auth.refreshSession(), 8000);
+    const s = r && r.data ? r.data.session : null;
+    if (s && s.access_token) { cloudUser = s.user; return s.access_token; }
+  } catch (e) {}
+  return forceRefresh ? '' : storedAccessToken();
+}
+async function apiAuthHeaders(headers, forceRefresh) {
+  const tok = getApiToken();
+  if (tok) { headers['Authorization'] = 'Bearer ' + tok; return 'token'; }
+  const at = await accountToken(Boolean(forceRefresh));
+  if (at) { headers['Authorization'] = 'Bearer ' + at; return 'account'; }
   return 'none';
 }
 
@@ -2955,14 +2981,21 @@ async function extractWithVision(photoData) {
   if (!base) throw new Error('no service address set');
   const root = base.replace(/\/+$/, '');
   const headers = { 'Content-Type': 'application/json' };
-  const how = await apiAuthHeaders(headers);
+  let how = await apiAuthHeaders(headers);
   const small = await shrinkDataUrl(photoData, 1100, 0.6);
-  const res = await fetch(root + '/receipts/extract', {
+  const send = () => fetch(root + '/receipts/extract', {
     method: 'POST',
     headers: headers,
     body: JSON.stringify({ image: small })
   });
-  if (res.status === 401) throw new Error(how === 'none' ? 'sign in under Account and profile so the receipt reader knows it is you' : 'the receipt reader did not accept this phone, sign in again under Account and profile');
+  let res = await send();
+  // A stale login gets one fresh try before falling back to the offline reader.
+  if (res.status === 401 && how !== 'token') {
+    const h2 = { 'Content-Type': 'application/json' };
+    const how2 = await apiAuthHeaders(h2, true);
+    if (how2 !== 'none') { Object.assign(headers, h2); how = how2; res = await send(); }
+  }
+  if (res.status === 401) throw new Error(how === 'none' ? (cloudUser ? 'this phone could not load your login, open Account and profile and tap Sync now, then try the receipt again' : 'sign in under Account and profile so the receipt reader knows it is you') : 'the receipt reader did not accept this phone, sign in again under Account and profile');
   if (!res.ok) throw new Error('service returned ' + res.status);
   const data = await res.json();
   return data.receipt || {};
