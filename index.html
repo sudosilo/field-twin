@@ -646,6 +646,7 @@
   #devColor { display: block; box-sizing: border-box; width: calc(100% - 28px); margin: 0 14px 6px 14px; }
   .dev-pin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 0 2px #1b2433; }
   .dev-pin.stale { opacity: 0.45; }
+  .tl-line { padding: 6px 0 6px 10px; border-left: 3px solid var(--accent); margin: 4px 0; font-size: 14px; cursor: pointer; }
   #hzDays, #hzYears, #hzArea { display: block; box-sizing: border-box; max-width: calc(100% - 28px); width: calc(100% - 28px); margin: 0 14px 6px 14px; }
   .hz-pop b { color: var(--accent); }
   .here-btn { display: flex !important; align-items: center; justify-content: center; color: var(--accent) !important; }
@@ -728,6 +729,7 @@
   <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
+  <button class="secondary" id="timelineBtn">TIMELINE</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
   <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="spendBtn">SPEND</button>
@@ -4540,6 +4542,8 @@ function showInfo() {
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
   html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
+  html += '<div class="question">Timeline</div>';
+  html += '<div>New in version 1.0.12. Timeline in the menu splits a day into half hour blocks. Each block says how many reports came in and from which phones, then sums up what happened: where you were parked and for how long, how far you drove, odometer readings, receipts and anything you logged. When two or three phones park at the same spot at the same time, the stop is kept once and lists every phone that saw it, so extra phones back each other up instead of piling up copies. Tap a line to open that entry.</div>';
   html += '<div class="question">Battery saving with the motion sensor</div>';
   html += '<div>New in version 1.0.11. GPS now runs only while you are moving. After five minutes parked inside sixty meters, Field Twin turns GPS off and waits on the phone\'s motion sensor, a low power chip that wakes it the moment the truck starts traveling. A cheap network location check every ten minutes backs that up. Stops, departure times and odometer prompts work the same. Tap the blue dot to see whether tracking is moving or parked.</div>';
   html += '<div class="question">Your phones on the map, and home</div>';
@@ -5184,6 +5188,21 @@ window.fieldTwinReady = init();
         done.push(st.id);
         if (have.has(id)) continue;
         if (typeof atHomePoint === 'function' && atHomePoint(st.lat, st.lon)) continue;
+        // Another phone already logged this same stop: add this phone as a witness instead of a second entry.
+        const twin = entries.find(e => e.placeType === 'auto stop' && hasPos(e) && e.twinId !== TWIN_ID &&
+          Math.abs(new Date(e.timestamp).getTime() - st.arrivedAt) < 15 * 60000 && metersApart(e.lat, e.lon, st.lat, st.lon) <= SITE_RADIUS_M);
+        if (twin) {
+          const q = twin.questions || (twin.questions = []);
+          const a = twin.answers || (twin.answers = []);
+          let i = q.indexOf('Seen by phones');
+          if (i < 0) { q.push('Seen by phones'); a.push(twin.twinId || ''); i = q.length - 1; }
+          const ids = new Set(String(a[i] || '').split(',').filter(Boolean));
+          ids.add(TWIN_ID);
+          a[i] = Array.from(ids).join(',');
+          const dirty = getDirtyIds(); dirty.add(twin.id); setDirtyIds(dirty);
+          added++;
+          continue;
+        }
         const site = nearestSite(st.lat, st.lon);
         let label = site ? (site.addressLabel || '') : '';
         if (!label) {
@@ -5381,6 +5400,7 @@ async function devTick(force) {
   } catch (e) { return; }
   if (!info) return;
   const um = info.user_metadata || {};
+  window.twinMeta = um;
   if (um.home && JSON.stringify(um.home) !== JSON.stringify(h)) homeApply(um.home);
   if (!um.home && h && h.owner === 'shared') homeApply(null);
   if (!devLayer) devLayer = L.layerGroup().addTo(map);
@@ -5417,6 +5437,94 @@ async function devTick(force) {
   if (window.fieldTwinReady && window.fieldTwinReady.then) window.fieldTwinReady.then(start, start); else setTimeout(start, 3000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') devTick(true); });
 })();
+</script>
+<script>
+// Timeline: a day in half hour blocks. Each block counts the reports from each phone and sums up what happened.
+function phoneName(id) {
+  if (!id) return 'unknown phone';
+  if (id === TWIN_ID && devColor()) return devColor();
+  const d = (window.twinMeta || {})['dev_' + id];
+  if (d && d.color) return d.color;
+  return 'phone ' + String(id).slice(-4);
+}
+function seenBy(e) {
+  const i = (e.questions || []).indexOf('Seen by phones');
+  const ids = i >= 0 ? String((e.answers || [])[i] || '').split(',').filter(Boolean) : [];
+  return ids.length ? ids : [e.twinId];
+}
+function tlClock(t) { return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function stopSpan(e) {
+  const a = new Date(e.timestamp).getTime();
+  const m = parseFloat((e.answers || [])[2]);
+  return [a, a + (isFinite(m) ? m : 20) * 60000];
+}
+function showTimeline(dk) {
+  const panel = document.getElementById('panel');
+  dk = dk || localDay(new Date());
+  const dayStart = new Date(dk + 'T00:00:00').getTime(), dayEnd = dayStart + 86400000;
+  const list = entries.filter(e => { const t = new Date(e.timestamp).getTime(); return t >= dayStart && t < dayEnd; });
+  const stops = entries.filter(e => e.placeType === 'auto stop').filter(e => { const [a, b] = stopSpan(e); return b > dayStart && a < dayEnd; });
+  const BLOCK = 30 * 60000;
+  const blocks = [];
+  const cal = (typeof calFactor === 'function') ? calFactor() : { factor: 1, count: 0 };
+  for (let t = dayStart; t < dayEnd; t += BLOCK) {
+    const end = t + BLOCK;
+    const inBlock = list.filter(e => { const x = new Date(e.timestamp).getTime(); return x >= t && x < end; });
+    const parked = stops.filter(e => { const [a, b] = stopSpan(e); return a < end && b > t; });
+    let gpsMi = 0;
+    if (window.FieldTwinNative && typeof gpsAt === 'function' && t < Date.now()) {
+      const g1 = gpsAt(t), g2 = end > Date.now() ? gpsNowMeters() : gpsAt(end);
+      if (g1 >= 0 && g2 >= g1) gpsMi = (g2 - g1) / 1609.344 * (cal.count ? cal.factor : 1);
+    }
+    if (!inBlock.length && !parked.length && gpsMi < 0.2) continue;
+    const phones = {};
+    inBlock.forEach(e => seenBy(e).forEach(id => { const n = phoneName(id); phones[n] = (phones[n] || 0) + 1; }));
+    const lines = [];
+    parked.forEach(e => {
+      const [a, b] = stopSpan(e);
+      const from = Math.max(a, t), to = Math.min(b, end);
+      const mins = Math.round((to - from) / 60000);
+      const who = seenBy(e).map(phoneName);
+      lines.push({ id: e.id, text: 'Parked at ' + (e.addressLabel || 'a spot') + (a >= t ? ', arrived ' + tlClock(a) : '') + (b < end ? ', left ' + tlClock(b) : '') + ', ' + mins + ' of 30 minutes' + (who.length > 1 ? ', seen by ' + who.join(' and ') : '') });
+    });
+    if (gpsMi >= 0.2) lines.push({ text: 'Drove about ' + (Math.round(gpsMi * 10) / 10) + ' miles' + (cal.count ? ', corrected' : '') });
+    inBlock.filter(e => e.placeType !== 'auto stop').forEach(e => {
+      let text;
+      if (e.category === 'odometer' && e.odometer) text = 'Odometer ' + Number(e.odometer.reading).toLocaleString() + ' at ' + tlClock(e.timestamp);
+      else if (e.category === 'receipt' && e.receipt) text = 'Receipt $' + (Number(e.receipt.total) || 0).toFixed(2) + (e.receipt.store ? ' at ' + e.receipt.store : '');
+      else text = 'Logged ' + ((CATEGORIES[e.category] || CATEGORIES.general).label || 'an entry').toLowerCase() + ' at ' + (e.addressLabel || 'a spot') + ', ' + tlClock(e.timestamp);
+      lines.push({ id: e.id, text: text });
+    });
+    blocks.push({ t: t, end: end, count: Object.values(phones).reduce((x, y) => x + y, 0), phones: phones, lines: lines });
+  }
+  const prevDay = localDay(dayStart - 3600000), nextDay = localDay(dayEnd + 3600000);
+  let html = '<h2>TIMELINE</h2>';
+  html += '<input type="date" id="tlDate" value="' + dk + '" style="width:100%;padding:10px;font:inherit;margin:6px 0;border:1px solid var(--line);background:var(--panel);color:var(--text);">';
+  html += '<div class="panel-actions" style="margin-top:6px;"><button class="secondary" id="tlPrev">EARLIER DAY</button><button class="secondary" id="tlNext">LATER DAY</button></div>';
+  if (!blocks.length) html += '<div class="question">Nothing logged on this day</div>';
+  blocks.forEach(b => {
+    const who = Object.keys(b.phones).map(n => n + ' ' + b.phones[n]).join(', ');
+    html += '<div class="question">' + tlClock(b.t) + ' to ' + tlClock(b.end) + '</div>';
+    html += '<div class="meta-line">' + (b.count ? b.count + (b.count === 1 ? ' report' : ' reports') + (who ? ', from ' + escapeHtml(who) : '') : 'No new reports') + '</div>';
+    b.lines.forEach(l => { html += '<div class="tl-line"' + (l.id ? ' data-id="' + escapeHtml(l.id) + '"' : '') + '>' + escapeHtml(l.text) + '</div>'; });
+  });
+  html += '<div class="panel-actions"><button class="secondary" id="tlClose">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  document.getElementById('tlClose').addEventListener('click', closePanel);
+  document.getElementById('tlPrev').addEventListener('click', () => showTimeline(prevDay));
+  document.getElementById('tlNext').addEventListener('click', () => showTimeline(nextDay));
+  document.getElementById('tlDate').addEventListener('change', ev => { if (ev.target.value) showTimeline(ev.target.value); });
+  panel.querySelectorAll('.tl-line[data-id]').forEach(el => el.addEventListener('click', () => {
+    const e = entries.find(x => x.id === el.getAttribute('data-id'));
+    if (e) showEntry(e);
+  }));
+}
+document.getElementById('timelineBtn').addEventListener('click', () => {
+  const ov = document.getElementById('menuOverlay'); if (ov) ov.click();
+  showTimeline();
+});
 </script>
 </body>
 </html>
