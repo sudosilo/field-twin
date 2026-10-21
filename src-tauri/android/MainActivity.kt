@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
+import android.webkit.CookieManager
 import android.graphics.Color
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -47,6 +48,14 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
+    // Inventory and Roads load inside this app from their own web addresses. Android blocks their saved
+    // logins by default when they sit inside another page, so allow it for this app's own screen.
+    try {
+      CookieManager.getInstance().setAcceptCookie(true)
+      CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+      webView.settings.domStorageEnabled = true
+      webView.settings.databaseEnabled = true
+    } catch (e: Exception) {}
     webView.addJavascriptInterface(FieldTwinBridge(this), "FieldTwinNative")
     Handler(Looper.getMainLooper()).postDelayed({
       if (!FieldTwinBridge.helloSeen && !reloadedForBridge) {

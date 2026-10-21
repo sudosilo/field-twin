@@ -3834,6 +3834,7 @@ window.addEventListener('message', e => {
   if (e.data.type === 'fieldtwin-ready') twinSendViolet();
   else if (e.data.type === 'fieldtwin-session-ok') { delete h.violet; twinHandSave(h); }
   else if (e.data.type === 'fieldtwin-signout-ok') { delete h.violetOut; twinHandSave(h); }
+  else if (e.data.type === 'fieldtwin-session-fail') setStatus('Inventory sign in failed, ' + String(e.data.message || 'no reason given').slice(0, 80));
 });
 // Opens Glaucous and hands it the waiting login, or the sign out, in the part of the address that never leaves the phone.
 function openGlaucous() {
