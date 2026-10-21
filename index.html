@@ -2987,6 +2987,44 @@ function shrinkDataUrl(dataUrl, maxDim, quality) {
   });
 }
 
+// In the phone app, requests to the Field Twin service go out through the phone itself. The service only
+// accepts web pages from the website's address, and the app's pages come from a different one.
+const ftHttpWaiting = {};
+window.__ftHttpDone = function (id, status, text) {
+  const done = ftHttpWaiting[id];
+  if (!done) return;
+  delete ftHttpWaiting[id];
+  done({ status: status, text: text });
+};
+function nativeSend(method, url, headers, body) {
+  return new Promise(resolve => {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    ftHttpWaiting[id] = resolve;
+    setTimeout(() => { if (ftHttpWaiting[id]) { delete ftHttpWaiting[id]; resolve({ status: 0, text: 'timed out' }); } }, 150000);
+    try { window.FieldTwinNative.httpSend(id, method, url, JSON.stringify(headers || {}), body || ''); }
+    catch (e) { delete ftHttpWaiting[id]; resolve({ status: 0, text: e.message }); }
+  });
+}
+(function () {
+  const N = window.FieldTwinNative;
+  if (!N || typeof N.httpSend !== 'function') return;
+  const pageFetch = window.fetch.bind(window);
+  window.fetch = async function (input, opts) {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    let base = '';
+    try { base = getApiBase().replace(/\/+$/, ''); } catch (e) {}
+    if (!base || url.indexOf(base) !== 0) return pageFetch(input, opts);
+    opts = opts || {};
+    const h = {};
+    const src = opts.headers || {};
+    if (typeof src.forEach === 'function' && !Array.isArray(src)) src.forEach((v, k) => { h[k] = v; });
+    else Object.keys(src).forEach(k => { h[k] = src[k]; });
+    const r = await nativeSend((opts.method || 'GET').toUpperCase(), url, h, typeof opts.body === 'string' ? opts.body : '');
+    if (r.status === 0) throw new TypeError('Failed to fetch, ' + r.text);
+    return new Response(r.status === 204 ? null : r.text, { status: r.status, headers: { 'Content-Type': 'application/json' } });
+  };
+})();
+
 async function extractWithVision(photoData) {
   const base = getApiBase();
   if (!base) throw new Error('no service address set');

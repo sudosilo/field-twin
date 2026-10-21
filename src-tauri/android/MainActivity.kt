@@ -56,6 +56,7 @@ class MainActivity : TauriActivity() {
       webView.settings.domStorageEnabled = true
       webView.settings.databaseEnabled = true
     } catch (e: Exception) {}
+    FieldTwinBridge.web = webView
     webView.addJavascriptInterface(FieldTwinBridge(this), "FieldTwinNative")
     Handler(Looper.getMainLooper()).postDelayed({
       if (!FieldTwinBridge.helloSeen && !reloadedForBridge) {

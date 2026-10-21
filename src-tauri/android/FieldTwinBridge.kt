@@ -10,6 +10,7 @@ import android.webkit.JavascriptInterface
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
+import org.json.JSONObject
 
 // Everything the Field Twin page can ask the phone for, reached from JavaScript as window.FieldTwinNative.
 class FieldTwinBridge(private val activity: Activity) {
@@ -17,6 +18,7 @@ class FieldTwinBridge(private val activity: Activity) {
   companion object {
     const val PERM_CODE = 4417
     @Volatile var helloSeen = false
+    @Volatile var web: android.webkit.WebView? = null
 
     fun takeIntent(ctx: Context, intent: Intent?) {
       if (intent == null) return
@@ -153,6 +155,36 @@ class FieldTwinBridge(private val activity: Activity) {
   fun setPromptSettings(json: String) {
     FieldTwinState.prefs(activity).edit().putString("promptSettings", json).apply()
     FieldTwinState.scheduleNextPrompt(activity)
+  }
+
+  // Sends a POST from the phone itself instead of the page, so servers that only allow the website's
+  // address still answer the app. The answer comes back through window.__ftHttpDone(id, status, text).
+  @JavascriptInterface
+  fun httpSend(id: String, method: String, url: String, headersJson: String, body: String) {
+    Thread {
+      var code = 0
+      var text = ""
+      try {
+        val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        c.requestMethod = method
+        c.connectTimeout = 20000
+        c.readTimeout = 120000
+        c.doOutput = method == "POST" || method == "PUT"
+        val h = JSONObject(headersJson)
+        val it = h.keys()
+        while (it.hasNext()) { val k = it.next(); c.setRequestProperty(k, h.getString(k)) }
+        if (c.doOutput) c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        code = c.responseCode
+        val stream = if (code >= 400) c.errorStream else c.inputStream
+        text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+        c.disconnect()
+      } catch (e: Exception) {
+        code = 0
+        text = e.toString()
+      }
+      val js = "window.__ftHttpDone && window.__ftHttpDone(" + JSONObject.quote(id) + "," + code + "," + JSONObject.quote(text) + ")"
+      activity.runOnUiThread { try { web?.evaluateJavascript(js, null) } catch (e: Exception) {} }
+    }.start()
   }
 
   @JavascriptInterface
