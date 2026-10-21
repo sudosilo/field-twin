@@ -127,4 +127,4 @@ jobs:
             printf '{"image":"data:image/jpeg;base64,%s"}' "$(cat /tmp/img)" > /tmp/body
             curl -s -o /dev/null -w "%{http_code} %{size_upload}\n" -X POST -H "Origin: http://tauri.localhost" -H "Content-Type: application/json" -H "Authorization: Bearer x.y.z" --data-binary @/tmp/body $B/receipts/extract
           } > /tmp/out 2>&1
-          echo "::notice title=probe::$(sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g' /tmp/out)"
+          echo "::notice title=probe::$(tr -d '\r' < /tmp/out | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
