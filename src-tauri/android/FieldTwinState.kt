@@ -105,8 +105,20 @@ object FieldTwinState {
     prefs(ctx).edit().putLong("nextPromptAt", System.currentTimeMillis() + mins * 60000L).apply()
   }
 
+  fun odoSnoozed(ctx: Context): Boolean = System.currentTimeMillis() < prefs(ctx).getLong("odoSnoozeUntil", 0L)
+
+  // The X on the odometer screen: the reading stays due, but nags and the screen lock wait until the snooze ends.
+  fun snoozeOdo(ctx: Context, minutes: Int) {
+    val m = minutes.coerceIn(1, 240)
+    prefs(ctx).edit().putLong("odoSnoozeUntil", System.currentTimeMillis() + m * 60000L).putLong("lastNagAt", 0L).apply()
+    try {
+      val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      nm.cancel(ODO_NOTE_ID)
+    } catch (e: Exception) {}
+  }
+
   fun odoSaved(ctx: Context) {
-    prefs(ctx).edit().putLong("odoDueSince", 0L).putLong("lastNagAt", 0L).apply()
+    prefs(ctx).edit().putLong("odoDueSince", 0L).putLong("lastNagAt", 0L).putLong("odoSnoozeUntil", 0L).apply()
     try {
       val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       nm.cancel(ODO_NOTE_ID)

@@ -672,6 +672,19 @@
     border-radius: 0;
     border-top: 8px solid var(--accent);
   }
+  .odo-snooze-x {
+    float: right;
+    width: 48px;
+    height: 48px;
+    margin: -6px -4px 6px 10px;
+    padding: 0;
+    font-size: 24px;
+    line-height: 44px;
+    background: #ffffff;
+    color: var(--accent);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+  }
   .odo-lock-note {
     background: var(--accent);
     color: #ffffff;
@@ -3624,7 +3637,10 @@ function showOdometer(locked) {
   let vehicle = '';
   try { vehicle = localStorage.getItem('milesVehicle') || ''; } catch (e) {}
   let html = '<h2>ODOMETER</h2>';
-  if (locked) html += '<div class="odo-lock-note">Reading due. Field Twin stays on this screen until the number goes in.</div>';
+  if (locked) {
+    html += '<button type="button" class="odo-snooze-x" id="odoSnoozeX" aria-label="Not at the car, ask again later">&#10005;</button>';
+    html += '<div class="odo-lock-note">Reading due. Away from the car? Tap the X and Field Twin asks again in half an hour.</div>';
+  }
   html += '<div class="meta-line">' + (last ? 'Last reading ' + last.odometer.reading + ' on ' + new Date(last.timestamp).toLocaleString() : 'No readings saved yet') + '</div>';
   html += '<div class="question">Number on the odometer right now</div>';
   html += '<input type="text" id="odoReading" inputmode="decimal" autocomplete="off">';
@@ -3643,7 +3659,18 @@ function showOdometer(locked) {
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
-  if (locked) { panel.classList.add('odo-lock'); odoLocked = true; setTimeout(() => { const i = document.getElementById('odoReading'); if (i) i.focus(); }, 300); }
+  if (locked) {
+    panel.classList.add('odo-lock'); odoLocked = true;
+    setTimeout(() => { const i = document.getElementById('odoReading'); if (i) i.focus(); }, 300);
+    document.getElementById('odoSnoozeX').addEventListener('click', () => {
+      const until = Date.now() + ODO_SNOOZE_MS;
+      try { localStorage.setItem('odoSnoozeUntil', String(until)); } catch (e) {}
+      try { if (window.FieldTwinNative && window.FieldTwinNative.snoozeOdo) window.FieldTwinNative.snoozeOdo(ODO_SNOOZE_MS / 60000); } catch (e) {}
+      odoLocked = false;
+      closePanel();
+      setStatus('odometer reading put off for half an hour');
+    });
+  }
   let isWork = cls.work;
   panel.querySelectorAll('#odoWork .qopt').forEach(el => {
     el.addEventListener('click', () => {
@@ -3707,6 +3734,7 @@ function showOdometer(locked) {
     await saveEntries();
     renderMarkers();
     odoLocked = false;
+    try { localStorage.removeItem('odoSnoozeUntil'); } catch (e) {}
     try { if (window.FieldTwinNative) window.FieldTwinNative.odoSaved(); } catch (e) {}
     closePanel();
     let calNote = '';
@@ -4917,6 +4945,10 @@ function escapeHtml(str) {
 }
 
 let odoLocked = false;
+const ODO_SNOOZE_MS = 30 * 60000;
+function odoSnoozed() {
+  try { return Date.now() < Number(localStorage.getItem('odoSnoozeUntil') || 0); } catch (e) { return false; }
+}
 
 function closePanel() {
   if (odoLocked) return;
@@ -5292,7 +5324,7 @@ window.fieldTwinReady = init();
     try { action = N.takeAction(); } catch (e) {}
     let due = false;
     try { due = N.odoDue(); } catch (e) {}
-    if ((action === 'odo' || due) && !odoLocked) showOdometer(true);
+    if ((action === 'odo' || due) && !odoLocked && !odoSnoozed()) showOdometer(true);
   }
 
   function wake() {

@@ -141,7 +141,12 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
-  fun odoDue(): Boolean = FieldTwinState.prefs(activity).getLong("odoDueSince", 0L) > 0L
+  fun odoDue(): Boolean = FieldTwinState.prefs(activity).getLong("odoDueSince", 0L) > 0L && !FieldTwinState.odoSnoozed(activity)
+
+  @JavascriptInterface
+  fun snoozeOdo(minutes: Int) {
+    FieldTwinState.snoozeOdo(activity, minutes)
+  }
 
   @JavascriptInterface
   fun odoSaved() {

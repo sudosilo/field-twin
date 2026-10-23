@@ -293,6 +293,7 @@ class FieldTwinTrackService : Service(), LocationListener {
       postOdometerNote(false)
       return
     }
+    if (FieldTwinState.odoSnoozed(this)) return
     val nagMs = s.optInt("nag", 10).coerceAtLeast(2) * 60000L
     if (now - p.getLong("lastNagAt", 0L) >= nagMs) {
       p.edit().putLong("lastNagAt", now).apply()
