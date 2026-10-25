@@ -672,6 +672,8 @@
     border-radius: 0;
     border-top: 8px solid var(--accent);
   }
+  .debrief-text p { margin: 0 0 12px 0; line-height: 1.5; }
+  .debrief-text { border-left: 4px solid var(--accent); padding: 4px 0 4px 12px; margin: 10px 0 14px 0; }
   .odo-snooze-x {
     float: right;
     width: 48px;
@@ -744,6 +746,7 @@
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="timelineBtn">TIMELINE</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
+  <button class="secondary" id="debriefsBtn">DEBRIEFS</button>
   <button class="secondary" id="historyBtn">HISTORY</button>
   <button class="secondary" id="spendBtn">SPEND</button>
   <button class="secondary" id="mileageBtn">MILEAGE</button>
@@ -836,6 +839,7 @@ const CATEGORIES = {
   mall:          { label: 'Mall',           icon: '\u{1F6CD}',  color: '#ad1457' },
   general:       { label: 'Other stop',     icon: '\u{1F4CD}',  color: '#1265c9' },
   odometer:      { label: 'Odometer reading', icon: '\u{1F6E3}', color: '#0b4ea2' },
+  debrief:       { label: 'Day debrief',    icon: '\u{1F4DD}', color: '#1265c9' },
   none:          { label: 'Silent log',     icon: '\u{1F319}',  color: '#5c6c7d' }
 };
 
@@ -874,7 +878,7 @@ function signHtml(key, iconChar, size) {
     '<span style="font-size:' + fs + 'px;transform:translateY(' + Math.round(shift * k) + 'px);">' + iconChar + '</span></div>';
 }
 
-const ICON_CHOICES = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer');
+const ICON_CHOICES = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer' && k !== 'debrief');
 const FALLBACK_ICON = CATEGORIES.general.icon;
 let selectedIcon = FALLBACK_ICON;
 const MIN_SAVE_INTERVAL_MS = 30000;
@@ -1533,7 +1537,7 @@ function scoreEntries(list) {
   let firstVisits = 0;
   let photos = 0;
 
-  const chrono = list.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const chrono = list.filter(e => e.category !== 'debrief').sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
   chrono.forEach(e => {
     const key = siteKey(e);
@@ -1579,7 +1583,7 @@ function territorySpan(list) {
 }
 
 function computeTrophies(stats, list) {
-  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer');
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer' && k !== 'debrief');
   const distinctCats = catKeys.filter(k => stats.categoryCounts[k]).length;
   const span = territorySpan(list);
   return [
@@ -4398,7 +4402,7 @@ function dayLogAnswered(e) {
 
 function buildDayLog(dk) {
   entries.forEach(odoFromAnswers);
-  const list = entries.filter(e => e.timestamp && localDay(e.timestamp) === dk)
+  const list = entries.filter(e => e.timestamp && localDay(e.timestamp) === dk && e.category !== 'debrief')
     .slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   const label = new Date(dk + 'T12:00:00').toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const r = { dk: dk, label: label, list: list, lines: [], gaps: [] };
@@ -4496,6 +4500,174 @@ function dayLogText(r) {
   return out.join('\n');
 }
 
+// End of day debrief: the day log goes to the Field Twin service, which has Claude write a plain prose
+// debrief. The debrief and Blue's reply are saved as an entry (category debrief) so they sync to his
+// account, and the most recent ones ride along with each new debrief so it can compare against past days.
+function debriefFor(dk) {
+  return entries.find(e => e.category === 'debrief' && e.context === 'debrief ' + dk) || null;
+}
+
+function debriefHistory(dk) {
+  return entries.filter(e => e.category === 'debrief' && e.context && e.context.slice(8) < dk)
+    .sort((a, b) => (b.context > a.context ? 1 : -1)).slice(0, 7)
+    .map(e => ({ day: e.context.slice(8), debrief: (e.answers || [])[0] || '', reply: (e.answers || [])[1] || '' }));
+}
+
+async function saveDebrief(dk, text, reply) {
+  let e = debriefFor(dk);
+  const r = buildDayLog(dk);
+  const lastT = r.list.length ? r.list[r.list.length - 1].timestamp : new Date(dk + 'T20:00:00').toISOString();
+  if (!e) {
+    e = {
+      id: 'debrief-' + dk + '-' + TWIN_ID,
+      timestamp: new Date(new Date(lastT).getTime() + 1000).toISOString(),
+      lat: null, lon: null,
+      addressLabel: 'Day debrief, ' + r.label,
+      locSrc: 'none',
+      placeType: 'debrief',
+      confidence: 5,
+      formType: 'category',
+      category: 'debrief',
+      questions: ['Debrief', 'Your reply'],
+      answers: [text, reply || ''],
+      context: 'debrief ' + dk,
+      icon: CATEGORIES.debrief.icon,
+      twinId: TWIN_ID
+    };
+    entries.unshift(e);
+    entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  } else {
+    e.answers = [text, reply === undefined ? ((e.answers || [])[1] || '') : reply];
+    e.updatedAt = new Date().toISOString();
+    const dirty = getDirtyIds();
+    dirty.add(e.id);
+    setDirtyIds(dirty);
+  }
+  await saveEntries().catch(() => {});
+  return e;
+}
+
+async function requestDebrief(dk) {
+  const base = getApiBase();
+  if (!base) throw new Error('no service address set');
+  const root = base.replace(/\/+$/, '');
+  const r = buildDayLog(dk);
+  let log = dayLogText(r);
+  try {
+    if (window.FieldTwinNative && window.FieldTwinNative.dayMiles) log += '\n\nGPS counted about ' + window.FieldTwinNative.dayMiles(dk) + ' miles on this day.';
+  } catch (e) {}
+  const payload = JSON.stringify({ day: dk, label: r.label, log: log, history: debriefHistory(dk) });
+  const headers = { 'Content-Type': 'application/json' };
+  let how = await apiAuthHeaders(headers);
+  const send = async () => {
+    let lastErr = null;
+    for (const wait of [0, 1500, 3000]) {
+      if (wait) await new Promise(res => setTimeout(res, wait));
+      try { return await fetch(root + '/debrief', { method: 'POST', headers: headers, body: payload }); } catch (e) { lastErr = e; }
+    }
+    throw new Error((lastErr && lastErr.message ? lastErr.message : 'failed to fetch') + ', check signal and try again');
+  };
+  let res = await send();
+  if (res.status === 401 && how !== 'token') {
+    const h2 = { 'Content-Type': 'application/json' };
+    const how2 = await apiAuthHeaders(h2, true);
+    if (how2 !== 'none') { Object.assign(headers, h2); how = how2; res = await send(); }
+  }
+  if (res.status === 401) throw new Error('sign in under Account and profile so the debrief service knows it is you');
+  if (res.status === 404) throw new Error('the Field Twin service has not been updated with debriefs yet');
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || ('service returned ' + res.status));
+  if (!data.debrief) throw new Error('the service sent back an empty debrief');
+  return data.debrief;
+}
+
+async function showDebrief(dk, rewrite) {
+  const panel = document.getElementById('panel');
+  const r = buildDayLog(dk);
+  let saved = debriefFor(dk);
+  const paint = (bodyHtml) => {
+    panel.innerHTML = '<h2>DEBRIEF</h2><div class="meta-line">' + escapeHtml(r.label) + '</div>' + bodyHtml;
+    panel.scrollTop = 0;
+    panel.classList.add('open');
+  };
+  if (!saved || rewrite) {
+    if (!r.list.length) { paint('<div class="meta-line">No entries on this day, so there is nothing to debrief.</div><div class="panel-actions"><button class="secondary" id="dbClose">CLOSE</button></div>'); document.getElementById('dbClose').addEventListener('click', closePanel); return; }
+    paint('<div class="odo-lock-note">Writing the debrief from this day\'s log.</div>');
+    try {
+      const text = await requestDebrief(dk);
+      saved = await saveDebrief(dk, text, saved ? undefined : '');
+    } catch (err) {
+      paint('<div class="meta-line" style="color:#b00020;">Debrief failed, ' + escapeHtml(err.message) + '</div><div class="panel-actions"><button id="dbRetry">TRY AGAIN</button><button class="secondary" id="dbClose">CLOSE</button></div>');
+      document.getElementById('dbRetry').addEventListener('click', () => showDebrief(dk, true));
+      document.getElementById('dbClose').addEventListener('click', closePanel);
+      return;
+    }
+  }
+  const text = (saved.answers || [])[0] || '';
+  const reply = (saved.answers || [])[1] || '';
+  let html = '<div class="debrief-text">' + escapeHtml(text).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>') + '</div>';
+  html += '<div class="question">Your reply</div>';
+  html += '<div class="meta-line">Explain anything it flagged, or correct it. Your reply is saved with this day and the next debriefs read it.</div>';
+  html += '<textarea id="dbReply" style="min-height:120px;">' + escapeHtml(reply) + '</textarea>';
+  html += '<div class="meta-line" id="dbMsg"></div>';
+  html += '<div class="panel-actions"><button id="dbSave">SAVE REPLY</button><button class="secondary" id="dbRewrite">WRITE IT AGAIN</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="dbLog">DAY LOG</button><button class="secondary" id="dbAll">ALL DEBRIEFS</button><button class="secondary" id="dbClose">CLOSE</button></div>';
+  paint(html);
+  const t = panel.querySelector('.debrief-text');
+  if (t) t.innerHTML = '<p>' + t.innerHTML + '</p>';
+  document.getElementById('dbSave').addEventListener('click', async () => {
+    await saveDebrief(dk, text, document.getElementById('dbReply').value || '');
+    document.getElementById('dbMsg').textContent = 'Reply saved.';
+  });
+  document.getElementById('dbRewrite').addEventListener('click', async () => {
+    const cur = document.getElementById('dbReply').value || '';
+    if (cur !== reply) await saveDebrief(dk, text, cur);
+    showDebrief(dk, true);
+  });
+  document.getElementById('dbLog').addEventListener('click', () => showDayLog(dk));
+  document.getElementById('dbAll').addEventListener('click', showDebriefList);
+  document.getElementById('dbClose').addEventListener('click', closePanel);
+}
+
+function showDebriefList() {
+  const panel = document.getElementById('panel');
+  const list = entries.filter(e => e.category === 'debrief' && e.context)
+    .sort((a, b) => (b.context > a.context ? 1 : -1));
+  const today = localDay(new Date());
+  const days = dayLogDays();
+  const undone = Object.keys(days).filter(k => !debriefFor(k) && buildDayLog(k).list.length).sort().reverse().slice(0, 14);
+  let html = '<h2>DEBRIEFS</h2>';
+  html += '<div class="meta-line">Each workday gets a written debrief from its day log. Read them back to spot what your tracking misses.</div>';
+  html += '<div class="panel-actions"><button id="dbToday">DEBRIEF TODAY</button></div>';
+  if (list.length) {
+    html += '<div class="question">Saved debriefs</div>';
+    list.forEach(e => {
+      const dk = e.context.slice(8);
+      const txt = (e.answers || [])[0] || '';
+      const replied = Boolean((e.answers || [])[1]);
+      html += '<div class="mi-row" data-db="' + dk + '"><b>' + escapeHtml(new Date(dk + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })) + '</b>' + (replied ? ', replied' : ', no reply yet') +
+        '<br><span class="meta-line">' + escapeHtml(txt.slice(0, 160)) + (txt.length > 160 ? '...' : '') + '</span></div>';
+    });
+  } else {
+    html += '<div class="meta-line">No debriefs saved yet.</div>';
+  }
+  const undoneShown = undone.filter(k => k !== today);
+  if (undoneShown.length) {
+    html += '<div class="question">Days with entries and no debrief</div>';
+    undoneShown.forEach(dk => {
+      html += '<div class="mi-row" data-db="' + dk + '">' + escapeHtml(new Date(dk + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })) + '<br><span class="meta-line">tap to write its debrief</span></div>';
+    });
+  }
+  html += '<div class="panel-actions"><button class="secondary" id="dbListClose">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  document.getElementById('dbToday').addEventListener('click', () => showDebrief(today, false));
+  document.getElementById('dbListClose').addEventListener('click', closePanel);
+  panel.querySelectorAll('[data-db]').forEach(el => el.addEventListener('click', () => showDebrief(el.getAttribute('data-db'), false)));
+}
+
 function showDayLog(dk) {
   const panel = document.getElementById('panel');
   dk = dk || localDay(new Date());
@@ -4529,8 +4701,12 @@ function showDayLog(dk) {
     else html += '<div class="meta-line">Nothing flagged.</div>';
   }
   html += '<div class="meta-line" id="dlMsg"></div>';
+  const hasDebrief = Boolean(debriefFor(dk));
+  if (r.list.length || hasDebrief) html += '<div class="panel-actions"><button id="dlDebriefBtn">' + (hasDebrief ? 'OPEN DEBRIEF' : 'DEBRIEF THIS DAY') + '</button></div>';
   html += '<div class="panel-actions"><button id="dlCopyBtn">COPY LOG</button><button class="secondary" id="dlCloseBtn">CLOSE</button></div>';
   panel.innerHTML = html;
+  const dbBtn = document.getElementById('dlDebriefBtn');
+  if (dbBtn) dbBtn.addEventListener('click', () => showDebrief(dk, false));
   panel.scrollTop = 0;
   panel.classList.add('open');
 
@@ -4576,7 +4752,7 @@ function profileHtml() {
   html += '<div class="meta-line">' + span + ' miles of ground covered</div>';
 
   html += '<div class="question">Categories</div>';
-  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer');
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'odometer' && k !== 'debrief');
   catKeys.forEach(k => {
     const n = stats.categoryCounts[k] || 0;
     const m = CATEGORIES[k];
@@ -4691,7 +4867,7 @@ function showEdit(entry, fromHistory) {
     html += '<input type="datetime-local" id="edWhen" value="' + localStamp(new Date(entry.timestamp)) + '" style="width:100%;padding:8px;font-size:14px;margin-top:4px;border:1px solid var(--line);background:#f9fafb;color:var(--text);">';
     html += '<div class="question">Type</div>';
     html += '<select id="edCat">';
-    Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'receipt' && k !== 'odometer').forEach(k => {
+    Object.keys(CATEGORIES).filter(k => k !== 'none' && k !== 'receipt' && k !== 'odometer' && k !== 'debrief').forEach(k => {
       const sel = (entry.category || 'general') === k ? ' selected' : '';
       html += '<option value="' + k + '"' + sel + '>' + CATEGORIES[k].icon + ' ' + CATEGORIES[k].label + '</option>';
     });
@@ -5083,6 +5259,11 @@ async function init() {
   document.getElementById('mileageBtn').addEventListener('click', () => {
     closeMenu();
     showMileage();
+  });
+
+  document.getElementById('debriefsBtn').addEventListener('click', () => {
+    closeMenu();
+    showDebriefList();
   });
 
   document.getElementById('dayLogBtn').addEventListener('click', () => {

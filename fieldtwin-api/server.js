@@ -231,8 +231,73 @@ app.post('/receipts/extract', async (req, res) => {
   }
 });
 
+const DEBRIEF_MODEL = process.env.DEBRIEF_MODEL || 'claude-sonnet-5-5';
+
+const DEBRIEF_PROMPT = [
+  'You are writing the end of day debrief for a field service technician who repairs parcel lockers around Las Vegas.',
+  'His workday usually starts from 550 Conestoga Way in Henderson, and he commutes there from a desert camp in Arizona.',
+  'Below is the day log from his location logging app, Field Twin: a summary, a timeline of entries with the place tag he chose for each, odometer readings, receipts, and things the app flagged as not captured.',
+  'Some days also include his earlier debriefs and his replies to them; use those to compare this day against past days and to remember what he already explained.',
+  'Write the debrief as plain prose paragraphs. No headings, no bullet points, no numbered lists, no bold, no em dashes or en dashes.',
+  'He listens to this read aloud, so keep figures few and rounded, and say them in words, like about forty miles or a little over two hours. Never write digits.',
+  'Never use the words honest, honestly, actually or actual. Never describe or guess at his emotional state.',
+  'Cover where he went and in what order, about how long he spent at each place, how many miles he drove and how they split between work and personal when the readings allow it, and when the day started and ended.',
+  'Then point out outliers worth a second look: a long stay at a food or personal stop, a stretch with no odometer reading, a day missing a start or end reading, stops with no place name or tag, a work site that took far longer or shorter than usual, and miles that do not line up with the stops.',
+  'Then name what the app failed to capture today and one concrete change to how he logs, or to the app itself, that would have captured it.',
+  'Finish with a single short question asking him to explain the biggest unexplained outlier, if there is one.',
+  'Never invent places, times or readings that are not in the log. If the log is thin, say what is missing instead of filling it in.'
+].join(' ');
+
+async function debriefCall(model, body) {
+  return fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify(Object.assign({ model: model }, body))
+  });
+}
+
+app.post('/debrief', async (req, res) => {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const required = process.env.API_TOKEN || '';
+  if (required && token !== required && !(await isSignedInUser(token))) return res.sendStatus(401);
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'model key not configured' });
+  const log = req.body && req.body.log;
+  if (!log || typeof log !== 'string') return res.status(400).json({ error: 'log required as text' });
+  const history = Array.isArray(req.body.history) ? req.body.history.slice(0, 7) : [];
+  let content = DEBRIEF_PROMPT + '\n\nTODAY\n' + log.slice(0, 40000);
+  if (history.length) {
+    content += '\n\nEARLIER DEBRIEFS AND HIS REPLIES, newest first';
+    history.forEach(h => {
+      if (!h || typeof h !== 'object') return;
+      content += '\n\n' + String(h.day || '').slice(0, 40) + '\nDebrief: ' + String(h.debrief || '').slice(0, 3000) + '\nHis reply: ' + (String(h.reply || '').slice(0, 2000) || 'none');
+    });
+  }
+  const body = { max_tokens: 2000, messages: [{ role: 'user', content: content }] };
+  try {
+    let apiRes = await debriefCall(DEBRIEF_MODEL, body);
+    if (!apiRes.ok && apiRes.status >= 400 && apiRes.status < 500 && apiRes.status !== 401 && DEBRIEF_MODEL !== VISION_MODEL) {
+      console.error('debrief model refused, falling back', apiRes.status);
+      apiRes = await debriefCall(VISION_MODEL, body);
+    }
+    if (!apiRes.ok) {
+      const detail = await apiRes.text();
+      console.error('debrief call failed', apiRes.status, detail.slice(0, 300));
+      let reason = '';
+      try { const j = JSON.parse(detail); reason = j.error && j.error.message ? j.error.message : ''; } catch (e) { reason = detail.slice(0, 160); }
+      return res.status(502).json({ error: 'debrief call failed, status ' + apiRes.status + (reason ? ', ' + reason : '') });
+    }
+    const data = await apiRes.json();
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    const usage = data.usage || {};
+    res.json({ debrief: text, model: data.model || '', usage: { input: usage.input_tokens || 0, output: usage.output_tokens || 0 } });
+  } catch (e) {
+    console.error('debrief failed', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
-  res.json({ service: 'fieldtwin-api', endpoints: ['/health', '/cameras', '/status', '/receipts/extract', '/events', '/crashes'] });
+  res.json({ service: 'fieldtwin-api', endpoints: ['/health', '/cameras', '/status', '/receipts/extract', '/debrief', '/events', '/crashes'] });
 });
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
