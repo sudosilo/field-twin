@@ -216,4 +216,31 @@ class FieldTwinBridge(private val activity: Activity) {
 
   @JavascriptInterface
   fun lastError(): String = FieldTwinState.prefs(activity).getString("lastError", "") ?: ""
+
+  // Writes an export or spreadsheet into the phone's Downloads folder, since the app's web view cannot download files itself.
+  @JavascriptInterface
+  fun saveFile(name: String, mime: String, text: String): String {
+    return try {
+      val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "-")
+      val bytes = text.toByteArray(Charsets.UTF_8)
+      if (Build.VERSION.SDK_INT >= 29) {
+        val values = android.content.ContentValues().apply {
+          put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, safe)
+          put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+          put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+        }
+        val resolver = activity.contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return "error: the phone would not create the file"
+        val out = resolver.openOutputStream(uri) ?: return "error: the phone would not open the file"
+        out.use { it.write(bytes) }
+        "ok"
+      } else {
+        val dir = activity.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: return "error: no downloads folder"
+        java.io.File(dir, safe).writeBytes(bytes)
+        "ok " + dir.absolutePath
+      }
+    } catch (e: Exception) {
+      "error: " + (e.message ?: "unknown")
+    }
+  }
 }

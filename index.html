@@ -1771,13 +1771,7 @@ function exportSearchCsv() {
       (e.receipt && e.receipt.items) ? e.receipt.items.map(it => it.name + (it.price !== null && it.price !== undefined ? ' ' + Number(it.price).toFixed(2) : '')).join('; ') : ''
     ].map(csvCell).join(','));
   });
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'field-twin-search-' + localDay(new Date()) + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  saveTextFile('field-twin-search-' + localDay(new Date()) + '.csv', 'text/csv', lines.join('\n'));
 }
 
 function buildSearchPage() {
@@ -3833,13 +3827,7 @@ function showMileage() {
       rows.push([d.toLocaleDateString(), d.toLocaleTimeString(), g.entry.odometer.vehicle || '', g.entry.odometer.reading, g.miles === null ? '' : g.miles, g.crow === null ? '' : g.crow,
         g.entry.odometer.work ? 'work' : 'personal', g.entry.addressLabel || '', hasPos(g.entry) ? g.entry.lat : '', hasPos(g.entry) ? g.entry.lon : '', (g.entry.answers || [])[3] || '']);
     });
-    const blob = new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'field-twin-mileage-' + localStamp(new Date()).replace(/[:T]/g, '-') + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    saveTextFile('field-twin-mileage-' + localStamp(new Date()).replace(/[:T]/g, '-') + '.csv', 'text/csv', rows.map(r => r.map(csvCell).join(',')).join('\n'));
   });
 }
 
@@ -5133,6 +5121,27 @@ function closePanel() {
   pendingEntry = null;
 }
 
+// Saves a text file. The phone app writes it straight into Downloads, a browser gets a normal download.
+function saveTextFile(name, mime, text) {
+  if (window.FieldTwinNative && typeof window.FieldTwinNative.saveFile === 'function') {
+    let res = '';
+    try { res = String(window.FieldTwinNative.saveFile(name, mime, text)); } catch (e) { res = 'error: ' + e.message; }
+    if (res.indexOf('ok') === 0) { setStatus(name + ' saved to Downloads'); return; }
+    setStatus('could not save the file, ' + res.replace(/^error:\s*/, ''));
+    return;
+  }
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
+  setStatus(name + ' downloading');
+}
+
 function exportEntries() {
   const payload = {
     format: 'field-twin',
@@ -5142,13 +5151,7 @@ function exportEntries() {
     stats: scoreEntries(entries),
     entries: entries
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'field-twin-' + TWIN_ID + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  saveTextFile('field-twin-' + TWIN_ID + '-' + localDay(new Date()) + '.json', 'application/json', JSON.stringify(payload, null, 2));
 }
 
 function importEntries(file) {
