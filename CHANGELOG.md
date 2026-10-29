@@ -1,3 +1,5 @@
+2026-10-29, v2026.10.29. Added Daily miles. Each workday shows start, end and business miles, starting from a day start point shared by all phones. Stops are marked as tickets, tickets typed by address show red when no pin matches, and stops with no reading are filled from the readings around them using miles learned from the odometer. Business miles cannot go over the odometer, and confirmed days lock and save to a spreadsheet.
+
 2026-10-25, v2026.10.25. Added end of day debriefs. A prose debrief is written from the day log, and replies are saved with the log.
 
 2026-10-23, v2026.10.23. Added an X on the odometer lock that puts the reading off for half an hour and pauses nags until then.
