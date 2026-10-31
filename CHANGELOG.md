@@ -1,4 +1,6 @@
-2026-10-29, v2026.10.29. Added Daily miles. Each workday shows start, end and business miles, starting from a day start point shared by all phones. Stops are marked as tickets, tickets typed by address show red when no pin matches, and stops with no reading are filled from the readings around them using miles learned from the odometer. Business miles cannot go over the odometer, and confirmed days lock and save to a spreadsheet.
+Field Twin changelog
+
+2026-10-29, v2026.10.29. Export, mileage, and search spreadsheets now save into Downloads in the phone app. Added Daily miles, which shows start, end, and business miles for each workday from a start point shared by all phones. Stops can be marked as tickets, and confirmed days lock and save to a spreadsheet. Added a Daily miles report. Added GO, which gives turn by turn routes to a place you say or type, with logged places first.
 
 2026-10-25, v2026.10.25. Added end of day debriefs. A prose debrief is written from the day log, and replies are saved with the log.
 
