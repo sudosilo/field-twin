@@ -6398,5 +6398,26 @@ function navEnd(note) {
 
 document.getElementById('goDockBtn').addEventListener('click', showGo);
 </script>
+<script>
+// Keeps the bottom panel above the on-screen keyboard: lifts it by however much of the screen the keyboard covers,
+// and scrolls the focused box into view inside the panel.
+(function () {
+  const vv = window.visualViewport;
+  const lift = () => {
+    const panel = document.getElementById('panel');
+    if (!panel) return;
+    const covered = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    panel.style.bottom = covered > 40 ? covered + 'px' : '';
+    panel.style.maxHeight = covered > 40 ? Math.max(160, vv.height - 20) + 'px' : '';
+  };
+  if (vv) { vv.addEventListener('resize', lift); vv.addEventListener('scroll', lift); }
+  document.addEventListener('focusin', ev => {
+    const el = ev.target;
+    if (!el || !el.closest || !el.closest('#panel') || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+    setTimeout(() => { lift(); el.scrollIntoView({ block: 'center' }); }, 300);
+  });
+  document.addEventListener('focusout', () => setTimeout(lift, 300));
+})();
+</script>
 </body>
 </html>

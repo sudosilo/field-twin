@@ -22,7 +22,7 @@ class MainActivity : TauriActivity() {
     if (FieldTwinState.prefs(this).getBoolean("trackingOn", true)) FieldTwinBridge.askAndStart(this)
   }
 
-  // Pushes the page below the camera cutout and status bar, and above the gesture bar.
+  // Pushes the page below the camera cutout and status bar, and above the gesture bar and the keyboard while it is open.
   private fun keepClearOfStatusBar() {
     window.statusBarColor = Color.WHITE
     window.navigationBarColor = Color.WHITE
@@ -33,7 +33,7 @@ class MainActivity : TauriActivity() {
     val root = findViewById<android.view.View>(android.R.id.content)
     root.setBackgroundColor(Color.WHITE)
     ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
-      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
       v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
       WindowInsetsCompat.CONSUMED
     }
