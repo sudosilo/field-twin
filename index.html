@@ -427,6 +427,8 @@
   #updateBtn { background: var(--accent); color: #ffffff; }
   #receiptDockBtn { background: #ffffff; color: var(--text); }
   #updateBtn:active, #receiptDockBtn:active { box-shadow: none; transform: translate(3px, 3px); }
+  #goDockBtn { flex: 0 0 auto; min-height: 46px; padding: 0 14px; font-size: 16px; font-weight: 700; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); background: #2e9e4f; color: #ffffff; }
+  #goDockBtn:active { box-shadow: none; transform: translate(3px, 3px); }
   #menuBtn, #infoBtn {
     min-height: 44px;
     width: 44px;
@@ -720,6 +722,7 @@
     <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
   </div>
   <button id="milesDockBtn" style="display:none;">MILES</button>
+  <button id="goDockBtn">GO</button>
   <button id="updateBtn">LOG</button>
   <button id="receiptDockBtn">RECEIPT</button>
 </div>
@@ -6142,6 +6145,258 @@ document.getElementById('dailyMilesBtn').addEventListener('click', () => {
   const ov = document.getElementById('menuOverlay'); if (ov) ov.click();
   showDailyMiles();
 });
+</script>
+<script>
+// Road Router: tap GO, say or type where you are going, and Field Twin drives you there.
+// Places you have already logged come first. If nothing you logged matches, the Field Twin service
+// reads what you said and fills in the gap, then the address is looked up near you. Routes come from
+// the free open street map router. No ads, no traffic feed. Off the line for three fixes in a row
+// means a new route from where you are.
+let navState = null;
+const NAV_ROUTER = 'https://router.project-osrm.org/route/v1/driving/';
+
+function navMeters(a, b) { return dmCrow(a.lat, a.lon, b.lat, b.lon) * 1609.34; }
+function navSay(text) {
+  try { if (window.FieldTwinNative && typeof window.FieldTwinNative.speak === 'function') { window.FieldTwinNative.speak(text); return; } } catch (e) {}
+  try { if (window.speechSynthesis) { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } } catch (e) {}
+}
+function navFeet(m) {
+  const mi = m / 1609.34;
+  if (mi >= 0.2) return (Math.round(mi * 10) / 10) + ' miles';
+  return (Math.round(m * 3.28084 / 50) * 50) + ' feet';
+}
+
+// Your logged places, one per spot, with how often you went there.
+function navSites() {
+  const by = {};
+  entries.forEach(e => {
+    if (!hasPos(e) || ['receipt', 'odometer', 'debrief', 'mileday', 'none'].indexOf(e.category) !== -1) return;
+    const k = e.lat.toFixed(3) + ',' + e.lon.toFixed(3);
+    const s = by[k] || (by[k] = { id: k, lat: e.lat, lon: e.lon, label: e.addressLabel || 'Logged stop', cat: e.category, visits: 0, words: '', last: 0 });
+    s.visits++;
+    s.last = Math.max(s.last, new Date(e.timestamp).getTime());
+    const meta = CATEGORIES[e.category] || {};
+    s.words += ' ' + [e.addressLabel, meta.label, e.context, (e.answers || []).filter(a => typeof a === 'string' && a.length < 80).join(' ')].join(' ');
+  });
+  return Object.keys(by).map(k => { by[k].words = ' ' + by[k].words.toLowerCase().replace(/[^a-z0-9]+/g, ' '); return by[k]; });
+}
+function navMatch(q, sites) {
+  const toks = q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t.length > 1 && ['the', 'to', 'on', 'at', 'go', 'going', 'in', 'of', 'and', 'part', 'town', 'address', 'is', 'its', 'supposed', 'hey'].indexOf(t) === -1);
+  if (!toks.length) return [];
+  return sites.map(s => {
+    let hit = 0;
+    toks.forEach(t => { if (s.words.indexOf(' ' + t) !== -1) hit++; });
+    return { s: s, score: hit / toks.length + Math.min(s.visits, 10) * 0.01 };
+  }).filter(x => x.score >= 0.5).sort((a, b) => b.score - a.score).slice(0, 5).map(x => x.s);
+}
+
+async function navAsk(text, sites, me) {
+  const base = typeof getApiBase === 'function' ? getApiBase() : '';
+  if (!base) return null;
+  const headers = { 'Content-Type': 'application/json' };
+  try { await apiAuthHeaders(headers); } catch (e) {}
+  const body = JSON.stringify({ text: text, near: me ? { lat: me.lat, lon: me.lon } : null,
+    sites: sites.sort((a, b) => b.visits - a.visits).slice(0, 60).map(s => ({ id: s.id, label: s.label, kind: (CATEGORIES[s.cat] || {}).label || s.cat, visits: s.visits })) });
+  try {
+    const res = await fetch(base.replace(/\/+$/, '') + '/destination', { method: 'POST', headers: headers, body: body });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) { return null; }
+}
+async function navLookup(q, me) {
+  let url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&q=' + encodeURIComponent(q);
+  if (me) url += '&viewbox=' + [me.lon - 0.6, me.lat + 0.6, me.lon + 0.6, me.lat - 0.6].join(',') + '&bounded=0';
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) return [];
+  const list = await res.json();
+  return list.map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), label: r.display_name }))
+    .sort((a, b) => me ? navMeters(me, a) - navMeters(me, b) : 0);
+}
+// Snap to the storefront: look for a place with that store name within a few hundred feet.
+async function navStorefront(spot, name) {
+  if (!name) return null;
+  const safe = name.replace(/["\\]/g, '').slice(0, 60);
+  const q = '[out:json][timeout:10];nwr(around:300,' + spot.lat + ',' + spot.lon + ')["name"~"' + safe + '",i];out center 5;';
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const el = (j.elements || [])[0];
+    if (!el) return null;
+    const lat = el.lat || (el.center && el.center.lat), lon = el.lon || (el.center && el.center.lon);
+    return isFinite(lat) ? { lat: lat, lon: lon, label: (el.tags && el.tags.name) || name } : null;
+  } catch (e) { return null; }
+}
+
+function showGo() {
+  const panel = document.getElementById('panel');
+  let html = '<h2>GO</h2>';
+  html += '<div class="meta-line">Say or type where you are going. Tap the microphone on your keyboard to talk.</div>';
+  html += '<input type="text" id="goText" autocomplete="off" placeholder="Store, street or address">';
+  html += '<div id="goList"></div>';
+  html += '<div class="meta-line" id="goMsg"></div>';
+  html += '<div class="panel-actions"><button id="goFind">FIND IT</button>' + (navState ? '<button class="secondary" id="goStop">END ROUTE</button>' : '') + '<button class="secondary" id="goClose">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  const input = document.getElementById('goText');
+  const list = document.getElementById('goList');
+  const msg = document.getElementById('goMsg');
+  const sites = navSites();
+  let choices = [];
+  const paint = (items, title) => {
+    choices = items;
+    list.innerHTML = items.length ? '<div class="question">' + title + '</div>' + items.map((s, i) =>
+      '<div class="mi-row" data-go="' + i + '"><b>' + escapeHtml(s.name || s.label) + '</b>' +
+      (s.visits ? '<br><span class="meta-line">logged ' + s.visits + (s.visits === 1 ? ' time' : ' times') + '</span>' : (s.name && s.label !== s.name ? '<br><span class="meta-line">' + escapeHtml(s.label) + '</span>' : '')) + '</div>').join('') : '';
+    list.querySelectorAll('[data-go]').forEach(el => el.addEventListener('click', () => navStart(choices[Number(el.getAttribute('data-go'))])));
+  };
+  let t = null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => paint(navMatch(input.value, sites), 'Places you logged'), 250);
+  });
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') document.getElementById('goFind').click(); });
+  document.getElementById('goFind').addEventListener('click', async () => {
+    const q = input.value.trim();
+    if (!q) { msg.textContent = 'Say or type a place first.'; return; }
+    const local = navMatch(q, sites);
+    const me = mySpot();
+    msg.textContent = 'Looking it up.';
+    const ai = await navAsk(q, sites, me);
+    const found = [];
+    if (ai && ai.site_id) { const s = sites.find(x => x.id === ai.site_id); if (s) found.push(s); }
+    const query = ai && ai.search ? ai.search : q;
+    let spots = [];
+    try { spots = await navLookup(query, me); } catch (e) { spots = []; }
+    for (const sp of spots.slice(0, 3)) {
+      const front = ai && ai.store ? await navStorefront(sp, ai.store) : null;
+      found.push(front ? { lat: front.lat, lon: front.lon, name: front.label, label: sp.label } : { lat: sp.lat, lon: sp.lon, name: (ai && ai.store) || '', label: sp.label });
+      if (front) break;
+    }
+    local.forEach(s => { if (found.indexOf(s) === -1) found.push(s); });
+    msg.textContent = found.length ? '' : 'Nothing found. Add the street name or the city.';
+    paint(found.slice(0, 6), 'Pick where to go');
+  });
+  if (navState) document.getElementById('goStop').addEventListener('click', () => { navEnd('Route ended.'); closePanel(); });
+  document.getElementById('goClose').addEventListener('click', closePanel);
+  setTimeout(() => input.focus(), 200);
+}
+
+async function navRoute(from, to) {
+  const url = NAV_ROUTER + from.lon + ',' + from.lat + ';' + to.lon + ',' + to.lat + '?overview=full&geometries=geojson&steps=true';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('the router did not answer');
+  const j = await res.json();
+  if (!j.routes || !j.routes.length) throw new Error('no road route found');
+  const r = j.routes[0];
+  const steps = [];
+  r.legs.forEach(l => l.steps.forEach(s => steps.push({ lat: s.maneuver.location[1], lon: s.maneuver.location[0], text: navWords(s), said: false })));
+  return { line: r.geometry.coordinates.map(c => [c[1], c[0]]), miles: r.distance / 1609.34, mins: r.duration / 60, steps: steps };
+}
+function navWords(s) {
+  const m = s.maneuver, road = s.name ? ' onto ' + s.name : '';
+  const mod = m.modifier ? m.modifier.replace('slight ', 'slightly ').replace('sharp ', 'sharply ') : '';
+  if (m.type === 'depart') return 'Head out' + (s.name ? ' on ' + s.name : '');
+  if (m.type === 'arrive') return 'You have arrived';
+  if (m.type === 'roundabout' || m.type === 'rotary') return 'At the roundabout take exit ' + (m.exit || 1) + road;
+  if (m.type === 'merge') return 'Merge' + (mod ? ' ' + mod : '') + road;
+  if (m.type === 'on ramp') return 'Take the ramp' + (mod ? ' on the ' + mod.replace('slightly ', '') : '') + road;
+  if (m.type === 'off ramp') return 'Take the exit' + (mod ? ' on the ' + mod.replace('slightly ', '') : '') + road;
+  if (m.type === 'fork') return 'Keep ' + (mod || 'straight') + ' at the fork' + road;
+  if (mod === 'straight') return 'Continue straight' + road;
+  if (mod === 'uturn') return 'Make a U turn' + road;
+  return 'Turn ' + (mod || 'ahead') + road;
+}
+
+async function navStart(dest) {
+  closePanel();
+  const me = mySpot();
+  if (!me) { setStatus('no location yet, turn on Location and try again'); return; }
+  navEnd();
+  navState = { dest: dest, off: 0, lastRoute: 0, layer: L.layerGroup().addTo(map), watch: null, timer: null, follow: true };
+  try { await navDraw(me); } catch (e) { setStatus(e.message); navEnd(); return; }
+  navBanner();
+  if (navigator.geolocation) {
+    try { navState.watch = navigator.geolocation.watchPosition(p => navTick({ lat: p.coords.latitude, lon: p.coords.longitude }), () => {}, { enableHighAccuracy: true, maximumAge: 2000 }); } catch (e) {}
+  }
+  navState.timer = setInterval(() => { const s = mySpot(); if (s) navTick(s); }, 3000);
+  map.on('dragstart', navUnfollow);
+}
+function navUnfollow() { if (navState) navState.follow = false; }
+async function navDraw(from) {
+  const r = await navRoute(from, navState.dest);
+  navState.route = r; navState.next = 1; navState.lastRoute = Date.now(); navState.off = 0;
+  navState.layer.clearLayers();
+  L.polyline(r.line, { color: '#1265c9', weight: 7, opacity: 0.85 }).addTo(navState.layer);
+  L.circleMarker([navState.dest.lat, navState.dest.lon], { radius: 9, color: '#0a1b2e', fillColor: '#2e9e4f', fillOpacity: 1, weight: 3 }).addTo(navState.layer);
+  map.fitBounds(L.latLngBounds(r.line), { padding: [40, 40] });
+  const first = r.steps[1] || r.steps[0];
+  navSay('Route ready, ' + Math.round(r.miles) + ' miles. ' + (first ? first.text : ''));
+}
+function navBanner() {
+  let b = document.getElementById('navBanner');
+  if (!navState) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'navBanner';
+    b.style.cssText = 'position:absolute;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:960;background:#ffffff;color:#0a1b2e;border:3px solid #0a1b2e;box-shadow:4px 4px 0 #0a1b2e;padding:10px 12px;font-size:18px;font-weight:700;display:flex;gap:10px;align-items:center;justify-content:space-between;';
+    document.body.appendChild(b);
+  }
+  const r = navState.route, st = r && r.steps[navState.next];
+  const me = mySpot();
+  const dist = st && me ? navFeet(navMeters(me, st)) : '';
+  b.innerHTML = '<div style="flex:1;"><div>' + escapeHtml(st ? st.text : 'Getting a route') + '</div><div style="font-size:13px;font-weight:400;">' + (dist ? 'in ' + dist + ', ' : '') + (r ? Math.round(r.miles) + ' miles total' : '') + '</div></div>' +
+    '<button class="secondary" id="navCenter" style="padding:8px;font-size:11px;">CENTER</button><button class="secondary" id="navEndBtn" style="padding:8px;font-size:11px;">END</button>';
+  document.getElementById('navEndBtn').addEventListener('click', () => navEnd('Route ended.'));
+  document.getElementById('navCenter').addEventListener('click', () => { if (navState) { navState.follow = true; const s = mySpot(); if (s) map.panTo([s.lat, s.lon]); } });
+}
+function navLineMeters(p, line) {
+  let best = Infinity;
+  const k = Math.cos(p.lat * Math.PI / 180) * 111320;
+  for (let i = 1; i < line.length; i++) {
+    const ax = (line[i - 1][1] - p.lon) * k, ay = (line[i - 1][0] - p.lat) * 110540;
+    const bx = (line[i][1] - p.lon) * k, by = (line[i][0] - p.lat) * 110540;
+    const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+    let t = len ? -(ax * dx + ay * dy) / len : 0;
+    t = Math.max(0, Math.min(1, t));
+    const x = ax + t * dx, y = ay + t * dy;
+    best = Math.min(best, Math.sqrt(x * x + y * y));
+  }
+  return best;
+}
+async function navTick(p) {
+  if (!navState || !navState.route || navState.busy) return;
+  const r = navState.route;
+  if (navState.follow) map.panTo([p.lat, p.lon], { animate: true });
+  if (navMeters(p, navState.dest) < 60) { navSay('You have arrived.'); navEnd('Arrived.'); return; }
+  const st = r.steps[navState.next];
+  if (st) {
+    const d = navMeters(p, st);
+    if (d < 30 && navState.next < r.steps.length - 1) { navState.next++; }
+    else if (d < 250 && !st.said) { st.said = true; navSay('In ' + navFeet(d) + ', ' + st.text); }
+  }
+  if (navLineMeters(p, r.line) > 60) navState.off++; else navState.off = 0;
+  if (navState.off >= 3 && Date.now() - navState.lastRoute > 15000) {
+    navState.busy = true;
+    navSay('Finding a new route.');
+    try { await navDraw(p); } catch (e) { setStatus(e.message); }
+    navState.busy = false;
+  }
+  navBanner();
+}
+function navEnd(note) {
+  if (!navState) { navBanner(); return; }
+  try { if (navState.watch !== null) navigator.geolocation.clearWatch(navState.watch); } catch (e) {}
+  clearInterval(navState.timer);
+  try { map.removeLayer(navState.layer); } catch (e) {}
+  map.off('dragstart', navUnfollow);
+  navState = null;
+  navBanner();
+  if (note) setStatus(note.toLowerCase().replace(/\.$/, ''));
+}
+
+document.getElementById('goDockBtn').addEventListener('click', showGo);
 </script>
 </body>
 </html>

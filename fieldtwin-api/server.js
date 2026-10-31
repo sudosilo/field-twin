@@ -296,6 +296,42 @@ app.post('/debrief', async (req, res) => {
   }
 });
 
+const DEST_PROMPT = [
+  'A field service technician said where he is going, often through voice typing, so words may be misheard.',
+  'Below is what he said, then places he has already logged, each with an id.',
+  'If one logged place is clearly where he means, return its id as site_id.',
+  'Always return search, a clean address search line with house number if given, street, city and state, filling gaps you are sure of from the logged places and the nearby point.',
+  'Return store as the store or business name he means, spelled the way the business spells it, or an empty string.',
+  'Reply with only a JSON object with keys site_id, search, store and say. say is one short plain sentence telling him where you are sending him.'
+].join(' ');
+
+app.post('/destination', async (req, res) => {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const required = process.env.API_TOKEN || '';
+  if (required && token !== required && !(await isSignedInUser(token))) return res.sendStatus(401);
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'model key not configured' });
+  const text = req.body && typeof req.body.text === 'string' ? req.body.text.slice(0, 500) : '';
+  if (!text) return res.status(400).json({ error: 'text required' });
+  const sites = Array.isArray(req.body.sites) ? req.body.sites.slice(0, 60) : [];
+  const near = req.body.near && isFinite(req.body.near.lat) ? req.body.near : null;
+  let content = DEST_PROMPT + '\n\nHE SAID\n' + text;
+  if (near) content += '\n\nHE IS NEAR ' + Number(near.lat).toFixed(3) + ', ' + Number(near.lon).toFixed(3);
+  if (sites.length) content += '\n\nLOGGED PLACES\n' + sites.map(s => String(s.id).slice(0, 30) + ' | ' + String(s.label || '').slice(0, 120) + ' | ' + String(s.kind || '').slice(0, 40) + ' | visits ' + (Number(s.visits) || 0)).join('\n');
+  try {
+    const apiRes = await debriefCall(VISION_MODEL, { max_tokens: 400, messages: [{ role: 'user', content: content }] });
+    if (!apiRes.ok) return res.status(502).json({ error: 'destination call failed, status ' + apiRes.status });
+    const data = await apiRes.json();
+    const raw = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+    if (a === -1 || b === -1) return res.status(502).json({ error: 'model did not return json' });
+    const j = JSON.parse(raw.slice(a, b + 1));
+    res.json({ site_id: j.site_id || null, search: String(j.search || '').slice(0, 200), store: String(j.store || '').slice(0, 80), say: String(j.say || '').slice(0, 200) });
+  } catch (e) {
+    console.error('destination failed', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({ service: 'fieldtwin-api', endpoints: ['/health', '/cameras', '/status', '/receipts/extract', '/debrief', '/events', '/crashes'] });
 });
