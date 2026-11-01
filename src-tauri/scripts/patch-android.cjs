@@ -33,5 +33,10 @@ if (!s.includes('android:scheme="fieldtwin"')) {
   s = s.slice(0, i) + filter + s.slice(i);
 }
 if (!s.includes("android:launchMode")) s = s.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:launchMode="singleTask"');
+if (!s.includes("supportsPictureInPicture")) s = s.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:supportsPictureInPicture="true"');
+const need = ["screenSize", "smallestScreenSize", "screenLayout", "orientation"];
+const cm = s.match(/android:configChanges="([^"]*)"/);
+if (cm) { const have = cm[1].split("|"); for (const n of need) if (!have.includes(n)) have.push(n); s = s.replace(cm[0], 'android:configChanges="' + have.join("|") + '"'); }
+else s = s.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:configChanges="' + need.join("|") + '"');
 fs.writeFileSync(mf, s);
 console.log("Field Twin Android project patched");

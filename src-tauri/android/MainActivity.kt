@@ -40,6 +40,22 @@ class MainActivity : TauriActivity() {
     ViewCompat.requestApplyInsets(root)
   }
 
+  // Leaving the app while a route is running shrinks it to the floating window instead of hiding it.
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && FieldTwinState.prefs(this).getBoolean("autoPip", false)) {
+      try {
+        enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(3, 4)).build())
+      } catch (e: Exception) {}
+    }
+  }
+
+  // Tells the page when the floating window opens or closes so it can show only the map and the next turn.
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    FieldTwinBridge.web?.evaluateJavascript("window.ftPip && window.ftPip(" + isInPictureInPictureMode + ")", null)
+  }
+
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)

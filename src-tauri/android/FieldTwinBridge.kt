@@ -219,6 +219,24 @@ class FieldTwinBridge(private val activity: Activity) {
 
   // Opens a link in the app that owns it, such as Google Maps for a driving route.
   @JavascriptInterface
+  fun enterPip(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+    var ok = true
+    activity.runOnUiThread {
+      try {
+        val p = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(3, 4)).build()
+        ok = activity.enterPictureInPictureMode(p)
+      } catch (e: Exception) { ok = false }
+    }
+    return ok
+  }
+
+  @JavascriptInterface
+  fun setAutoPip(on: Boolean) {
+    FieldTwinState.prefs(activity).edit().putBoolean("autoPip", on).apply()
+  }
+
+  @JavascriptInterface
   fun openUrl(url: String) {
     if (!url.startsWith("https://")) return
     activity.runOnUiThread {

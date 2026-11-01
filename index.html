@@ -697,6 +697,12 @@
     font-size: 14px;
     border-radius: 8px;
   }
+  body.pip header, body.pip #twinTabs, body.pip #actionBar, body.pip #violetView, body.pip .leaflet-control-container, body.pip #panel, body.pip #menuOverlay, body.pip #sideMenu { display: none !important; }
+  body.pip #map { top: 0 !important; bottom: 0 !important; }
+  body.pip #navBanner { top: 4px !important; bottom: auto !important; left: 6px !important; right: 6px !important; }
+  body.pip #navBanner button { display: none !important; }
+  body.pip #navBanner div div:first-child { font-size: 13px !important; }
+  body.pip #navBanner div div + div { font-size: 10px !important; }
 </style>
 </head>
 <body>
@@ -2443,6 +2449,22 @@ function initHere() {
     }
   });
   map.addControl(new Locate());
+  if (window.FieldTwinNative && typeof window.FieldTwinNative.enterPip === 'function') {
+    const Pip = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: function () {
+        const bar = L.DomUtil.create('div', 'leaflet-bar');
+        const a = L.DomUtil.create('a', 'here-btn', bar);
+        a.href = '#';
+        a.title = 'Shrink the map to a floating window';
+        a.setAttribute('aria-label', 'Shrink the map to a floating window');
+        a.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#0b4ea2" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><rect x="11.5" y="11" width="8" height="6.5" rx="1" fill="#0b4ea2"/></svg>';
+        L.DomEvent.on(a, 'click', ev => { L.DomEvent.stop(ev); ftEnterPip(); });
+        return bar;
+      }
+    });
+    map.addControl(new Pip());
+  }
   document.getElementById('hereToggleBtn').addEventListener('click', () => {
     hereOn = !hereOn;
     try { localStorage.setItem('hereOn', hereOn ? '1' : '0'); } catch (e) {}
@@ -6345,10 +6367,24 @@ async function navDraw(from) {
   const first = r.steps[1] || r.steps[0];
   navSay('Route ready, ' + Math.round(r.miles) + ' miles. ' + (first ? first.text : ''));
 }
+// Floating window (picture in picture) for the phone app: only the map and the next turn show while it floats.
+function ftEnterPip() {
+  try { if (window.FieldTwinNative && window.FieldTwinNative.enterPip()) return; } catch (e) {}
+  setStatus('floating window is not available on this phone');
+}
+function ftPipAuto() {
+  try { if (window.FieldTwinNative && typeof window.FieldTwinNative.setAutoPip === 'function') window.FieldTwinNative.setAutoPip(!!navState); } catch (e) {}
+}
+window.ftPip = function (on) {
+  document.body.classList.toggle('pip', !!on);
+  if (on) { closePanel && closePanel(); const s = mySpot(); if (navState) navState.follow = true; if (s) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 16), { animate: false }); }
+  setTimeout(() => { try { map.invalidateSize(); } catch (e) {} navBanner(); }, 150);
+};
 function navBanner() {
   let b = document.getElementById('navBanner');
   const ctl = document.querySelector('.leaflet-top.leaflet-left');
   if (ctl) ctl.style.marginTop = '';
+  ftPipAuto();
   if (!navState) { if (b) b.remove(); return; }
   if (!b) {
     b = document.createElement('div');
