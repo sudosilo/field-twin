@@ -6377,9 +6377,17 @@ function ftPipAuto() {
 }
 window.ftPip = function (on) {
   document.body.classList.toggle('pip', !!on);
-  if (on) { closePanel && closePanel(); const s = mySpot(); if (navState) navState.follow = true; if (s) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 16), { animate: false }); }
-  setTimeout(() => { try { map.invalidateSize(); } catch (e) {} navBanner(); }, 150);
+  if (on) { try { closePanel(); } catch (e) {} if (navState) navState.follow = true; }
+  [60, 250, 600, 1200, 2000].forEach(t => setTimeout(ftPipCenter, t));
 };
+// The window shrinks after Android says it is floating, so after every size change refit the map and put me back in the middle.
+function ftPipCenter() {
+  try { map.invalidateSize({ pan: false }); } catch (e) {}
+  const s = mySpot();
+  if (s && (document.body.classList.contains('pip') || (navState && navState.follow))) map.setView([s.lat, s.lon], document.body.classList.contains('pip') ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: false });
+  navBanner();
+}
+window.addEventListener('resize', () => { if (document.body.classList.contains('pip')) ftPipCenter(); });
 function navBanner() {
   let b = document.getElementById('navBanner');
   const ctl = document.querySelector('.leaflet-top.leaflet-left');
