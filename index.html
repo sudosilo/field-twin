@@ -752,6 +752,7 @@
   <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Look things up</h3>
+  <button class="secondary" id="lockersBtn">LOCKERS</button>
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="timelineBtn">TIMELINE</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
@@ -5105,8 +5106,11 @@ function showEntry(entry, fromHistory) {
       });
     }
   }
-  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button><button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
+  const lockerHere = hasPos(entry) ? ftpNear(entry.lat, entry.lon, 80, 'locker') : null;
+  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button>' + (hasPos(entry) ? '<button class="secondary" id="lockerPageBtn">' + (lockerHere ? 'LOCKER PAGE' : 'MAKE LOCKER') + '</button>' : '') + '<button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
+  const lpb = document.getElementById('lockerPageBtn');
+  if (lpb) lpb.addEventListener('click', () => showLocker(lockerHere || ftpMakeLocker(entry)));
   panel.scrollTop = 0;
   panel.classList.add('open');
   if (!entry.photo && entry.photoPath) {
@@ -5289,6 +5293,11 @@ async function init() {
   document.getElementById('mileageBtn').addEventListener('click', () => {
     closeMenu();
     showMileage();
+  });
+
+  document.getElementById('lockersBtn').addEventListener('click', () => {
+    closeMenu();
+    showLockers();
   });
 
   document.getElementById('debriefsBtn').addEventListener('click', () => {
@@ -6202,13 +6211,14 @@ function navSites() {
   return Object.keys(by).map(k => { by[k].words = ' ' + by[k].words.toLowerCase().replace(/[^a-z0-9]+/g, ' '); return by[k]; });
 }
 function navMatch(q, sites) {
-  const toks = q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t.length > 1 && ['the', 'to', 'on', 'at', 'go', 'going', 'in', 'of', 'and', 'part', 'town', 'address', 'is', 'its', 'supposed', 'hey'].indexOf(t) === -1);
+  const toks = q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t.length > 1 && ['the', 'to', 'on', 'at', 'go', 'going', 'in', 'of', 'and', 'part', 'town', 'address', 'is', 'its', 'supposed', 'hey', 'want', 'take', 'me', 'navigate'].indexOf(t) === -1);
   if (!toks.length) return [];
   return sites.map(s => {
-    let hit = 0;
-    toks.forEach(t => { if (s.words.indexOf(' ' + t) !== -1) hit++; });
-    return { s: s, score: hit / toks.length + Math.min(s.visits, 10) * 0.01 };
-  }).filter(x => x.score >= 0.5).sort((a, b) => b.score - a.score).slice(0, 5).map(x => x.s);
+    let hit = 0, nameHit = 0;
+    const nm = ' ' + String(s.pname || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+    toks.forEach(t => { if (s.words.indexOf(' ' + t) !== -1) hit++; if (nm.indexOf(' ' + t + ' ') !== -1) nameHit++; });
+    return { s: s, score: hit / toks.length + nameHit + (s.imp || Math.min(s.visits, 10) * 0.01) };
+  }).filter(x => x.score >= 0.5).sort((a, b) => b.score - a.score).filter((x, i, all) => all[0].score < 1 || x.score >= 1).slice(0, 6).map(x => x.s);
 }
 
 async function navAsk(text, sites, me) {
@@ -6217,7 +6227,7 @@ async function navAsk(text, sites, me) {
   const headers = { 'Content-Type': 'application/json' };
   try { await apiAuthHeaders(headers); } catch (e) {}
   const body = JSON.stringify({ text: text, near: me ? { lat: me.lat, lon: me.lon } : null,
-    sites: sites.sort((a, b) => b.visits - a.visits).slice(0, 60).map(s => ({ id: s.id, label: s.label, kind: (CATEGORIES[s.cat] || {}).label || s.cat, visits: s.visits })) });
+    sites: sites.slice().sort((a, b) => (b.imp || 0) - (a.imp || 0) || b.visits - a.visits).slice(0, 80).map(s => ({ id: s.id, label: (s.name ? s.name + ', ' : '') + s.label, kind: (CATEGORIES[s.cat] || {}).label || s.cat, visits: s.visits })) });
   try {
     const res = await fetch(base.replace(/\/+$/, '') + '/destination', { method: 'POST', headers: headers, body: body });
     if (!res.ok) return null;
@@ -6263,7 +6273,7 @@ function showGo() {
   const input = document.getElementById('goText');
   const list = document.getElementById('goList');
   const msg = document.getElementById('goMsg');
-  const sites = navSites();
+  const sites = ftpPool(navSites());
   let choices = [];
   const paint = (items, title) => {
     choices = items;
@@ -6275,8 +6285,9 @@ function showGo() {
   let t = null;
   input.addEventListener('input', () => {
     clearTimeout(t);
-    t = setTimeout(() => paint(navMatch(input.value, sites), 'Places you logged'), 250);
+    t = setTimeout(() => input.value.trim() ? paint(navMatch(input.value, sites), 'Your places') : paint(ftpTop(sites), 'Your top places'), 250);
   });
+  paint(ftpTop(sites), 'Your top places');
   input.addEventListener('keydown', ev => { if (ev.key === 'Enter') document.getElementById('goFind').click(); });
   document.getElementById('goFind').addEventListener('click', async () => {
     const q = input.value.trim();
@@ -6481,6 +6492,212 @@ function navEnd(note) {
 }
 
 document.getElementById('goDockBtn').addEventListener('click', showGo);
+</script>
+<script>
+// Places: named lockers, plus spots you drove to or picked in GO. GO lists these first, ranked by how often you
+// arrived, picked or logged there. Saved on this phone and in the cloud table field_twin_places for your other phones.
+let ftPlaces = [];
+try { ftPlaces = JSON.parse(localStorage.getItem('ftPlaces') || '[]') || []; } catch (e) { ftPlaces = []; }
+function ftpSaveLocal() { try { localStorage.setItem('ftPlaces', JSON.stringify(ftPlaces)); } catch (e) {} }
+function ftpId() { try { return crypto.randomUUID(); } catch (e) { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2); } }
+function ftpDist(lat1, lon1, lat2, lon2) { return dmCrow(lat1, lon1, lat2, lon2) * 1609.34; }
+function ftpNear(lat, lon, m, kind) {
+  let best = null, bd = m || 80;
+  ftPlaces.forEach(p => { if (kind && p.kind !== kind) return; const d = ftpDist(lat, lon, p.lat, p.lon); if (d <= bd) { bd = d; best = p; } });
+  return best;
+}
+function ftpRow(p) {
+  return { id: p.id, kind: p.kind, name: p.name || '', lat: p.lat, lon: p.lon, address: p.address || '', notes: p.notes || '',
+    arrivals: p.arrivals || 0, searches: p.searches || 0, last_at: p.last_at || null, updated_at: p.updated_at };
+}
+async function ftpPush(p) {
+  p.updated_at = new Date().toISOString();
+  ftpSaveLocal();
+  if (typeof cloudReady !== 'function' || !cloudReady()) { p.dirty = true; ftpSaveLocal(); return; }
+  try { const r = await sb.from('field_twin_places').upsert(ftpRow(p), { onConflict: 'id' }); p.dirty = !!r.error; } catch (e) { p.dirty = true; }
+  ftpSaveLocal();
+}
+async function ftpPull() {
+  if (typeof cloudReady !== 'function' || !cloudReady()) return;
+  try {
+    const r = await sb.from('field_twin_places').select('*').range(0, 4999);
+    if (r.error) return;
+    const byId = {};
+    ftPlaces.forEach(p => { byId[p.id] = p; });
+    (r.data || []).forEach(row => {
+      const mine = byId[row.id];
+      if (!mine || (!mine.dirty && String(row.updated_at) > String(mine.updated_at || ''))) {
+        byId[row.id] = { id: row.id, kind: row.kind, name: row.name, lat: row.lat, lon: row.lon, address: row.address, notes: row.notes,
+          arrivals: row.arrivals, searches: row.searches, last_at: row.last_at, updated_at: row.updated_at };
+      }
+    });
+    ftPlaces = Object.keys(byId).map(k => byId[k]);
+    ftpSaveLocal();
+    for (const p of ftPlaces.filter(x => x.dirty)) await ftpPush(p);
+  } catch (e) {}
+}
+// Pulls a locker name out of notes: "locker Lasso", "Lasso locker", "named Lasso", or a note that is just the name.
+const FTP_SKIP = ['amazon', 'hub', 'parcel', 'the', 'this', 'that', 'a', 'an', 'at', 'big', 'small', 'new', 'old', 'locker', 'lockers', 'counter', 'is', 'was', 'and', 'to', 'of', 'in', 'on', 'for', 'with', 'no', 'yes', 'unit', 'kiosk', 'outdoor', 'indoor', 'apex', 'quadient', 'unknown', 'unbranded'];
+function ftpNameFrom(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  const pats = [/\blocker\s*(?:name)?\s*[:#-]?\s*([A-Za-z][A-Za-z'-]{1,24})/i, /\b([A-Za-z][A-Za-z'-]{1,24})\s+locker\b/i, /\b(?:named|called|name\s*[:-]?)\s*([A-Za-z][A-Za-z'-]{1,24})/i];
+  for (const re of pats) { const m = t.match(re); if (m && FTP_SKIP.indexOf(m[1].toLowerCase()) === -1) return m[1]; }
+  if (/^[A-Za-z][A-Za-z'-]{1,24}$/.test(t) && FTP_SKIP.indexOf(t.toLowerCase()) === -1) return t;
+  return '';
+}
+function ftpNoteTexts(e) {
+  const out = [];
+  if (e.context) out.push(e.context);
+  (e.questions || []).forEach((q, i) => {
+    const qt = typeof q === 'string' ? q : (q && q.text) || '';
+    const a = (e.answers || [])[i];
+    if (typeof a === 'string' && a && /note|comment|name|context|detail/i.test(qt)) out.push(a);
+  });
+  return out;
+}
+function ftpCap(w) { return w.charAt(0).toUpperCase() + w.slice(1); }
+// Every spot logged as a parcel locker becomes a locker place, named from its notes when a name is in there.
+function ftpSeedLockers() {
+  let changed = [];
+  const byKey = {};
+  entries.forEach(e => {
+    if (e.category !== 'amazon_locker' || !hasPos(e)) return;
+    let p = ftpNear(e.lat, e.lon, 80, 'locker');
+    if (!p) {
+      p = { id: ftpId(), kind: 'locker', name: '', lat: e.lat, lon: e.lon, address: e.addressLabel || '', notes: '', arrivals: 0, searches: 0, last_at: null };
+      const other = ftpNear(e.lat, e.lon, 80, 'place');
+      if (other) { p.arrivals = other.arrivals || 0; p.searches = other.searches || 0; p.last_at = other.last_at; ftPlaces = ftPlaces.filter(x => x !== other); }
+      ftPlaces.push(p);
+      changed.push(p);
+    }
+    if (!p.name && !p.nameSet) {
+      for (const t of ftpNoteTexts(e)) { const n = ftpNameFrom(t); if (n) { p.name = ftpCap(n); if (changed.indexOf(p) === -1) changed.push(p); break; } }
+    }
+  });
+  if (changed.length) { ftpSaveLocal(); changed.forEach(p => ftpPush(p)); }
+}
+function ftpMakeLocker(entry) {
+  let p = ftpNear(entry.lat, entry.lon, 80, null);
+  if (p) { p.kind = 'locker'; }
+  else { p = { id: ftpId(), kind: 'locker', name: '', lat: entry.lat, lon: entry.lon, address: entry.addressLabel || '', notes: '', arrivals: 0, searches: 0, last_at: null }; ftPlaces.push(p); }
+  ftpPush(p);
+  return p;
+}
+function ftpBump(dest, field) {
+  if (!dest || !isFinite(dest.lat) || !isFinite(dest.lon)) return;
+  let p = dest.placeId ? ftPlaces.find(x => x.id === dest.placeId) : null;
+  if (!p) p = ftpNear(dest.lat, dest.lon, 80, null);
+  if (!p) {
+    p = { id: ftpId(), kind: 'place', name: dest.name && !/^locker /i.test(dest.name) ? dest.name : '', lat: dest.lat, lon: dest.lon, address: dest.label || '', notes: '', arrivals: 0, searches: 0, last_at: null };
+    ftPlaces.push(p);
+  }
+  p[field] = (p[field] || 0) + 1;
+  p.last_at = new Date().toISOString();
+  ftpPush(p);
+}
+function ftpLabel(p) { return p.kind === 'locker' ? (p.name ? 'Locker ' + p.name : 'Locker, no name yet') : (p.name || ''); }
+// Merges places with logged spots into one list for GO. Importance: arrivals count most, then picks, then entries logged there.
+function ftpPool(sites) {
+  const used = new Set();
+  const out = ftPlaces.map(p => {
+    let visits = 0, words = '';
+    sites.forEach(s => { if (ftpDist(p.lat, p.lon, s.lat, s.lon) <= 80) { visits += s.visits; words += s.words; used.add(s); } });
+    const name = ftpLabel(p);
+    const w = ' ' + [p.name, p.address, p.notes, p.kind === 'locker' ? 'locker lockers' : ''].join(' ').toLowerCase().replace(/[^a-z0-9]+/g, ' ') + words;
+    const days = p.last_at ? (Date.now() - new Date(p.last_at).getTime()) / 86400000 : 999;
+    const imp = Math.min(0.6, (p.arrivals || 0) * 0.06 + (p.searches || 0) * 0.03 + visits * 0.01) + (days < 14 ? 0.05 : 0);
+    return { id: 'place:' + p.id, placeId: p.id, lat: p.lat, lon: p.lon, name: name, pname: p.name, label: p.address || 'Saved place', cat: p.kind === 'locker' ? 'amazon_locker' : '', visits: visits, words: w, imp: imp, kind: p.kind, rank: (p.arrivals || 0) * 3 + (p.searches || 0) * 2 + visits, last: p.last_at ? new Date(p.last_at).getTime() : 0 };
+  });
+  sites.forEach(s => { if (!used.has(s)) { s.imp = Math.min(s.visits, 10) * 0.01; s.rank = s.visits; out.push(s); } });
+  return out;
+}
+function ftpTop(pool) {
+  return pool.slice().sort((a, b) => (b.rank || 0) - (a.rank || 0) || (b.last || 0) - (a.last || 0)).slice(0, 6);
+}
+
+// GO picks and arrivals raise a place's rank.
+(function () {
+  const start = navStart, end = navEnd;
+  navStart = async function (dest) { ftpBump(dest, 'searches'); return start(dest); };
+  navEnd = function (note) { if (note === 'Arrived.' && navState) ftpBump(navState.dest, 'arrivals'); return end(note); };
+  const pull = cloudPull;
+  cloudPull = async function () { const r = await pull.apply(this, arguments); await ftpPull(); ftpSeedLockers(); return r; };
+})();
+setTimeout(ftpSeedLockers, 2500);
+
+function ftpStopsAt(p) {
+  return entries.filter(e => hasPos(e) && ftpDist(p.lat, p.lon, e.lat, e.lon) <= 80 && e.category !== 'odometer' && e.category !== 'mileday')
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+function showLockers() {
+  ftpSeedLockers();
+  const panel = document.getElementById('panel');
+  const list = ftPlaces.filter(p => p.kind === 'locker');
+  let html = '<h2>LOCKERS</h2><div class="meta-line">Every spot logged as a parcel locker. Tap one to name it and see its visits and photos.</div>';
+  html += '<input type="text" id="lockerFind" autocomplete="off" placeholder="Locker name or street">';
+  html += '<div id="lockerRows"></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="lockersClose">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  const rows = document.getElementById('lockerRows');
+  const draw = q => {
+    q = (q || '').toLowerCase().trim();
+    const shown = list.filter(p => !q || (p.name + ' ' + p.address).toLowerCase().indexOf(q) !== -1)
+      .sort((a, b) => (a.name ? 0 : 1) - (b.name ? 0 : 1) || String(a.name || a.address).localeCompare(String(b.name || b.address)));
+    rows.innerHTML = shown.length ? shown.map(p => '<div class="mi-row" data-lk="' + p.id + '"><b style="color:#0b4ea2;">' + escapeHtml(ftpLabel(p)) + '</b><br><span class="meta-line">' + escapeHtml(p.address || '') + ' &nbsp; ' + ftpStopsAt(p).length + ' logged</span></div>').join('')
+      : '<div class="meta-line">No lockers yet. Log a stop as a parcel locker, or open any entry and tap MAKE LOCKER.</div>';
+    rows.querySelectorAll('[data-lk]').forEach(el => el.addEventListener('click', () => showLocker(ftPlaces.find(x => x.id === el.getAttribute('data-lk')))));
+  };
+  draw('');
+  document.getElementById('lockerFind').addEventListener('input', ev => draw(ev.target.value));
+  document.getElementById('lockersClose').addEventListener('click', closePanel);
+}
+function showLocker(p) {
+  if (!p) return;
+  const panel = document.getElementById('panel');
+  const stops = ftpStopsAt(p);
+  const pics = stops.filter(e => e.photo || e.photoPath);
+  let html = '<h2 style="text-transform:none;">' + escapeHtml(ftpLabel(p)) + '</h2>';
+  html += '<div class="meta-line">' + escapeHtml(p.address || '') + '</div>';
+  html += '<div class="meta-line">arrived ' + (p.arrivals || 0) + ', picked in GO ' + (p.searches || 0) + ', logged ' + stops.length + '</div>';
+  html += '<div class="question">Locker name</div><input type="text" id="lockerName" autocomplete="off" placeholder="Name, like Lasso" value="' + escapeHtml(p.name || '').replace(/"/g, '&quot;') + '">';
+  html += '<div class="question">Locker notes</div><textarea id="lockerNotes" rows="3" placeholder="Gate code, where to park, which bank">' + escapeHtml(p.notes || '') + '</textarea>';
+  html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">SAVE</button><button class="secondary" id="lockerGo" style="flex:1;">GO HERE</button></div>';
+  if (pics.length) {
+    html += '<div class="question">Photos</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
+      pics.map(e => '<img data-ph="' + e.id + '" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #0b4ea2;border-radius:6px;background:#eef4fb;cursor:pointer;"' + (e.photo ? ' src="' + e.photo + '"' : '') + '>').join('') + '</div>';
+  } else {
+    html += '<div class="meta-line">No photos here yet. Photos you add to entries logged at this locker show up here.</div>';
+  }
+  html += '<div class="question">Visits</div>';
+  html += stops.length ? stops.map(e => {
+    const note = ftpNoteTexts(e).join(' ').slice(0, 140);
+    return '<div class="mi-row" data-st="' + e.id + '"><b>' + new Date(e.timestamp).toLocaleDateString() + '</b> ' + escapeHtml((CATEGORIES[e.category] || {}).label || '') + (note ? '<br><span class="meta-line">' + escapeHtml(note) + '</span>' : '') + '</div>';
+  }).join('') : '<div class="meta-line">Nothing logged here yet.</div>';
+  html += '<div class="panel-actions"><button class="secondary" id="lockerBack">ALL LOCKERS</button><button class="secondary" id="lockerClose">CLOSE</button></div>';
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  pics.forEach(e => { if (!e.photo && e.photoPath) cloudPhotoUrl(e.photoPath).then(u => { const im = panel.querySelector('[data-ph="' + e.id + '"]'); if (im && u) im.src = u; }).catch(() => {}); });
+  panel.querySelectorAll('[data-ph],[data-st]').forEach(el => el.addEventListener('click', () => {
+    const e = entries.find(x => x.id === (el.getAttribute('data-ph') || el.getAttribute('data-st')));
+    if (e) showEntry(e);
+  }));
+  document.getElementById('lockerSave').addEventListener('click', () => {
+    p.name = document.getElementById('lockerName').value.trim();
+    p.notes = document.getElementById('lockerNotes').value.trim();
+    p.nameSet = true;
+    p.kind = 'locker';
+    ftpPush(p);
+    setStatus('locker saved');
+    showLocker(p);
+  });
+  document.getElementById('lockerGo').addEventListener('click', () => navStart({ lat: p.lat, lon: p.lon, name: ftpLabel(p), label: p.address, placeId: p.id }));
+  document.getElementById('lockerBack').addEventListener('click', showLockers);
+  document.getElementById('lockerClose').addEventListener('click', closePanel);
+}
 </script>
 <script>
 // Keeps the bottom panel above the on-screen keyboard: lifts it by however much of the screen the keyboard covers,

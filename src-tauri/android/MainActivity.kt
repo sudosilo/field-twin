@@ -51,11 +51,32 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  // Android pauses the page when the app loses focus, which freezes the floating window on its last full size frame.
+  // While floating, the page keeps drawing and running so it can shrink to the window and follow the route.
+  private fun keepPageRunning() {
+    val w = FieldTwinBridge.web ?: return
+    try {
+      w.onResume()
+      w.resumeTimers()
+      w.requestLayout()
+      w.invalidate()
+    } catch (e: Exception) {}
+  }
+
+  override fun onPause() {
+    super.onPause()
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N && isInPictureInPictureMode) {
+      keepPageRunning()
+      Handler(Looper.getMainLooper()).postDelayed({ keepPageRunning() }, 400)
+    }
+  }
+
   // Tells the page when the floating window opens or closes so it can show only the map and the next turn.
   override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     val root = findViewById<android.view.View>(android.R.id.content)
     if (isInPictureInPictureMode) root.setPadding(0, 0, 0, 0) else ViewCompat.requestApplyInsets(root)
+    keepPageRunning()
     FieldTwinBridge.web?.evaluateJavascript("window.ftPip && window.ftPip(" + isInPictureInPictureMode + ")", null)
   }
 
