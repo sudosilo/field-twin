@@ -698,8 +698,8 @@
     border-radius: 8px;
   }
   body.pip header, body.pip #twinTabs, body.pip #actionBar, body.pip #violetView, body.pip .leaflet-control-container, body.pip #panel, body.pip #menuOverlay, body.pip #sideMenu { display: none !important; }
-  body.pip #map { top: 0 !important; bottom: 0 !important; }
-  body.pip #navBanner { top: 4px !important; bottom: auto !important; left: 6px !important; right: 6px !important; }
+  body.pip { overflow: hidden; }
+  body.pip #navBanner { position: fixed !important; top: 4px !important; bottom: auto !important; left: 6px !important; right: auto !important; }
   body.pip #navBanner button { display: none !important; }
   body.pip #navBanner div div:first-child { font-size: 13px !important; }
   body.pip #navBanner div div + div { font-size: 10px !important; }
@@ -6179,10 +6179,8 @@ let navState = null;
 const NAV_ROUTER = 'https://router.project-osrm.org/route/v1/driving/';
 
 function navMeters(a, b) { return dmCrow(a.lat, a.lon, b.lat, b.lon) * 1609.34; }
-function navSay(text) {
-  try { if (window.FieldTwinNative && typeof window.FieldTwinNative.speak === 'function') { window.FieldTwinNative.speak(text); return; } } catch (e) {}
-  try { if (window.speechSynthesis) { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } } catch (e) {}
-}
+// Spoken directions are turned off: the route is silent on the phone app and the website.
+function navSay(text) {}
 function navFeet(m) {
   const mi = m / 1609.34;
   if (mi >= 0.2) return (Math.round(mi * 10) / 10) + ' miles';
@@ -6376,15 +6374,39 @@ function ftPipAuto() {
   try { if (window.FieldTwinNative && typeof window.FieldTwinNative.setAutoPip === 'function') window.FieldTwinNative.setAutoPip(!!navState); } catch (e) {}
 }
 window.ftPip = function (on) {
-  document.body.classList.toggle('pip', !!on);
-  if (on) { try { closePanel(); } catch (e) {} if (navState) navState.follow = true; }
+  ftPipOn = !!on;
+  document.body.classList.toggle('pip', ftPipOn);
+  if (ftPipOn) { try { closePanel(); } catch (e) {} if (navState) navState.follow = true; }
+  ftPipSize();
   [60, 250, 600, 1200, 2000].forEach(t => setTimeout(ftPipCenter, t));
 };
+let ftPipOn = false;
+// Sizes the map to exactly the floating window, measured by the phone, so it fills the window from its top left corner.
+function ftPipSize() {
+  const m = document.getElementById('map');
+  if (!ftPipOn) { m.style.cssText = ''; return; }
+  let w = 0, h = 0;
+  try { const z = String(window.FieldTwinNative.pipSize()).split(','); w = +z[0]; h = +z[1]; } catch (e) {}
+  if (!(w > 0 && h > 0)) { w = window.innerWidth; h = window.innerHeight; }
+  m.style.cssText = 'position:fixed;left:0;top:0;right:auto;bottom:auto;width:' + w + 'px;height:' + h + 'px;z-index:1;';
+  const b = document.getElementById('navBanner');
+  if (b) b.style.width = Math.max(40, w - 12) + 'px';
+}
+// Checks with the phone every second whether the app is floating, in case the phone's own notice does not reach the page.
+setInterval(() => {
+  try {
+    if (!window.FieldTwinNative || typeof window.FieldTwinNative.isPip !== 'function') return;
+    const on = !!window.FieldTwinNative.isPip();
+    if (on !== ftPipOn) window.ftPip(on);
+    else if (on) { const before = document.getElementById('map').style.width; ftPipSize(); if (document.getElementById('map').style.width !== before) ftPipCenter(); }
+  } catch (e) {}
+}, 1000);
 // The window shrinks after Android says it is floating, so after every size change refit the map and put me back in the middle.
 function ftPipCenter() {
+  if (ftPipOn) ftPipSize();
   try { map.invalidateSize({ pan: false }); } catch (e) {}
   const s = mySpot();
-  if (s && (document.body.classList.contains('pip') || (navState && navState.follow))) map.setView([s.lat, s.lon], document.body.classList.contains('pip') ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: false });
+  if (s && (ftPipOn || (navState && navState.follow))) map.setView([s.lat, s.lon], ftPipOn ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: false });
   navBanner();
 }
 window.addEventListener('resize', () => { if (document.body.classList.contains('pip')) ftPipCenter(); });

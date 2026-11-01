@@ -232,6 +232,16 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
+  fun isPip(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity.isInPictureInPictureMode
+
+  // Floating window size in page units, as "width,height".
+  @JavascriptInterface
+  fun pipSize(): String {
+    val c = activity.resources.configuration
+    return c.screenWidthDp.toString() + "," + c.screenHeightDp.toString()
+  }
+
+  @JavascriptInterface
   fun setAutoPip(on: Boolean) {
     FieldTwinState.prefs(activity).edit().putBoolean("autoPip", on).apply()
   }

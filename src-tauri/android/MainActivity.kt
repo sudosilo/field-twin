@@ -34,7 +34,8 @@ class MainActivity : TauriActivity() {
     root.setBackgroundColor(Color.WHITE)
     ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
       val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
-      v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N && isInPictureInPictureMode) v.setPadding(0, 0, 0, 0)
+      else v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
       WindowInsetsCompat.CONSUMED
     }
     ViewCompat.requestApplyInsets(root)
@@ -53,6 +54,8 @@ class MainActivity : TauriActivity() {
   // Tells the page when the floating window opens or closes so it can show only the map and the next turn.
   override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    val root = findViewById<android.view.View>(android.R.id.content)
+    if (isInPictureInPictureMode) root.setPadding(0, 0, 0, 0) else ViewCompat.requestApplyInsets(root)
     FieldTwinBridge.web?.evaluateJavascript("window.ftPip && window.ftPip(" + isInPictureInPictureMode + ")", null)
   }
 
