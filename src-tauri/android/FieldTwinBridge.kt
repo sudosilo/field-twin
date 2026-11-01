@@ -217,6 +217,19 @@ class FieldTwinBridge(private val activity: Activity) {
   @JavascriptInterface
   fun lastError(): String = FieldTwinState.prefs(activity).getString("lastError", "") ?: ""
 
+  // Opens a link in the app that owns it, such as Google Maps for a driving route.
+  @JavascriptInterface
+  fun openUrl(url: String) {
+    if (!url.startsWith("https://")) return
+    activity.runOnUiThread {
+      try {
+        val i = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        activity.startActivity(i)
+      } catch (e: Exception) {}
+    }
+  }
+
   // Writes an export or spreadsheet into the phone's Downloads folder, since the app's web view cannot download files itself.
   @JavascriptInterface
   fun saveFile(name: String, mime: String, text: String): String {

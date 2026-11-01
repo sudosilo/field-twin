@@ -6309,6 +6309,16 @@ function navWords(s) {
   return 'Turn ' + (mod || 'ahead') + road;
 }
 
+// Hands the destination to Google Maps for turn by turn driving there.
+function openGoogleMaps(dest) {
+  const url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(dest.lat + ',' + dest.lon);
+  if (window.FieldTwinNative && typeof window.FieldTwinNative.openUrl === 'function') {
+    try { window.FieldTwinNative.openUrl(url); return; } catch (e) {}
+  }
+  const w = window.open(url, '_blank', 'noopener');
+  if (!w) window.location.href = url;
+}
+
 async function navStart(dest) {
   closePanel();
   const me = mySpot();
@@ -6336,18 +6346,23 @@ async function navDraw(from) {
 }
 function navBanner() {
   let b = document.getElementById('navBanner');
-  if (!navState) { if (b) b.remove(); return; }
+  const ctl = document.querySelector('.leaflet-top.leaflet-left');
+  if (!navState) { if (b) b.remove(); if (ctl) ctl.style.marginTop = ''; return; }
   if (!b) {
     b = document.createElement('div');
     b.id = 'navBanner';
-    b.style.cssText = 'position:absolute;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:960;background:#ffffff;color:#0a1b2e;border:3px solid #0a1b2e;box-shadow:4px 4px 0 #0a1b2e;padding:10px 12px;font-size:18px;font-weight:700;display:flex;gap:10px;align-items:center;justify-content:space-between;';
+    b.style.cssText = 'position:absolute;left:10px;right:10px;top:calc(var(--head-h) + var(--tabs-h, 0px) + 8px);z-index:1001;background:#ffffff;color:#0a1b2e;border:3px solid #0a1b2e;box-shadow:4px 4px 0 #0a1b2e;padding:10px 12px;font-size:18px;font-weight:700;display:flex;gap:10px;align-items:center;justify-content:space-between;';
     document.body.appendChild(b);
   }
   const r = navState.route, st = r && r.steps[navState.next];
   const me = mySpot();
   const dist = st && me ? navFeet(navMeters(me, st)) : '';
   b.innerHTML = '<div style="flex:1;"><div>' + escapeHtml(st ? st.text : 'Getting a route') + '</div><div style="font-size:13px;font-weight:400;">' + (dist ? 'in ' + dist + ', ' : '') + (r ? Math.round(r.miles) + ' miles total' : '') + '</div></div>' +
-    '<button class="secondary" id="navCenter" style="padding:8px;font-size:11px;">CENTER</button><button class="secondary" id="navEndBtn" style="padding:8px;font-size:11px;">END</button>';
+    '<div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto;">' +
+    '<button id="navGmaps" style="text-transform:none;padding:8px 10px;font-size:13px;min-height:0;background:#0b4ea2;color:#fff;border:2px solid #0a1b2e;border-radius:6px;">Google Maps</button>' +
+    '<div style="display:flex;gap:6px;"><button class="secondary" id="navCenter" style="padding:8px 10px;font-size:13px;min-height:0;">Center</button><button class="secondary" id="navEndBtn" style="padding:8px 10px;font-size:13px;min-height:0;">End</button></div></div>';
+  if (ctl) ctl.style.marginTop = (b.offsetHeight + 8) + 'px';
+  document.getElementById('navGmaps').addEventListener('click', () => { if (navState) openGoogleMaps(navState.dest); });
   document.getElementById('navEndBtn').addEventListener('click', () => navEnd('Route ended.'));
   document.getElementById('navCenter').addEventListener('click', () => { if (navState) { navState.follow = true; const s = mySpot(); if (s) map.panTo([s.lat, s.lon]); } });
 }
