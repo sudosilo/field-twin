@@ -1,5 +1,7 @@
 Field Twin changelog
 
+2026-10-31, v2026.10.31. Added GO navigation. The route banner sits below the tabs with zoom buttons under it, and a Google Maps button hands the destination to Google Maps. The bottom panel now stays above the phone keyboard.
+
 2026-10-29, v2026.10.29. Export, mileage, and search spreadsheets now save into Downloads in the phone app. Added Daily miles, which shows start, end, and business miles for each workday from a start point shared by all phones. Stops can be marked as tickets, and confirmed days lock and save to a spreadsheet. Added a Daily miles report. Added GO, which gives turn by turn routes to a place you say or type, with logged places first.
 
 2026-10-25, v2026.10.25. Added end of day debriefs. A prose debrief is written from the day log, and replies are saved with the log.
