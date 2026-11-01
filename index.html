@@ -6395,7 +6395,7 @@ let ftPipOn = false;
 // Sizes the map to exactly the floating window, measured by the phone, so it fills the window from its top left corner.
 function ftPipSize() {
   const m = document.getElementById('map');
-  if (!ftPipOn) { m.style.cssText = ''; return; }
+  if (!ftPipOn) { m.style.cssText = ''; const nb = document.getElementById('navBanner'); if (nb) nb.style.width = ''; return; }
   let w = 0, h = 0;
   try { const z = String(window.FieldTwinNative.pipSize()).split(','); w = +z[0]; h = +z[1]; } catch (e) {}
   if (!(w > 0 && h > 0)) { w = window.innerWidth; h = window.innerHeight; }
