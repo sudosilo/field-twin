@@ -6709,12 +6709,26 @@ function ftphView(ph) {
   document.body.appendChild(box);
   ftphSrc(ph).then(u => { if (u) box.querySelector('img').src = u; });
 }
+// In the phone app the camera needs Android's permission first. Without it a photo tap does nothing at all,
+// so ask for it and have the next tap take the photo.
+function ftCameraReady() {
+  try {
+    const n = window.FieldTwinNative;
+    if (n && typeof n.hasCamera === 'function' && !n.hasCamera()) { n.askCamera(); setStatus('allow the camera, then tap the photo button again'); return false; }
+  } catch (e) {}
+  return true;
+}
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  if (t && t.tagName === 'INPUT' && t.type === 'file' && !ftCameraReady()) ev.preventDefault();
+}, true);
 function ftphPick(done) {
+  if (!ftCameraReady()) return;
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
   inp.setAttribute('capture', 'environment');
-  inp.style.display = 'none';
+  inp.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;';
   document.body.appendChild(inp);
   inp.addEventListener('change', () => {
     const file = inp.files[0];

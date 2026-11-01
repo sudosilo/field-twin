@@ -232,6 +232,17 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
+  fun hasCamera(): Boolean = ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+  // Shows Android's camera permission prompt. Taking a photo from the page fails silently until this is allowed.
+  @JavascriptInterface
+  fun askCamera() {
+    activity.runOnUiThread {
+      try { ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.CAMERA), 4418) } catch (e: Exception) {}
+    }
+  }
+
+  @JavascriptInterface
   fun isPip(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity.isInPictureInPictureMode
 
   // Floating window size in page units, as "width,height".
