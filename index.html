@@ -2564,7 +2564,7 @@ function showForm(entry) {
     html += '</div>';
   });
   html += '</div>';
-  html += '<div class="question">Photo, optional</div>';
+  html += '<div class="question">Photos, optional, take as many as you want</div>';
   html += '<input type="file" id="photoInput" accept="image/*" capture="environment" style="width:100%;font-size:13px;">';
   html += '<div id="photoPreview"></div>';
   html += '<div class="question">Context, optional, overrides the questions below</div>';
@@ -2604,31 +2604,23 @@ function showForm(entry) {
     });
   });
   let photoData = entry.photo || '';
+  if (!entry.morePhotoData) entry.morePhotoData = [];
   const photoInput = document.getElementById('photoInput');
   const photoPreview = document.getElementById('photoPreview');
-  if (photoData) {
-    photoPreview.innerHTML = '<img src="' + photoData + '" style="max-width:100%;margin-top:6px;">';
-  }
+  const drawPreview = () => {
+    const all = (photoData ? [photoData] : []).concat(entry.morePhotoData);
+    photoPreview.innerHTML = all.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">' + all.map(d => '<img src="' + d + '" style="width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #0b4ea2;border-radius:6px;">').join('') + '</div><div class="meta-line">' + all.length + (all.length === 1 ? ' photo' : ' photos') + ', tap the box again to add another</div>' : '';
+  };
+  drawPreview();
   photoInput.addEventListener('change', () => {
     const file = photoInput.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 900;
-        let w = img.width;
-        let h = img.height;
-        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
-        else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        photoData = canvas.toDataURL('image/jpeg', 0.7);
-        photoPreview.innerHTML = '<img src="' + photoData + '" style="max-width:100%;margin-top:6px;">';
-      };
-      img.src = reader.result;
+    reader.onload = async () => {
+      const d = await shrinkDataUrl(reader.result, 1600, 0.75);
+      if (!photoData) photoData = d; else entry.morePhotoData.push(d);
+      photoInput.value = '';
+      drawPreview();
     };
     reader.readAsDataURL(file);
   });
@@ -2700,6 +2692,9 @@ function showForm(entry) {
     lastSaveSignature = signature;
     const beforeScore = scoreEntries(entries).total;
     entries.unshift(entry);
+    const extraPhotos = entry.morePhotoData || [];
+    delete entry.morePhotoData;
+    extraPhotos.forEach(d => ftphAdd(d, { entry_id: entry.id, lat: entry.lat, lon: entry.lon }));
     saveEntries().catch(() => {}).then(() => {
       renderMarkers();
       map.setView([entry.lat, entry.lon], 15);
@@ -5106,9 +5101,16 @@ function showEntry(entry, fromHistory) {
       });
     }
   }
+  html += ftphGridHtml(ftphFor(entry.id), 'More photos');
+  html += '<button class="secondary" id="entryAddPhoto" style="width:100%;margin-top:8px;">ADD PHOTO</button>';
   const lockerHere = hasPos(entry) ? ftpNear(entry.lat, entry.lon, 80, 'locker') : null;
   html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button>' + (hasPos(entry) ? '<button class="secondary" id="lockerPageBtn">' + (lockerHere ? 'LOCKER PAGE' : 'MAKE LOCKER') + '</button>' : '') + '<button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
   panel.innerHTML = html;
+  ftphFill(panel);
+  document.getElementById('entryAddPhoto').addEventListener('click', () => ftphPick(async d => {
+    await ftphAdd(d, { entry_id: entry.id, lat: entry.lat, lon: entry.lon });
+    showEntry(entry, fromHistory);
+  }));
   const lpb = document.getElementById('lockerPageBtn');
   if (lpb) lpb.addEventListener('click', () => showLocker(lockerHere || ftpMakeLocker(entry)));
   panel.scrollTop = 0;
@@ -6616,13 +6618,121 @@ function ftpTop(pool) {
   return pool.slice().sort((a, b) => (b.rank || 0) - (a.rank || 0) || (b.last || 0) - (a.last || 0)).slice(0, 6);
 }
 
+
+// Photo archive: every photo goes straight up to the photos storage in the cloud, listed in the table
+// field_twin_photos with the entry or locker it belongs to. A photo waits on this phone only until it uploads.
+let ftPhotos = [];
+try { ftPhotos = JSON.parse(localStorage.getItem('ftPhotos') || '[]') || []; } catch (e) { ftPhotos = []; }
+function ftphSave() { try { localStorage.setItem('ftPhotos', JSON.stringify(ftPhotos)); } catch (e) {} }
+async function ftphUploadOne(ph) {
+  if (!ph.pending || typeof cloudReady !== 'function' || !cloudReady()) return;
+  const data = await photoGet('x:' + ph.id).catch(() => '');
+  if (!data) return;
+  const path = cloudUser.id + '/extra/' + ph.id + '.jpg';
+  try {
+    const up = await sb.storage.from('photos').upload(path, dataUrlToBlob(data), { upsert: true, contentType: 'image/jpeg' });
+    if (up.error) return;
+    const row = await sb.from('field_twin_photos').upsert({ id: ph.id, entry_id: ph.entry_id || null, place_id: ph.place_id || null, path: path, lat: ph.lat, lon: ph.lon, ts: ph.ts }, { onConflict: 'id' });
+    if (row.error) return;
+    ph.path = path;
+    ph.pending = false;
+    ftphSave();
+    photoDelete('x:' + ph.id);
+  } catch (e) {}
+}
+let ftphBusy = false;
+async function ftphFlush() {
+  if (ftphBusy) return;
+  ftphBusy = true;
+  try { for (const ph of ftPhotos.filter(x => x.pending)) await ftphUploadOne(ph); } finally { ftphBusy = false; }
+}
+async function ftphAdd(data, meta) {
+  const ph = { id: ftpId(), entry_id: meta.entry_id || null, place_id: meta.place_id || null, lat: meta.lat, lon: meta.lon, ts: new Date().toISOString(), pending: true };
+  await photoPut('x:' + ph.id, data);
+  ftPhotos.push(ph);
+  ftphSave();
+  setStatus('uploading photo');
+  await ftphUploadOne(ph);
+  setStatus(ph.pending ? 'photo saved on this phone, it uploads once you are signed in' : 'photo uploaded');
+  return ph;
+}
+async function ftphPull() {
+  if (typeof cloudReady !== 'function' || !cloudReady()) return;
+  try {
+    const out = [];
+    for (let from = 0; from < 50000; from += 1000) {
+      const r = await sb.from('field_twin_photos').select('*').range(from, from + 999);
+      if (r.error) return;
+      out.push(...(r.data || []));
+      if ((r.data || []).length < 1000) break;
+    }
+    const pending = ftPhotos.filter(x => x.pending);
+    ftPhotos = out.map(r => ({ id: r.id, entry_id: r.entry_id, place_id: r.place_id, path: r.path, lat: r.lat, lon: r.lon, ts: r.ts, pending: false }))
+      .concat(pending.filter(x => !out.some(r => r.id === x.id)));
+    ftphSave();
+  } catch (e) {}
+  ftphFlush();
+}
+function ftphFor(entryId) { return ftPhotos.filter(x => x.entry_id === entryId).sort((a, b) => String(b.ts).localeCompare(String(a.ts))); }
+function ftphAt(p) {
+  return ftPhotos.filter(x => x.place_id === p.id || (isFinite(x.lat) && isFinite(x.lon) && x.lat !== null && ftpDist(p.lat, p.lon, x.lat, x.lon) <= 80))
+    .sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+}
+const ftphUrlCache = {};
+async function ftphSrc(ph) {
+  if (ph.pending) return await photoGet('x:' + ph.id).catch(() => '');
+  const c = ftphUrlCache[ph.id];
+  if (c && c.until > Date.now()) return c.url;
+  const url = await cloudPhotoUrl(ph.path).catch(() => '');
+  if (url) ftphUrlCache[ph.id] = { url: url, until: Date.now() + 50 * 60000 };
+  return url;
+}
+function ftphGridHtml(list, title) {
+  if (!list.length) return '';
+  return '<div class="question">' + title + '</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
+    list.map(ph => '<img data-xph="' + ph.id + '" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #0b4ea2;border-radius:6px;background:#eef4fb;cursor:pointer;">').join('') + '</div>';
+}
+// Loads each photo square, and a tap opens that photo full size.
+function ftphFill(root) {
+  root.querySelectorAll('img[data-xph]').forEach(im => {
+    const ph = ftPhotos.find(x => x.id === im.getAttribute('data-xph'));
+    if (!ph) return;
+    ftphSrc(ph).then(u => { if (u) im.src = u; });
+    im.addEventListener('click', ev => { ev.stopPropagation(); ftphView(ph); });
+  });
+}
+function ftphView(ph) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(10,27,46,0.92);display:flex;align-items:center;justify-content:center;padding:12px;';
+  box.innerHTML = '<img alt="" style="max-width:100%;max-height:100%;border:3px solid #0b4ea2;border-radius:8px;background:#fff;">';
+  box.addEventListener('click', () => box.remove());
+  document.body.appendChild(box);
+  ftphSrc(ph).then(u => { if (u) box.querySelector('img').src = u; });
+}
+function ftphPick(done) {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.setAttribute('capture', 'environment');
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.addEventListener('change', () => {
+    const file = inp.files[0];
+    inp.remove();
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => done(await shrinkDataUrl(reader.result, 1600, 0.75));
+    reader.readAsDataURL(file);
+  });
+  inp.click();
+}
 // GO picks and arrivals raise a place's rank.
 (function () {
   const start = navStart, end = navEnd;
   navStart = async function (dest) { ftpBump(dest, 'searches'); return start(dest); };
   navEnd = function (note) { if (note === 'Arrived.' && navState) ftpBump(navState.dest, 'arrivals'); return end(note); };
   const pull = cloudPull;
-  cloudPull = async function () { const r = await pull.apply(this, arguments); await ftpPull(); ftpSeedLockers(); return r; };
+  cloudPull = async function () { const r = await pull.apply(this, arguments); await ftpPull(); ftpSeedLockers(); await ftphPull(); return r; };
 })();
 setTimeout(ftpSeedLockers, 2500);
 
@@ -6665,11 +6775,14 @@ function showLocker(p) {
   html += '<div class="question">Locker name</div><input type="text" id="lockerName" autocomplete="off" placeholder="Name, like Lasso" value="' + escapeHtml(p.name || '').replace(/"/g, '&quot;') + '">';
   html += '<div class="question">Locker notes</div><textarea id="lockerNotes" rows="3" placeholder="Gate code, where to park, which bank">' + escapeHtml(p.notes || '') + '</textarea>';
   html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">SAVE</button><button class="secondary" id="lockerGo" style="flex:1;">GO HERE</button></div>';
-  if (pics.length) {
-    html += '<div class="question">Photos</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
+  const extra = ftphAt(p);
+  html += '<button class="secondary" id="lockerAddPhoto" style="width:100%;margin:6px 0;">ADD PHOTO OF THIS LOCKER</button>';
+  if (pics.length || extra.length) {
+    html += '<div class="question">Photos, newest first</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
+      extra.map(ph => '<img data-xph="' + ph.id + '" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #0b4ea2;border-radius:6px;background:#eef4fb;cursor:pointer;">').join('') +
       pics.map(e => '<img data-ph="' + e.id + '" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #0b4ea2;border-radius:6px;background:#eef4fb;cursor:pointer;"' + (e.photo ? ' src="' + e.photo + '"' : '') + '>').join('') + '</div>';
   } else {
-    html += '<div class="meta-line">No photos here yet. Photos you add to entries logged at this locker show up here.</div>';
+    html += '<div class="meta-line">No photos here yet.</div>';
   }
   html += '<div class="question">Visits</div>';
   html += stops.length ? stops.map(e => {
@@ -6681,6 +6794,11 @@ function showLocker(p) {
   panel.scrollTop = 0;
   panel.classList.add('open');
   pics.forEach(e => { if (!e.photo && e.photoPath) cloudPhotoUrl(e.photoPath).then(u => { const im = panel.querySelector('[data-ph="' + e.id + '"]'); if (im && u) im.src = u; }).catch(() => {}); });
+  ftphFill(panel);
+  document.getElementById('lockerAddPhoto').addEventListener('click', () => ftphPick(async d => {
+    await ftphAdd(d, { place_id: p.id, lat: p.lat, lon: p.lon });
+    showLocker(p);
+  }));
   panel.querySelectorAll('[data-ph],[data-st]').forEach(el => el.addEventListener('click', () => {
     const e = entries.find(x => x.id === (el.getAttribute('data-ph') || el.getAttribute('data-st')));
     if (e) showEntry(e);
