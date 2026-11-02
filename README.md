@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-10-31, v2026.10.31. Added GO navigation. The route banner sits below the tabs with zoom buttons under it, and a Google Maps button hands the destination to Google Maps. The bottom panel now stays above the phone keyboard.
+Latest change. 2026-11-01, v2026.11.01. Added a floating map window. When you leave the app during a route, the map floats with only the next turn showing. Lockers now have names and their own pages, and GO ranks places by arrivals, picks, and logs. Entries and lockers take any number of photos, and the phone app asks for camera permission before any photo button. The place list gained mailbox, casino, parking structure, and diner types.
 
 Full history is in CHANGELOG.md.
