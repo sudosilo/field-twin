@@ -35,7 +35,7 @@ jobs:
           git config user.name sudosilo
           git config user.email sudosilo@users.noreply.github.com
           git add field-twin-companion/firmware/field-twin-companion-v1.bin
-          git commit -m "Field Twin Companion firmware build ${{ github.run_number }} [skip ci]" || exit 0
+          git commit -m "Field Twin Companion firmware build ${{ github.run_number }}" || exit 0
           git pull --rebase
           git push
       - uses: actions/upload-artifact@v4

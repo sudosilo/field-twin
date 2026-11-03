@@ -1,0 +1,11 @@
+{
+  "name": "Field Twin Companion",
+  "version": "v1",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C6",
+      "parts": [{ "path": "firmware/field-twin-companion-v1.bin", "offset": 0 }]
+    }
+  ]
+}
