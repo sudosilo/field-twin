@@ -15,3 +15,8 @@ create policy field_twin_team_lockers_read on public.field_twin_team_lockers for
 drop policy if exists field_twin_team_lockers_write on public.field_twin_team_lockers;
 create policy field_twin_team_lockers_write on public.field_twin_team_lockers for all to authenticated using (owner = auth.uid()) with check (owner = auth.uid());
 grant select, insert, update, delete on public.field_twin_team_lockers to authenticated;
+-- Locker spots are public places, so the list can also be read without signing in. That lets a Field Twin copy
+-- that signs into a different Supabase project still preload this list.
+drop policy if exists field_twin_team_lockers_public on public.field_twin_team_lockers;
+create policy field_twin_team_lockers_public on public.field_twin_team_lockers for select to anon using (true);
+grant select on public.field_twin_team_lockers to anon;

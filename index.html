@@ -6755,21 +6755,28 @@ function ftTeamSet(on) {
   setToggle('teamLockersBtn', on);
   if (on) ftTeamSync().then(ftLockerPins); else ftLockerPins();
 }
+// The team list always lives in the original Field Twin project, read without signing in, so a copy of Field Twin
+// that signs into its own Supabase project can still preload it. Sharing your lockers back needs you signed in here.
+const FT_TEAM_URL = 'https://zasyjjoypkpvyqdueums.supabase.co';
+const FT_TEAM_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphc3lqam95cGtwdnlxZHVldW1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMjk1NjQsImV4cCI6MjEwNjgwNTU2NH0.PZrUvG4qsTpMQeihXbbzaFYUAAJ9YV7FtxLTkcQGFVI';
 async function ftTeamSync() {
   ftpSeedLockers();
-  if (typeof cloudReady !== 'function' || !cloudReady()) { setStatus('sign in to load the team locker list'); return; }
   try {
-    const mine = ftPlaces.filter(p => p.kind === 'locker' && p.source !== 'team');
-    for (let i = 0; i < mine.length; i += 200) {
-      const rows = mine.slice(i, i + 200).map(p => ({ id: p.id, name: p.name || '', lat: p.lat, lon: p.lon, address: p.address || '', updated_at: new Date().toISOString() }));
-      await sb.from('field_twin_team_lockers').upsert(rows, { onConflict: 'id' });
+    if (typeof cloudReady === 'function' && cloudReady() && SUPABASE_URL === FT_TEAM_URL) {
+      const mine = ftPlaces.filter(p => p.kind === 'locker' && p.source !== 'team');
+      for (let i = 0; i < mine.length; i += 200) {
+        const rows = mine.slice(i, i + 200).map(p => ({ id: p.id, name: p.name || '', lat: p.lat, lon: p.lon, address: p.address || '', updated_at: new Date().toISOString() }));
+        await sb.from('field_twin_team_lockers').upsert(rows, { onConflict: 'id' });
+      }
     }
     const all = [];
     for (let from = 0; from < 20000; from += 1000) {
-      const r = await sb.from('field_twin_team_lockers').select('id,name,lat,lon,address').range(from, from + 999);
-      if (r.error) { setStatus('team locker list is not set up yet'); return; }
-      all.push(...(r.data || []));
-      if ((r.data || []).length < 1000) break;
+      const res = await fetch(FT_TEAM_URL + '/rest/v1/field_twin_team_lockers?select=id,name,lat,lon,address&order=id', {
+        headers: { apikey: FT_TEAM_KEY, Authorization: 'Bearer ' + FT_TEAM_KEY, Range: from + '-' + (from + 999) } });
+      if (!res.ok) { setStatus('team locker list is not set up yet'); return; }
+      const rows = await res.json();
+      all.push(...rows);
+      if (rows.length < 1000) break;
     }
     let added = 0;
     all.forEach(t => {
