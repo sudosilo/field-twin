@@ -751,6 +751,9 @@
   <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <h3>Companion screen</h3>
+  <button class="secondary tg native-only" id="companionBtn" aria-pressed="false" hidden><span>FT COMPANION</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <div class="hz-label native-only" id="companionText" hidden>Off.</div>
   <h3>Lockers</h3>
   <button class="secondary tg" id="teamLockersBtn" aria-pressed="false"><span>ALL LOCKERS</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary" id="lockersBtn">LOCKERS</button>
@@ -5300,6 +5303,7 @@ async function init() {
   });
 
   document.getElementById('teamLockersBtn').addEventListener('click', () => ftTeamSet(!ftTeamOn));
+  document.getElementById('companionBtn').addEventListener('click', () => ftcSet(!ftcOn));
   document.getElementById('lockersBtn').addEventListener('click', () => {
     closeMenu();
     showLockers();
@@ -6842,6 +6846,114 @@ async function ftOsmLockers() {
   return { found: found, added: added };
 }
 setTimeout(() => { setToggle('teamLockersBtn', ftTeamOn); if (ftTeamOn) ftTeamSync().then(ftLockerPins); }, 3000);
+
+// FT Companion: the dashboard screen board. When linked, it gets the route and turns, its GPS takes over from the
+// phone's for following the route, and its road roughness readings are saved with where they were measured.
+let ftcOn = false, ftcState = 'off', ftcPos = null, ftcRoad = [];
+try { ftcOn = localStorage.getItem('ftcOn') === '1'; ftcRoad = JSON.parse(localStorage.getItem('ftcRoad') || '[]') || []; } catch (e) {}
+function ftcNative() { return window.FieldTwinNative && typeof window.FieldTwinNative.companionStart === 'function'; }
+function ftcText() {
+  const el = document.getElementById('companionText');
+  if (!el) return;
+  const words = { off: 'Off.', asking: 'Waiting for Bluetooth permission.', searching: 'Looking for FT Companion.', connecting: 'Connecting.', linked: 'Linked.', lost: 'Link lost, looking again.', 'not found': 'Not found yet, still looking.', 'bluetooth off': 'Bluetooth is off on this phone.', 'no permission': 'Bluetooth permission was not allowed.', 'scan failed': 'Search failed, trying again.', 'wrong device': 'Found a device that is not FT Companion.' };
+  el.textContent = (words[ftcState] || ftcState) + (ftcPos && Date.now() - ftcPos.t < 5000 ? ' Using its GPS.' : '') + (ftcRoad.length ? ' Road readings saved: ' + ftcRoad.length + '.' : '');
+}
+function ftcSet(on) {
+  ftcOn = on;
+  try { localStorage.setItem('ftcOn', on ? '1' : '0'); } catch (e) {}
+  setToggle('companionBtn', on);
+  if (!ftcNative()) return;
+  try { ftcState = on ? String(window.FieldTwinNative.companionState() || 'searching') : 'off'; } catch (e) { ftcState = on ? 'searching' : 'off'; }
+  if (on && ftcState === 'off') ftcState = 'searching';
+  try { if (on) window.FieldTwinNative.companionStart(); else window.FieldTwinNative.companionStop(); } catch (e) {}
+  ftcText();
+}
+function ftcSend(cmd) { if (ftcOn && ftcState === 'linked' && ftcNative()) { try { window.FieldTwinNative.companionSend(cmd); } catch (e) {} } }
+function ftcClean(t) { return String(t || '').replace(/[|;\n\r]/g, ' ').slice(0, 60); }
+// Sends the whole route: line points in small batches, then each turn, then start.
+function ftcSendRoute() {
+  if (!navState || !navState.route) return;
+  const r = navState.route;
+  ftcSend('R0');
+  const line = r.line || [];
+  const step = Math.max(1, Math.ceil(line.length / 450));
+  let batch = [];
+  for (let i = 0; i < line.length; i += step) {
+    batch.push(line[i][0].toFixed(5) + ',' + line[i][1].toFixed(5));
+    if (batch.length === 9) { ftcSend('RP|' + batch.join(';') + ';'); batch = []; }
+  }
+  const last = line[line.length - 1];
+  if (last) batch.push(last[0].toFixed(5) + ',' + last[1].toFixed(5));
+  if (batch.length) ftcSend('RP|' + batch.join(';') + ';');
+  (r.steps || []).slice(0, 80).forEach(st => ftcSend('RS|' + st.lat.toFixed(5) + '|' + st.lon.toFixed(5) + '|' + ftcClean(st.text)));
+  ftcSend('RG');
+}
+function ftcSendLockers() {
+  const me = mySpot();
+  let list = ftPlaces.filter(p => p.kind === 'locker');
+  if (me) list.sort((a, b) => ftpDist(me.lat, me.lon, a.lat, a.lon) - ftpDist(me.lat, me.lon, b.lat, b.lon));
+  ftcSend('L0');
+  list.slice(0, 120).forEach(p => ftcSend('L|' + p.lat.toFixed(5) + '|' + p.lon.toFixed(5)));
+}
+window.ftCompanionIn = function (kind, text) {
+  if (kind === 'state') {
+    const was = ftcState;
+    ftcState = text;
+    ftcText();
+    if (text === 'linked' && was !== 'linked') {
+      setStatus('FT Companion linked');
+      ftcSendLockers();
+      if (navState && navState.route) ftcSendRoute();
+    }
+    return;
+  }
+  const f = String(text).split('|');
+  if (kind === 'pos' && f[0] === 'P') {
+    ftcPos = { lat: +f[1], lon: +f[2], speed: +f[3], course: +f[4], sats: +f[5], t: Date.now() };
+  } else if (kind === 'pos' && f[0] === 'O' && navState && !navState.busy) {
+    navState.busy = true;
+    navDraw({ lat: +f[1], lon: +f[2] }).catch(() => {}).then(() => { navState && (navState.busy = false); });
+  } else if (kind === 'road' && f[0] === 'Q') {
+    ftcRoad.push({ lat: +f[1], lon: +f[2], rms: +f[3], peak: +f[4], speed: +f[5], t: new Date().toISOString() });
+    if (ftcRoad.length > 20000) ftcRoad = ftcRoad.slice(-20000);
+    if (ftcRoad.length % 30 === 0) { try { localStorage.setItem('ftcRoad', JSON.stringify(ftcRoad)); } catch (e) {} ftcText(); }
+  }
+};
+// The board's GPS wins whenever it has a fresh fix, so the phone can leave its own GPS idle.
+(function () {
+  const phoneSpot = mySpot;
+  mySpot = function () {
+    if (ftcPos && Date.now() - ftcPos.t < 5000) return { lat: ftcPos.lat, lon: ftcPos.lon, acc: 5, t: ftcPos.t, src: 'companion' };
+    return phoneSpot();
+  };
+  const draw = navDraw;
+  navDraw = async function (from) { const r = await draw(from); ftcSendRoute(); return r; };
+  const end2 = navEnd;
+  navEnd = function (note) { ftcSend('X'); return end2(note); };
+  const banner = navBanner;
+  let lastTurn = '';
+  navBanner = function () {
+    const r = banner.apply(this, arguments);
+    if (navState && navState.route) {
+      const st = navState.route.steps[navState.next];
+      const me = mySpot();
+      if (st && st.text !== lastTurn) { lastTurn = st.text; ftcSend('T|' + ftcClean(st.text)); }
+      if (st && me) ftcSend('D|' + Math.round(navMeters(me, st)) + '|-1');
+    } else lastTurn = '';
+    return r;
+  };
+})();
+// When the board has no GPS fix yet, the phone's position keeps its map centered.
+setInterval(() => {
+  if (ftcState !== 'linked' || (ftcPos && Date.now() - ftcPos.t < 5000)) return;
+  const me = mySpot();
+  if (me) ftcSend('H|' + me.lat.toFixed(6) + '|' + me.lon.toFixed(6));
+}, 5000);
+setTimeout(() => {
+  setToggle('companionBtn', ftcOn);
+  ftcText();
+  if (ftcOn && ftcNative()) ftcSet(true);
+}, 3500);
 // GO picks and arrivals raise a place's rank.
 (function () {
   const start = navStart, end = navEnd;

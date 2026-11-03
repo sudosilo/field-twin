@@ -109,5 +109,6 @@ class MainActivity : TauriActivity() {
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode == FieldTwinBridge.PERM_CODE) FieldTwinBridge.startIfAllowed(this)
+    if (requestCode == FieldTwinCompanion.PERM_CODE) FieldTwinCompanion.afterPermission(this)
   }
 }

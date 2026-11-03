@@ -17,8 +17,11 @@ const perms = [
   "android.permission.FOREGROUND_SERVICE_LOCATION",
   "android.permission.POST_NOTIFICATIONS",
   "android.permission.CAMERA",
-  "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+  "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+  "android.permission.BLUETOOTH_SCAN",
+  "android.permission.BLUETOOTH_CONNECT"
 ];
+if (!s.includes('android.permission.BLUETOOTH"')) s = s.replace("<application", '    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />\n    <application');
 let add = "";
 for (const p of perms) if (!s.includes('"' + p + '"')) add += '    <uses-permission android:name="' + p + '" />\n';
 s = s.replace("<application", add + "    <application");

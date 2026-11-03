@@ -232,6 +232,18 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   @JavascriptInterface
+  fun companionStart() { activity.runOnUiThread { FieldTwinCompanion.start(activity) } }
+
+  @JavascriptInterface
+  fun companionStop() { FieldTwinCompanion.stop() }
+
+  @JavascriptInterface
+  fun companionSend(cmd: String) { FieldTwinCompanion.send(cmd) }
+
+  @JavascriptInterface
+  fun companionState(): String = FieldTwinCompanion.state
+
+  @JavascriptInterface
   fun hasCamera(): Boolean = ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
   // Shows Android's camera permission prompt. Taking a photo from the page fails silently until this is allowed.
