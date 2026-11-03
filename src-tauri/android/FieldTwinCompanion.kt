@@ -51,7 +51,7 @@ object FieldTwinCompanion {
     val js = "window.ftCompanionIn && window.ftCompanionIn(" + JSONObject.quote(kind) + "," + JSONObject.quote(text) + ")"
     main.post { try { FieldTwinBridge.web?.evaluateJavascript(js, null) } catch (e: Exception) {} }
   }
-  private fun setState(s: String) { state = s; toPage("state", s) }
+  private fun announce(s: String) { state = s; toPage("state", s) }
 
   fun permsNeeded(c: Context): Array<String> {
     val need = mutableListOf<String>()
@@ -67,15 +67,15 @@ object FieldTwinCompanion {
   fun start(activity: Activity) {
     ctx = activity.applicationContext
     wanted = true
-    if (gatt != null) { setState(state); return }
+    if (gatt != null) { announce(state); return }
     val need = permsNeeded(activity)
-    if (need.isNotEmpty()) { setState("asking"); ActivityCompat.requestPermissions(activity, need, PERM_CODE); return }
+    if (need.isNotEmpty()) { announce("asking"); ActivityCompat.requestPermissions(activity, need, PERM_CODE); return }
     main.post { scan() }
   }
 
   fun afterPermission(activity: Activity) {
     if (!wanted) return
-    if (permsNeeded(activity).isEmpty()) main.post { scan() } else setState("no permission")
+    if (permsNeeded(activity).isEmpty()) main.post { scan() } else announce("no permission")
   }
 
   @SuppressLint("MissingPermission")
@@ -84,7 +84,7 @@ object FieldTwinCompanion {
     try { stopScan() } catch (e: Exception) {}
     try { gatt?.disconnect(); gatt?.close() } catch (e: Exception) {}
     gatt = null; nav = null; queue.clear(); busy = false
-    setState("off")
+    announce("off")
   }
 
   private fun adapter(): BluetoothAdapter? = (ctx?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
@@ -95,21 +95,21 @@ object FieldTwinCompanion {
       stopScan()
       connect(result.device)
     }
-    override fun onScanFailed(errorCode: Int) { scanning = false; setState("scan failed"); retryLater() }
+    override fun onScanFailed(errorCode: Int) { scanning = false; announce("scan failed"); retryLater() }
   }
 
   @SuppressLint("MissingPermission")
   private fun scan() {
     if (!wanted || gatt != null || scanning) return
     val a = adapter()
-    if (a == null || !a.isEnabled) { setState("bluetooth off"); retryLater(); return }
-    val sc = a.bluetoothLeScanner ?: run { setState("bluetooth off"); retryLater(); return }
+    if (a == null || !a.isEnabled) { announce("bluetooth off"); retryLater(); return }
+    val sc = a.bluetoothLeScanner ?: run { announce("bluetooth off"); retryLater(); return }
     scanning = true
-    setState("searching")
+    announce("searching")
     val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE)).build())
     val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-    try { sc.startScan(filters, settings, scanCb) } catch (e: Exception) { scanning = false; setState("scan failed"); retryLater(); return }
-    main.postDelayed({ if (scanning) { stopScan(); setState("not found"); retryLater() } }, 15000)
+    try { sc.startScan(filters, settings, scanCb) } catch (e: Exception) { scanning = false; announce("scan failed"); retryLater(); return }
+    main.postDelayed({ if (scanning) { stopScan(); announce("not found"); retryLater() } }, 15000)
   }
 
   @SuppressLint("MissingPermission")
@@ -123,7 +123,7 @@ object FieldTwinCompanion {
 
   @SuppressLint("MissingPermission")
   private fun connect(d: BluetoothDevice) {
-    setState("connecting")
+    announce("connecting")
     gatt = if (Build.VERSION.SDK_INT >= 23) d.connectGatt(ctx, false, gattCb, BluetoothDevice.TRANSPORT_LE) else d.connectGatt(ctx, false, gattCb)
   }
 
@@ -136,7 +136,7 @@ object FieldTwinCompanion {
         main.post {
           try { g.close() } catch (e: Exception) {}
           gatt = null; nav = null; queue.clear(); descQueue.clear(); busy = false
-          setState("lost")
+          announce("lost")
           if (wanted) main.postDelayed({ scan() }, 3000)
         }
       }
@@ -149,7 +149,7 @@ object FieldTwinCompanion {
     override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
       main.post {
         val svc = g.getService(SERVICE)
-        if (svc == null) { setState("wrong device"); g.disconnect(); return@post }
+        if (svc == null) { announce("wrong device"); g.disconnect(); return@post }
         nav = svc.getCharacteristic(NAV)
         for (u in listOf(POS, ROAD)) {
           val ch = svc.getCharacteristic(u) ?: continue
@@ -164,7 +164,7 @@ object FieldTwinCompanion {
     @SuppressLint("MissingPermission")
     private fun nextDescriptor(g: BluetoothGatt) {
       val d = descQueue.removeFirstOrNull()
-      if (d == null) { setState("linked"); pump(); return }
+      if (d == null) { announce("linked"); pump(); return }
       @Suppress("DEPRECATION")
       d.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
       @Suppress("DEPRECATION")
