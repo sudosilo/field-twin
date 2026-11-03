@@ -1,0 +1,44 @@
+name: Field Twin Companion firmware
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'field-twin-companion/field-twin-companion-v1/**'
+      - '.github/workflows/field-twin-companion-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install the ESP32 board support and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "GFX Library for Arduino" "TinyGPSPlus"
+      - name: Compile
+        run: |
+          arduino-cli compile --fqbn "esp32:esp32:esp32c6:CDCOnBoot=cdc,PartitionScheme=min_spiffs" --export-binaries --output-dir out field-twin-companion/field-twin-companion-v1
+          ls -la out
+      - name: Publish the firmware file
+        run: |
+          mkdir -p field-twin-companion/firmware
+          cp out/field-twin-companion-v1.ino.merged.bin field-twin-companion/firmware/field-twin-companion-v1.bin
+          git config user.name sudosilo
+          git config user.email sudosilo@users.noreply.github.com
+          git add field-twin-companion/firmware/field-twin-companion-v1.bin
+          git commit -m "Field Twin Companion firmware build ${{ github.run_number }} [skip ci]" || exit 0
+          git pull --rebase
+          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: field-twin-companion-v1
+          path: out/
