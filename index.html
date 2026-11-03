@@ -6310,6 +6310,7 @@ function showGo() {
   let html = '<h2>GO</h2>';
   html += '<div class="meta-line">Say or type where you are going. Tap the microphone on your keyboard to talk.</div>';
   html += '<input type="text" id="goText" autocomplete="off" placeholder="Store, street or address">';
+  html += '<button class="secondary tg" id="goAirport" aria-pressed="' + (avoidAirport ? 'true' : 'false') + '" style="width:100%;margin:6px 0;"><span>AVOID AIRPORT</span><i class="tg-sw" aria-hidden="true"></i></button>';
   html += '<div id="goList"></div>';
   html += '<div class="meta-line" id="goMsg"></div>';
   html += '<div class="panel-actions"><button id="goFind">FIND IT</button>' + (navState ? '<button class="secondary" id="goStop">END ROUTE</button>' : '') + '<button class="secondary" id="goClose">CLOSE</button></div>';
@@ -6318,6 +6319,11 @@ function showGo() {
   panel.classList.add('open');
   const input = document.getElementById('goText');
   const list = document.getElementById('goList');
+  document.getElementById('goAirport').addEventListener('click', () => {
+    avoidAirport = !avoidAirport;
+    try { localStorage.setItem('avoidAirport', avoidAirport ? '1' : '0'); } catch (e) {}
+    setToggle('goAirport', avoidAirport);
+  });
   const msg = document.getElementById('goMsg');
   const sites = ftpPool(navSites());
   let choices = [];
@@ -6361,16 +6367,54 @@ function showGo() {
   setTimeout(() => input.focus(), 200);
 }
 
-async function navRoute(from, to) {
-  const url = NAV_ROUTER + from.lon + ',' + from.lat + ';' + to.lon + ',' + to.lat + '?overview=full&geometries=geojson&steps=true';
+// Las Vegas airport fence: the terminal loops, the runways and the tunnel connector, where routes keep sending you
+// "continue forward" onto roads that do not exist. With Avoid airport on, routes that enter the fence are thrown out.
+const AIRPORT_FENCE = [
+  { s: 36.0745, n: 36.0945, w: -115.1715, e: -115.1340 },
+  { s: 36.0600, n: 36.0700, w: -115.1580, e: -115.1460 }
+];
+const AIRPORT_VIAS = [
+  { lat: 36.1002, lon: -115.1521 },
+  { lat: 36.0716, lon: -115.1192 },
+  { lat: 36.0870, lon: -115.1830 },
+  { lat: 36.0566, lon: -115.1186 },
+  { lat: 36.0717, lon: -115.1745 }
+];
+let avoidAirport = true;
+try { avoidAirport = localStorage.getItem('avoidAirport') !== '0'; } catch (e) {}
+function navInFence(lat, lon) { return AIRPORT_FENCE.some(b => lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e); }
+function navHitsAirport(r, from, to) {
+  if (navInFence(from.lat, from.lon) || navInFence(to.lat, to.lon)) return false;
+  return r.line.some(p => navInFence(p[0], p[1]));
+}
+function navParse(r) {
+  const steps = [];
+  const last = r.legs.length - 1;
+  r.legs.forEach((l, li) => l.steps.forEach(s => {
+    const t = s.maneuver.type;
+    if ((t === 'arrive' && li < last) || (t === 'depart' && li > 0)) return;
+    steps.push({ lat: s.maneuver.location[1], lon: s.maneuver.location[0], text: navWords(s), said: false });
+  }));
+  return { line: r.geometry.coordinates.map(c => [c[1], c[0]]), miles: r.distance / 1609.34, mins: r.duration / 60, steps: steps };
+}
+async function navFetch(points, alts) {
+  const url = NAV_ROUTER + points.map(p => p.lon + ',' + p.lat).join(';') + '?overview=full&geometries=geojson&steps=true' + (alts ? '&alternatives=3' : '');
   const res = await fetch(url);
   if (!res.ok) throw new Error('the router did not answer');
   const j = await res.json();
   if (!j.routes || !j.routes.length) throw new Error('no road route found');
-  const r = j.routes[0];
-  const steps = [];
-  r.legs.forEach(l => l.steps.forEach(s => steps.push({ lat: s.maneuver.location[1], lon: s.maneuver.location[0], text: navWords(s), said: false })));
-  return { line: r.geometry.coordinates.map(c => [c[1], c[0]]), miles: r.distance / 1609.34, mins: r.duration / 60, steps: steps };
+  return j.routes.map(navParse);
+}
+async function navRoute(from, to) {
+  if (!avoidAirport) return (await navFetch([from, to], false))[0];
+  const first = await navFetch([from, to], true);
+  const clean = first.filter(r => !navHitsAirport(r, from, to));
+  if (clean.length) return clean[0];
+  const tries = await Promise.all(AIRPORT_VIAS.map(v => navFetch([from, v, to], false).then(x => x[0]).catch(() => null)));
+  const ok = tries.filter(r => r && !navHitsAirport(r, from, to)).sort((a, b) => a.mins - b.mins);
+  if (ok.length) { setStatus('route goes around the airport'); return ok[0]; }
+  setStatus('no way around the airport found, this route goes through it');
+  return first[0];
 }
 function navWords(s) {
   const m = s.maneuver, road = s.name ? ' onto ' + s.name : '';

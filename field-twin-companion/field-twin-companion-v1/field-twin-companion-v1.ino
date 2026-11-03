@@ -5,8 +5,10 @@
 // off, and measures road roughness with an accelerometer. Everything is controlled from the phone; no buttons needed.
 //
 // Add-on wiring (3.3 volt parts):
-//   GPS module (NMEA, 9600 baud): GPS TX to GPIO17, GPS RX to GPIO16, VCC to 3V3, GND to GND
-//   MPU6050 accelerometer board (GY-521): SDA to GPIO2, SCL to GPIO3, VCC to 3V3, GND to GND
+//   Beitian BE-220 GPS (or any NMEA GPS): GPS TX to GPIO17, GPS RX to GPIO16, VCC to 3V3, GND to GND.
+//     The board finds the GPS speed by itself (9600, 38400 or 115200).
+//   LIS3DSH accelerometer board: SDA to GPIO2, SCL to GPIO3, VCC to 3V3, GND to GND, CS to 3V3, SDO to 3V3.
+//     An MPU6050 (GY-521) on the same two pins works too; the board finds whichever is there.
 
 #include <Arduino_GFX_Library.h>
 #include <TinyGPSPlus.h>
@@ -34,6 +36,8 @@
 #define PIN_I2C_SDA 2
 #define PIN_I2C_SCL 3
 #define MPU_ADDR 0x68
+#define LIS_ADDR_A 0x1D
+#define LIS_ADDR_B 0x1E
 
 // Bluetooth names
 #define BLE_NAME "FT Companion"
@@ -91,6 +95,8 @@ double phoneLat = 0, phoneLon = 0;
 unsigned long phonePosAt = 0;
 
 bool imuOk = false;
+uint8_t imuKind = 0;  // 1 MPU6050, 2 LIS3DSH
+uint8_t imuAddr = 0;
 float accMean = 1.0f;
 double sqSum = 0;
 float peak = 0;
@@ -269,24 +275,58 @@ static void followRoute() {
 }
 
 // ---------- accelerometer ----------
-static bool mpuWrite(uint8_t reg, uint8_t val) {
-  Wire.beginTransmission(MPU_ADDR); Wire.write(reg); Wire.write(val);
+static bool regWrite(uint8_t addr, uint8_t reg, uint8_t val) {
+  Wire.beginTransmission(addr); Wire.write(reg); Wire.write(val);
   return Wire.endTransmission() == 0;
 }
-static bool mpuRead(float &ax, float &ay, float &az) {
-  Wire.beginTransmission(MPU_ADDR); Wire.write(0x3B);
-  if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((uint8_t)MPU_ADDR, (uint8_t)6) != 6) return false;
-  int16_t x = (Wire.read() << 8) | Wire.read();
-  int16_t y = (Wire.read() << 8) | Wire.read();
-  int16_t z = (Wire.read() << 8) | Wire.read();
-  ax = x / 8192.0f; ay = y / 8192.0f; az = z / 8192.0f;
-  return true;
+static int regRead(uint8_t addr, uint8_t reg) {
+  Wire.beginTransmission(addr); Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return -1;
+  if (Wire.requestFrom(addr, (uint8_t)1) != 1) return -1;
+  return Wire.read();
+}
+// Reads one acceleration sample in g, from whichever accelerometer was found.
+static bool imuRead(float &ax, float &ay, float &az) {
+  if (imuKind == 1) {
+    Wire.beginTransmission(imuAddr); Wire.write(0x3B);
+    if (Wire.endTransmission(false) != 0) return false;
+    if (Wire.requestFrom(imuAddr, (uint8_t)6) != 6) return false;
+    int16_t x = (Wire.read() << 8) | Wire.read();
+    int16_t y = (Wire.read() << 8) | Wire.read();
+    int16_t z = (Wire.read() << 8) | Wire.read();
+    ax = x / 8192.0f; ay = y / 8192.0f; az = z / 8192.0f;
+    return true;
+  }
+  if (imuKind == 2) {
+    Wire.beginTransmission(imuAddr); Wire.write(0x28);
+    if (Wire.endTransmission(false) != 0) return false;
+    if (Wire.requestFrom(imuAddr, (uint8_t)6) != 6) return false;
+    int16_t x = Wire.read() | (Wire.read() << 8);
+    int16_t y = Wire.read() | (Wire.read() << 8);
+    int16_t z = Wire.read() | (Wire.read() << 8);
+    const float k = 0.00012f;  // plus or minus four g range
+    ax = x * k; ay = y * k; az = z * k;
+    return true;
+  }
+  return false;
 }
 static void imuStart() {
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
-  imuOk = mpuWrite(0x6B, 0x00) && mpuWrite(0x1C, 0x08) && mpuWrite(0x1A, 0x03);
   for (int i = 0; i < 60; i++) roughHist[i] = 0;
+  // LIS3DSH answers 0x3F to its who am I register
+  const uint8_t lis[2] = { LIS_ADDR_A, LIS_ADDR_B };
+  for (int i = 0; i < 2; i++) {
+    if (regRead(lis[i], 0x0F) == 0x3F) {
+      imuAddr = lis[i];
+      // 400 samples a second on all three axes, plus or minus four g, registers read in a row
+      if (regWrite(imuAddr, 0x20, 0x77) && regWrite(imuAddr, 0x24, 0x08) && regWrite(imuAddr, 0x25, 0x10)) { imuKind = 2; imuOk = true; return; }
+    }
+  }
+  int who = regRead(MPU_ADDR, 0x75);
+  if (who == 0x68 || who == 0x70 || who == 0x72 || who == 0x98) {
+    imuAddr = MPU_ADDR;
+    if (regWrite(imuAddr, 0x6B, 0x00) && regWrite(imuAddr, 0x1C, 0x08) && regWrite(imuAddr, 0x1A, 0x03)) { imuKind = 1; imuOk = true; }
+  }
 }
 // Samples about two hundred times a second. Each second it turns the shaking, with gravity taken out, into one
 // roughness number in thousandths of a g, and sends it to the phone with the spot it was measured.
@@ -296,7 +336,7 @@ static void imuTick() {
   if (now - lastSample < 5000) return;
   lastSample = now;
   float ax, ay, az;
-  if (!mpuRead(ax, ay, az)) return;
+  if (!imuRead(ax, ay, az)) return;
   float mag = sqrtf(ax * ax + ay * ay + az * az);
   accMean += (mag - accMean) * 0.01f;
   float dev = mag - accMean;
@@ -318,8 +358,19 @@ static void imuTick() {
 
 // ---------- GPS ----------
 static unsigned long lastPosSent = 0;
+static const uint32_t gpsBauds[3] = { 9600, 38400, 115200 };
+static int gpsBaudIdx = 0;
+static unsigned long gpsBaudAt = 0;
+static uint32_t gpsGoodAt = 0;
+// Tries each common GPS speed until whole NMEA sentences come through, then stays on it.
 static void gpsTick() {
   while (GPSSerial.available()) gps.encode(GPSSerial.read());
+  if (gps.passedChecksum() > gpsGoodAt) { gpsGoodAt = gps.passedChecksum(); gpsBaudAt = millis(); }
+  if (millis() - gpsBaudAt > 3000) {
+    gpsBaudIdx = (gpsBaudIdx + 1) % 3;
+    GPSSerial.updateBaudRate(gpsBauds[gpsBaudIdx]);
+    gpsBaudAt = millis();
+  }
   if (gps.location.isUpdated()) {
     haveFix = gps.location.isValid() && gps.location.age() < 3000;
     myLat = gps.location.lat(); myLon = gps.location.lng();
@@ -443,13 +494,13 @@ static void drawScreen() {
   gfx->setTextSize(1);
   gfx->setCursor(4, 278);
   gfx->setTextColor(haveFix ? C_GREEN : C_RED);
-  if (haveFix) { gfx->print("GPS "); gfx->print(mySats); } else gfx->print(gps.charsProcessed() > 10 ? "GPS no fix" : "GPS none");
+  if (haveFix) { gfx->print("GPS "); gfx->print(mySats); } else gfx->print(gps.passedChecksum() > 0 ? "GPS no fix" : "GPS none");
   gfx->setCursor(78, 278);
   gfx->setTextColor(bleLinked ? C_BLUE : C_GREY);
   gfx->print(bleLinked ? "linked" : "no phone");
   gfx->setCursor(130, 278);
   gfx->setTextColor(imuOk ? C_INK : C_GREY);
-  gfx->print(imuOk ? "road" : "no imu");
+  gfx->print(imuOk ? (imuKind == 2 ? "lis3d" : "mpu") : "no imu");
 
   // roughness history bars, newest on the right
   int bx = 4, by = 314, bh = 24;
