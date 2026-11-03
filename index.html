@@ -586,6 +586,14 @@
     line-height: 16px;
     opacity: 0.92;
   }
+  .cam-cluster { background: #00838f !important; gap: 1px; letter-spacing: -0.3px; }
+  .cam-label { display: none; }
+  .cam-labels .cam-label { display: block; }
+  @keyframes fcStar { 0% { background: rgba(255,0,0,0.42); } 16% { background: rgba(255,170,0,0.42); } 33% { background: rgba(255,240,0,0.42); } 50% { background: rgba(0,220,90,0.42); } 66% { background: rgba(0,140,255,0.42); } 83% { background: rgba(170,60,255,0.42); } 100% { background: rgba(255,0,0,0); } }
+  #fcStar { position: fixed; inset: 0; z-index: 4500; pointer-events: none; animation: fcStar 0.3s linear 4; }
+  .fc-msg { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .fc-msg b { color: #0b4ea2; }
+  .fc-msg.mine b { color: var(--text); }
   .ft-cluster {
     border-radius: 50%;
     background: var(--accent);
@@ -751,6 +759,9 @@
   <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <h3>Field chat</h3>
+  <button class="secondary tg" id="fieldChatBtn" aria-pressed="false"><span>FIELD CHAT ALERTS</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary" id="fieldChatOpen">OPEN FIELD CHAT</button>
   <h3>Companion screen</h3>
   <button class="secondary tg native-only" id="companionBtn" aria-pressed="false" hidden><span>FT COMPANION</span><i class="tg-sw" aria-hidden="true"></i></button>
   <div class="hz-label native-only" id="companionText" hidden>Off.</div>
@@ -1528,7 +1539,7 @@ function initMap() {
     markersLayer = L.layerGroup().addTo(map);
   }
   map.on('click', (ev) => { if (pinPlacing) finishPinPlacement(ev.latlng); });
-  map.on('zoomend', () => { if (camerasVisible) renderCameras(); });
+  map.on('zoomend', () => { if (camerasVisible) camLabels(); });
   setTimeout(() => map.invalidateSize(), 200);
   setTimeout(() => { map.invalidateSize(); renderMarkers(); }, 800);
 }
@@ -2837,16 +2848,39 @@ async function loadCameras(force) {
   }
 }
 
+// Cameras sit in teal bubbles with a count, the same way stops cluster, so hundreds of them do not all draw at once.
+// Road names show under single cameras only when zoomed in close.
+function camLabels() {
+  const el = map.getContainer();
+  el.classList.toggle('cam-labels', map.getZoom() >= 14);
+}
 function renderCameras() {
-  if (!cameraLayer) cameraLayer = L.layerGroup();
+  if (!cameraLayer) {
+    cameraLayer = L.markerClusterGroup ? L.markerClusterGroup({
+      maxClusterRadius: 80,
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: true,
+      chunkedLoading: true,
+      iconCreateFunction: function (cluster) {
+        const n = cluster.getChildCount();
+        const size = n < 10 ? 32 : (n < 50 ? 38 : 44);
+        return L.divIcon({
+          html: '<div class="ft-cluster cam-cluster" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (n < 100 ? 14 : 12) + 'px;">' + n + '</div>',
+          className: 'field-twin-badge',
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2]
+        });
+      }
+    }) : L.layerGroup();
+  }
   cameraLayer.clearLayers();
-  const zoom = map.getZoom();
-  const showLabels = zoom >= 14;
+  camLabels();
+  const batch = [];
   cameras.forEach(c => {
     const marker = L.marker([c.lat, c.lon], {
       icon: L.divIcon({
         html: '<div style="width:30px;height:30px;border-radius:50%;background:' + (c.online === false ? '#9aa7b1' : '#00838f') + ';opacity:' + (c.online === false ? '0.55' : '1') + ';border:3px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:15px;">\u{1F4F9}</div>' +
-              (showLabels ? '<div style="position:absolute;top:32px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;background:rgba(255,255,255,0.9);padding:1px 4px;border-radius:3px;color:#14202e;">' + escapeHtml(c.roadway || '') + '</div>' : ''),
+              '<div class="cam-label" style="position:absolute;top:32px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;background:rgba(255,255,255,0.9);padding:1px 4px;border-radius:3px;color:#14202e;">' + escapeHtml(c.roadway || '') + '</div>',
         className: 'field-twin-badge',
         iconSize: [30, 30],
         iconAnchor: [15, 15]
@@ -2854,8 +2888,9 @@ function renderCameras() {
       zIndexOffset: 500
     });
     marker.on('click', () => showCamera(c));
-    marker.addTo(cameraLayer);
+    batch.push(marker);
   });
+  if (cameraLayer.addLayers) cameraLayer.addLayers(batch); else batch.forEach(m => m.addTo(cameraLayer));
 }
 
 function playStream(video, url) {
@@ -5304,6 +5339,8 @@ async function init() {
 
   document.getElementById('teamLockersBtn').addEventListener('click', () => ftTeamSet(!ftTeamOn));
   document.getElementById('companionBtn').addEventListener('click', () => ftcSet(!ftcOn));
+  document.getElementById('fieldChatBtn').addEventListener('click', () => fcSetAlerts(!fcAlerts));
+  document.getElementById('fieldChatOpen').addEventListener('click', () => { closeMenu(); fcOpen(); });
   document.getElementById('lockersBtn').addEventListener('click', () => {
     closeMenu();
     showLockers();
@@ -6954,6 +6991,124 @@ setTimeout(() => {
   ftcText();
   if (ftcOn && ftcNative()) ftcSet(true);
 }, 3500);
+
+// Field Chat: a room inside the Cat Command Chat backend, shared members, names and invites, its own messages
+// (room field). With alerts on, a message from someone else flashes the screen in rainbow colors for a moment,
+// on the full map, the floating window and the companion screen alike. No sound and no text pops up.
+const FC_URL = 'https://vogxdikogfaxhwcgajfg.supabase.co';
+const FC_KEY = 'sb_publishable_b9N7M8W5NpGgsus1ZUQgaw_3QQBxFm1';
+let fc = null, fcUser = null, fcMember = false, fcChan = null, fcMsgs = [], fcNames = {}, fcAlerts = false, fcUnread = 0;
+try { fcAlerts = localStorage.getItem('fcAlerts') === '1'; } catch (e) {}
+function fcClient() {
+  if (!fc && window.supabase) fc = window.supabase.createClient(FC_URL, FC_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'fieldchat-auth' } });
+  return fc;
+}
+async function fcStart() {
+  const c = fcClient();
+  if (!c) return false;
+  try {
+    let s = (await c.auth.getSession()).data.session;
+    if (!s) { const r = await c.auth.signInAnonymously(); s = r.data && r.data.session; }
+    if (!s) return false;
+    fcUser = s.user;
+    const mem = await c.from('chat_members').select('joined_at').eq('user_id', fcUser.id).maybeSingle();
+    fcMember = !!(mem.data);
+    if (fcMember) { await fcLoadNames(); fcListen(); }
+    return true;
+  } catch (e) { return false; }
+}
+async function fcLoadNames() {
+  try { const n = await fc.from('chat_names').select('id,name,color'); (n.data || []).forEach(x => { fcNames[x.id] = x; }); } catch (e) {}
+}
+function fcName(id) { return id === (fcUser && fcUser.id) ? 'You' : ((fcNames[id] && fcNames[id].name) || 'Someone'); }
+function fcListen() {
+  if (fcChan || !fc) return;
+  fcChan = fc.channel('field-room')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: 'room=eq.field' }, p => {
+      const m = p.new;
+      if (!m || fcMsgs.some(x => x.id === m.id)) return;
+      fcMsgs.push(m);
+      if (!fcNames[m.sender]) fcLoadNames();
+      const mine = fcUser && m.sender === fcUser.id;
+      const open = document.getElementById('fcList');
+      if (open) fcDraw(); else if (!mine) { fcUnread++; fcBadge(); }
+      if (!mine && fcAlerts) fcFlash();
+    })
+    .subscribe();
+}
+function fcFlash() {
+  const old = document.getElementById('fcStar');
+  if (old) old.remove();
+  const d = document.createElement('div');
+  d.id = 'fcStar';
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 1300);
+  if (typeof ftcSend === 'function') ftcSend('F');
+}
+function fcBadge() {
+  const b = document.getElementById('fieldChatOpen');
+  if (b) b.textContent = fcUnread ? 'OPEN FIELD CHAT (' + fcUnread + ' NEW)' : 'OPEN FIELD CHAT';
+}
+async function fcSetAlerts(on) {
+  fcAlerts = on;
+  try { localStorage.setItem('fcAlerts', on ? '1' : '0'); } catch (e) {}
+  setToggle('fieldChatBtn', on);
+  if (on) { await fcStart(); if (!fcMember) setStatus('open Field Chat once to join with an invite code'); }
+}
+function fcDraw() {
+  const list = document.getElementById('fcList');
+  if (!list) return;
+  list.innerHTML = fcMsgs.slice(-80).map(m => '<div class="fc-msg' + (fcUser && m.sender === fcUser.id ? ' mine' : '') + '"><b>' + escapeHtml(fcName(m.sender)) + '</b> <span class="meta-line">' + new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '</span><br>' + escapeHtml(m.body || (m.file_name ? 'shared a file' : '')) + '</div>').join('') || '<div class="meta-line">No messages yet.</div>';
+  list.scrollTop = list.scrollHeight;
+}
+async function fcOpen() {
+  const panel = document.getElementById('panel');
+  panel.innerHTML = '<h2>FIELD CHAT</h2><div class="meta-line" id="fcMsg">Connecting.</div>';
+  panel.classList.add('open');
+  if (!(await fcStart())) { document.getElementById('fcMsg').textContent = 'Could not reach the chat. Check the signal and try again.'; return; }
+  fcUnread = 0; fcBadge();
+  if (!fcMember) {
+    panel.innerHTML = '<h2>FIELD CHAT</h2><div class="meta-line">Field Chat shares members with Cat Command Chat. Get an invite code from someone in it, or make one yourself in Cat Command Chat by tapping your own face, then Invite someone.</div>' +
+      '<input type="text" id="fcCode" autocomplete="off" placeholder="Invite code"><input type="text" id="fcNameIn" autocomplete="off" placeholder="Your name in the chat">' +
+      '<div class="meta-line" id="fcErr"></div><div class="panel-actions"><button id="fcJoin">JOIN</button><button class="secondary" id="fcClose">CLOSE</button></div>';
+    document.getElementById('fcClose').addEventListener('click', closePanel);
+    document.getElementById('fcJoin').addEventListener('click', async () => {
+      const code = document.getElementById('fcCode').value.trim();
+      const name = document.getElementById('fcNameIn').value.trim();
+      const err = document.getElementById('fcErr');
+      if (!code || !name) { err.textContent = 'Type the invite code and your name.'; return; }
+      err.textContent = 'Joining.';
+      const r = await fc.rpc('join_chat', { code: code });
+      if (r.error || r.data !== true) { err.textContent = 'That code did not work. Check it with the person who invited you.'; return; }
+      await fc.from('chat_names').upsert({ id: fcUser.id, name: name, color: '#0b4ea2' });
+      fcMember = true;
+      await fcLoadNames();
+      fcListen();
+      fcOpen();
+    });
+    return;
+  }
+  panel.innerHTML = '<h2>FIELD CHAT</h2><div id="fcList" style="max-height:46vh;overflow-y:auto;margin:6px 0;"></div>' +
+    '<textarea id="fcText" rows="2" placeholder="Message the field crew"></textarea>' +
+    '<div class="panel-actions"><button id="fcSend">SEND</button><button class="secondary" id="fcClose">CLOSE</button></div>';
+  document.getElementById('fcClose').addEventListener('click', closePanel);
+  const send = async () => {
+    const t = document.getElementById('fcText');
+    const body = t.value.trim();
+    if (!body) return;
+    t.value = '';
+    const r = await fc.from('chat_messages').insert({ body: body, room: 'field' }).select().single();
+    if (r.error) { t.value = body; setStatus('message did not send, ' + r.error.message); return; }
+    if (r.data && !fcMsgs.some(x => x.id === r.data.id)) { fcMsgs.push(r.data); fcDraw(); }
+  };
+  document.getElementById('fcSend').addEventListener('click', send);
+  try {
+    const r = await fc.from('chat_messages').select('*').eq('room', 'field').is('deleted_at', null).order('id', { ascending: false }).limit(80);
+    if (!r.error) fcMsgs = (r.data || []).reverse();
+  } catch (e) {}
+  fcDraw();
+}
+setTimeout(() => { setToggle('fieldChatBtn', fcAlerts); if (fcAlerts) fcStart(); }, 4000);
 // GO picks and arrivals raise a place's rank.
 (function () {
   const start = navStart, end = navEnd;

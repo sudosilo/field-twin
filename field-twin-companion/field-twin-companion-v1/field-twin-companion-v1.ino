@@ -100,6 +100,7 @@ float roughHist[60];
 int roughIdx = 0;
 unsigned long lastSample = 0, lastWindow = 0;
 
+unsigned long strobeUntil = 0;
 char notice[48] = "";
 unsigned long noticeUntil = 0;
 int brightness = 220;
@@ -201,6 +202,7 @@ static void bleStart() {
 // L0 / L|lat|lon     clear or add locker pins
 // B|0-255            screen brightness
 // N|text             show a short notice
+// F                  Field Chat message: rainbow flash for a moment
 static void handleCommand(char *c) {
   if (c[0] == 'R' && c[1] == '0') { routeN = 0; stepN = 0; stepNext = 1; routeActive = false; arrived = false; turnText[0] = 0; return; }
   if (c[0] == 'R' && c[1] == 'P' && c[2] == '|') {
@@ -234,6 +236,7 @@ static void handleCommand(char *c) {
   if (c[0] == 'L' && c[1] == '|' && lockerN < MAX_LOCKERS) { lockerLat[lockerN] = atof(c + 2); char *b = strchr(c + 2, '|'); if (b) { lockerLon[lockerN] = atof(b + 1); lockerN++; } return; }
   if (c[0] == 'B' && c[1] == '|') { brightness = constrain(atoi(c + 2), 10, 255); analogWrite(PIN_LCD_BL, brightness); return; }
   if (c[0] == 'N' && c[1] == '|') { showNotice(c + 2, 5000); return; }
+  if (c[0] == 'F') { strobeUntil = millis() + 1500; return; }
 }
 
 // ---------- route following on the board's own GPS ----------
@@ -458,6 +461,17 @@ static void drawScreen() {
   }
   gfx->drawFastHLine(4, by + 1, 164, C_LINE);
 
+  // Field Chat flash: a thick rainbow frame that cycles colors, the map stays visible in the middle
+  if (strobeUntil > millis()) {
+    static const uint16_t bands[6] = { 0xF800, 0xFD20, 0xFFE0, 0x07E0, 0x041F, 0xA81F };
+    int k = (millis() / 70) % 6;
+    for (int i = 0; i < 6; i++) {
+      uint16_t col = bands[(k + i) % 6];
+      int o = i * 2;
+      gfx->drawRect(o, o, W - o * 2, H - o * 2, col);
+      gfx->drawRect(o + 1, o + 1, W - o * 2 - 2, H - o * 2 - 2, col);
+    }
+  }
   if (noticeUntil > millis()) {
     gfx->fillRoundRect(6, 240, W - 12, 26, 6, C_BLUE);
     gfx->setTextSize(1); gfx->setTextColor(C_WHITE);
@@ -489,6 +503,6 @@ void loop() {
   while (xQueueReceive(cmdQueue, c, 0) == pdTRUE) handleCommand(c);
   gpsTick();
   imuTick();
-  if (millis() - lastDraw > 200) { drawScreen(); lastDraw = millis(); }
+  if (millis() - lastDraw > (strobeUntil > millis() ? 60UL : 200UL)) { drawScreen(); lastDraw = millis(); }
   delay(1);
 }
