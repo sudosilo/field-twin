@@ -751,8 +751,10 @@
   <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <h3>Look things up</h3>
+  <h3>Lockers</h3>
+  <button class="secondary tg" id="teamLockersBtn" aria-pressed="false"><span>ALL LOCKERS</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary" id="lockersBtn">LOCKERS</button>
+  <h3>Look things up</h3>
   <button class="secondary" id="searchBtn">SEARCH</button>
   <button class="secondary" id="timelineBtn">TIMELINE</button>
   <button class="secondary" id="dayLogBtn">DAY LOG</button>
@@ -5297,6 +5299,7 @@ async function init() {
     showMileage();
   });
 
+  document.getElementById('teamLockersBtn').addEventListener('click', () => ftTeamSet(!ftTeamOn));
   document.getElementById('lockersBtn').addEventListener('click', () => {
     closeMenu();
     showLockers();
@@ -6510,7 +6513,7 @@ function ftpNear(lat, lon, m, kind) {
 }
 function ftpRow(p) {
   return { id: p.id, kind: p.kind, name: p.name || '', lat: p.lat, lon: p.lon, address: p.address || '', notes: p.notes || '',
-    arrivals: p.arrivals || 0, searches: p.searches || 0, last_at: p.last_at || null, updated_at: p.updated_at };
+    arrivals: p.arrivals || 0, searches: p.searches || 0, last_at: p.last_at || null, updated_at: p.updated_at, source: p.source || null };
 }
 async function ftpPush(p) {
   p.updated_at = new Date().toISOString();
@@ -6530,7 +6533,7 @@ async function ftpPull() {
       const mine = byId[row.id];
       if (!mine || (!mine.dirty && String(row.updated_at) > String(mine.updated_at || ''))) {
         byId[row.id] = { id: row.id, kind: row.kind, name: row.name, lat: row.lat, lon: row.lon, address: row.address, notes: row.notes,
-          arrivals: row.arrivals, searches: row.searches, last_at: row.last_at, updated_at: row.updated_at };
+          arrivals: row.arrivals, searches: row.searches, last_at: row.last_at, updated_at: row.updated_at, source: row.source || null };
       }
     });
     ftPlaces = Object.keys(byId).map(k => byId[k]);
@@ -6740,6 +6743,98 @@ function ftphPick(done) {
   });
   inp.click();
 }
+
+// ALL LOCKERS switch: loads every locker anyone on Field Twin has mapped into your own list, shares the name, spot
+// and address of yours back, and shows every locker as a pin on the map. Tap a pin to open its locker page.
+let ftTeamOn = false;
+try { ftTeamOn = localStorage.getItem('ftTeamOn') === '1'; } catch (e) {}
+let ftLockerLayer = null;
+function ftTeamSet(on) {
+  ftTeamOn = on;
+  try { localStorage.setItem('ftTeamOn', on ? '1' : '0'); } catch (e) {}
+  setToggle('teamLockersBtn', on);
+  if (on) ftTeamSync().then(ftLockerPins); else ftLockerPins();
+}
+async function ftTeamSync() {
+  ftpSeedLockers();
+  if (typeof cloudReady !== 'function' || !cloudReady()) { setStatus('sign in to load the team locker list'); return; }
+  try {
+    const mine = ftPlaces.filter(p => p.kind === 'locker' && p.source !== 'team');
+    for (let i = 0; i < mine.length; i += 200) {
+      const rows = mine.slice(i, i + 200).map(p => ({ id: p.id, name: p.name || '', lat: p.lat, lon: p.lon, address: p.address || '', updated_at: new Date().toISOString() }));
+      await sb.from('field_twin_team_lockers').upsert(rows, { onConflict: 'id' });
+    }
+    const all = [];
+    for (let from = 0; from < 20000; from += 1000) {
+      const r = await sb.from('field_twin_team_lockers').select('id,name,lat,lon,address').range(from, from + 999);
+      if (r.error) { setStatus('team locker list is not set up yet'); return; }
+      all.push(...(r.data || []));
+      if ((r.data || []).length < 1000) break;
+    }
+    let added = 0;
+    all.forEach(t => {
+      const near = ftpNear(t.lat, t.lon, 80, 'locker');
+      if (near) { if (!near.name && t.name) { near.name = t.name; ftpPush(near); } return; }
+      const p = { id: ftpId(), kind: 'locker', name: t.name || '', lat: t.lat, lon: t.lon, address: t.address || '', notes: '', arrivals: 0, searches: 0, last_at: null, source: 'team' };
+      ftPlaces.push(p);
+      ftpPush(p);
+      added++;
+    });
+    ftpSaveLocal();
+    setStatus(added ? 'loaded ' + added + ' lockers from the team list' : 'team locker list is up to date');
+  } catch (e) { setStatus('could not reach the team locker list'); }
+}
+function ftLockerPins() {
+  if (ftLockerLayer) { map.removeLayer(ftLockerLayer); ftLockerLayer = null; }
+  if (!ftTeamOn) return;
+  ftLockerLayer = L.layerGroup();
+  ftPlaces.filter(p => p.kind === 'locker').forEach(p => {
+    const icon = L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+      html: '<div style="width:22px;height:22px;transform:rotate(45deg);background:#0b4ea2;border:2px solid #ffffff;box-shadow:0 0 0 2px #0a1b2e;display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(-45deg);font-size:11px;line-height:1;">\u{1F4E6}</span></div>' });
+    L.marker([p.lat, p.lon], { icon: icon, title: ftpLabel(p) }).on('click', () => showLocker(p)).addTo(ftLockerLayer);
+  });
+  ftLockerLayer.addTo(map);
+}
+// Asks OpenStreetMap for every parcel locker marked as Amazon within about a hundred miles of Las Vegas, or of you
+// when you are farther away, and adds the ones you do not have yet.
+async function ftOsmLockers() {
+  const me = mySpot();
+  const c = me && ftpDist(me.lat, me.lon, 36.17, -115.14) > 160000 ? me : { lat: 36.17, lon: -115.14 };
+  const box = [c.lat - 1.45, c.lon - 1.8, c.lat + 1.45, c.lon + 1.8].map(x => x.toFixed(3)).join(',');
+  const q = '[out:json][timeout:60];(nwr["amenity"="parcel_locker"]["brand"~"Amazon",i](' + box + ');nwr["amenity"="parcel_locker"]["operator"~"Amazon",i](' + box + ');nwr["amenity"="parcel_locker"]["name"~"Amazon",i](' + box + '););out center tags;';
+  let data = null;
+  for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try {
+      const res = await fetch(host, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) });
+      if (res.ok) { data = await res.json(); break; }
+    } catch (e) {}
+  }
+  if (!data) return { error: true };
+  const seen = new Set();
+  let found = 0, added = 0;
+  (data.elements || []).forEach(el => {
+    if (seen.has(el.type + el.id)) return;
+    seen.add(el.type + el.id);
+    const lat = el.lat !== undefined ? el.lat : el.center && el.center.lat;
+    const lon = el.lon !== undefined ? el.lon : el.center && el.center.lon;
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    found++;
+    const t = el.tags || {};
+    let name = String(t.name || t.ref || '').replace(/^amazon\s*(hub)?\s*(locker|counter)?\s*[-:+]?\s*/i, '').trim();
+    if (/^amazon/i.test(name)) name = '';
+    const addr = [[t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' '), t['addr:city']].filter(Boolean).join(', ');
+    const near = ftpNear(lat, lon, 80, 'locker');
+    if (near) { if (!near.name && name) { near.name = name; ftpPush(near); } return; }
+    const p = { id: ftpId(), kind: 'locker', name: name, lat: lat, lon: lon, address: addr || (t.description || ''), notes: '', arrivals: 0, searches: 0, last_at: null, source: 'osm' };
+    ftPlaces.push(p);
+    ftpPush(p);
+    added++;
+  });
+  ftpSaveLocal();
+  ftLockerPins();
+  return { found: found, added: added };
+}
+setTimeout(() => { setToggle('teamLockersBtn', ftTeamOn); if (ftTeamOn) ftTeamSync().then(ftLockerPins); }, 3000);
 // GO picks and arrivals raise a place's rank.
 (function () {
   const start = navStart, end = navEnd;
@@ -6758,8 +6853,9 @@ function showLockers() {
   ftpSeedLockers();
   const panel = document.getElementById('panel');
   const list = ftPlaces.filter(p => p.kind === 'locker');
-  let html = '<h2>LOCKERS</h2><div class="meta-line">Every spot logged as a parcel locker. Tap one to name it and see its visits and photos.</div>';
+  let html = '<h2>LOCKERS</h2><div class="meta-line">Lockers you logged, plus any loaded from the team list or open map data. Tap one to name it and see its visits and photos.</div>';
   html += '<input type="text" id="lockerFind" autocomplete="off" placeholder="Locker name or street">';
+  html += '<button class="secondary" id="lockerOsm" style="width:100%;margin:6px 0;">ADD LOCKERS FROM OPEN MAP DATA</button><div class="meta-line" id="lockerOsmMsg"></div>';
   html += '<div id="lockerRows"></div>';
   html += '<div class="panel-actions"><button class="secondary" id="lockersClose">CLOSE</button></div>';
   panel.innerHTML = html;
@@ -6770,13 +6866,20 @@ function showLockers() {
     q = (q || '').toLowerCase().trim();
     const shown = list.filter(p => !q || (p.name + ' ' + p.address).toLowerCase().indexOf(q) !== -1)
       .sort((a, b) => (a.name ? 0 : 1) - (b.name ? 0 : 1) || String(a.name || a.address).localeCompare(String(b.name || b.address)));
-    rows.innerHTML = shown.length ? shown.map(p => '<div class="mi-row" data-lk="' + p.id + '"><b style="color:#0b4ea2;">' + escapeHtml(ftpLabel(p)) + '</b><br><span class="meta-line">' + escapeHtml(p.address || '') + ' &nbsp; ' + ftpStopsAt(p).length + ' logged</span></div>').join('')
+    rows.innerHTML = shown.length ? '<div class="meta-line">' + shown.length + (shown.length === 1 ? ' locker' : ' lockers') + '</div>' + shown.map(p => '<div class="mi-row" data-lk="' + p.id + '"><b style="color:#0b4ea2;">' + escapeHtml(ftpLabel(p)) + '</b><br><span class="meta-line">' + escapeHtml(p.address || '') + ' &nbsp; ' + ftpStopsAt(p).length + ' logged' + (p.source === 'team' ? ', from the team list' : p.source === 'osm' ? ', from open map data' : '') + '</span></div>').join('')
       : '<div class="meta-line">No lockers yet. Log a stop as a parcel locker, or open any entry and tap MAKE LOCKER.</div>';
     rows.querySelectorAll('[data-lk]').forEach(el => el.addEventListener('click', () => showLocker(ftPlaces.find(x => x.id === el.getAttribute('data-lk')))));
   };
   draw('');
   document.getElementById('lockerFind').addEventListener('input', ev => draw(ev.target.value));
   document.getElementById('lockersClose').addEventListener('click', closePanel);
+  document.getElementById('lockerOsm').addEventListener('click', async () => {
+    const msg = document.getElementById('lockerOsmMsg');
+    msg.textContent = 'Searching open map data for Amazon lockers within about a hundred miles. This takes a moment.';
+    const r = await ftOsmLockers();
+    msg.textContent = r.error ? 'Open map data did not answer, try again in a minute.' : 'Found ' + r.found + ' Amazon lockers in open map data, ' + r.added + ' of them were new and are now in your list.';
+    if (!r.error && r.added) setTimeout(showLockers, 1800);
+  });
 }
 function showLocker(p) {
   if (!p) return;
@@ -6824,6 +6927,7 @@ function showLocker(p) {
     p.kind = 'locker';
     ftpPush(p);
     setStatus('locker saved');
+    ftLockerPins();
     showLocker(p);
   });
   document.getElementById('lockerGo').addEventListener('click', () => navStart({ lat: p.lat, lon: p.lon, name: ftpLabel(p), label: p.address, placeId: p.id }));

@@ -17,3 +17,4 @@ alter table public.field_twin_places enable row level security;
 drop policy if exists field_twin_places_own on public.field_twin_places;
 create policy field_twin_places_own on public.field_twin_places for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 grant select, insert, update, delete on public.field_twin_places to authenticated;
+alter table public.field_twin_places add column if not exists source text;
