@@ -1,5 +1,7 @@
 Field Twin changelog
 
+2026-11-03, v2026.11.03. Added the Field Twin Companion, a small dashboard screen that pairs with the phone app over Bluetooth. The phone sends it the route, turns, and lockers, and the companion screen has a browser installer page. An ALL LOCKERS switch shows every team locker as a pin, and the locker list can be read without signing in. Cameras on the map now group into teal count bubbles. A Field Chat room shares members with Cat Command Chat and flashes the map when a message arrives. GO now handles routes around the airport fence.
+
 2026-11-01, v2026.11.01. Added a floating map window. When you leave the app during a route, the map floats with only the next turn showing. Lockers now have names and their own pages, and GO ranks places by arrivals, picks, and logs. Entries and lockers take any number of photos, and the phone app asks for camera permission before any photo button. The place list gained mailbox, casino, parking structure, and diner types.
 
 2026-10-31, v2026.10.31. Added GO navigation. The route banner sits below the tabs with zoom buttons under it, and a Google Maps button hands the destination to Google Maps. The bottom panel now stays above the phone keyboard.
