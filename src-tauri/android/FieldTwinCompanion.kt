@@ -102,8 +102,13 @@ object FieldTwinCompanion {
   private fun adapter(): BluetoothAdapter? = (ctx?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
   private val scanCb = object : ScanCallback() {
+    @SuppressLint("MissingPermission")
     override fun onScanResult(callbackType: Int, result: ScanResult) {
       if (!scanning) return
+      val rec = result.scanRecord
+      val name = rec?.deviceName ?: (try { result.device.name } catch (e: Exception) { null }) ?: ""
+      val hasSvc = rec?.serviceUuids?.any { it.uuid == SERVICE } == true
+      if (!hasSvc && !name.startsWith("FT Companion")) return
       stopScan()
       connect(result.device)
     }
@@ -118,7 +123,8 @@ object FieldTwinCompanion {
     val sc = a.bluetoothLeScanner ?: run { announce("bluetooth off"); retryLater(); return }
     scanning = true
     announce("searching")
-    val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE)).build())
+    // Match by name or by service ID, whichever part of the advert the phone reads first.
+    val filters = listOf(ScanFilter.Builder().setDeviceName("FT Companion").build(), ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE)).build())
     val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
     try { sc.startScan(filters, settings, scanCb) } catch (e: Exception) { scanning = false; announce("scan failed"); retryLater(); return }
     main.postDelayed({ if (scanning) { stopScan(); announce("not found"); retryLater() } }, 15000)

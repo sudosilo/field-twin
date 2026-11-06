@@ -193,14 +193,14 @@ static void bleStart() {
   chRoad = svc->createCharacteristic(UUID_ROAD, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   chRoad->addDescriptor(new BLE2902());
   svc->start();
-  // An advert packet holds very little. The service ID goes in the advert, so the phone app can find the board, and
-  // the name goes in the scan response, so phones list it as FT Companion. Both together did not fit in one packet.
+  // An advert packet holds very little. The name goes in the advert, so every phone lists it as FT Companion, and
+  // the service ID goes in the scan response. Both together do not fit in one packet.
   BLEAdvertising *adv = BLEDevice::getAdvertising();
   BLEAdvertisementData ad;
   ad.setFlags(0x06);
-  ad.setCompleteServices(BLEUUID(UUID_SERVICE));
+  ad.setName(BLE_NAME);
   BLEAdvertisementData sr;
-  sr.setName(BLE_NAME);
+  sr.setCompleteServices(BLEUUID(UUID_SERVICE));
   adv->setAdvertisementData(ad);
   adv->setScanResponseData(sr);
   adv->setScanResponse(true);
