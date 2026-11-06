@@ -78,6 +78,15 @@ Step steps[MAX_STEPS];
 int stepN = 0, stepNext = 1;
 bool routeActive = false;
 float lockerLat[MAX_LOCKERS], lockerLon[MAX_LOCKERS];
+// Streets around you, sent by the phone as simple lines. Each street is a run of points; streetStart marks where
+// each run begins, and streetMajor marks the big roads, which draw thicker.
+#define MAX_STREET_PTS 2400
+#define MAX_STREETS 400
+float streetLat[MAX_STREET_PTS], streetLon[MAX_STREET_PTS];
+int streetPtN = 0;
+int streetStart[MAX_STREETS];
+bool streetMajor[MAX_STREETS];
+int streetN = 0;
 int lockerN = 0;
 
 char turnText[96] = "";
@@ -218,6 +227,9 @@ static void bleStart() {
 // H|lat|lon          phone position, used when this board has no GPS fix
 // L0 / L|lat|lon     clear or add locker pins
 // B|0-255            screen brightness
+// W0                 clear the streets
+// WN|0 or WN|1       start a new street, 1 for a major road
+// WP|lat,lon;...     add points to the current street
 // N|text             show a short notice
 // F                  Field Chat message: rainbow flash for a moment
 static void handleCommand(char *c) {
@@ -249,6 +261,20 @@ static void handleCommand(char *c) {
   if (c[0] == 'D' && c[1] == '|') { phoneDistNext = atof(c + 2); char *b = strchr(c + 2, '|'); phoneDistLeft = b ? atof(b + 1) : -1; return; }
   if (c[0] == 'X') { routeActive = false; routeN = 0; stepN = 0; turnText[0] = 0; showNotice("route ended", 3000); return; }
   if (c[0] == 'H' && c[1] == '|') { phoneLat = atof(c + 2); char *b = strchr(c + 2, '|'); if (b) { phoneLon = atof(b + 1); phonePosAt = millis(); } return; }
+  if (c[0] == 'W' && c[1] == '0') { streetN = 0; streetPtN = 0; return; }
+  if (c[0] == 'W' && c[1] == 'N' && streetN < MAX_STREETS) { streetStart[streetN] = streetPtN; streetMajor[streetN] = c[3] == '1'; streetN++; return; }
+  if (c[0] == 'W' && c[1] == 'P' && c[2] == '|' && streetN > 0) {
+    char *p = c + 3;
+    while (*p && streetPtN < MAX_STREET_PTS) {
+      char *comma = strchr(p, ',');
+      if (!comma) break;
+      streetLat[streetPtN] = atof(p); streetLon[streetPtN] = atof(comma + 1); streetPtN++;
+      char *semi = strchr(comma, ';');
+      if (!semi) break;
+      p = semi + 1;
+    }
+    return;
+  }
   if (c[0] == 'L' && c[1] == '0') { lockerN = 0; return; }
   if (c[0] == 'L' && c[1] == '|' && lockerN < MAX_LOCKERS) { lockerLat[lockerN] = atof(c + 2); char *b = strchr(c + 2, '|'); if (b) { lockerLon[lockerN] = atof(b + 1); lockerN++; } return; }
   if (c[0] == 'B' && c[1] == '|') { brightness = constrain(atoi(c + 2), 10, 255); analogWrite(PIN_LCD_BL, brightness); return; }
@@ -447,7 +473,7 @@ static int wrapText(const char *t, int x, int y, int maxW, int size, uint16_t co
 // Draws the map north up around the position, scaled so the next turn fits on screen.
 static void drawMap(int top, int bottom) {
   int mh = bottom - top;
-  gfx->fillRect(0, top, W, mh, C_PALE);
+  gfx->fillRect(0, top, W, mh, C_WHITE);
   double cLat, cLon;
   if (hasPosition()) { cLat = posLat(); cLon = posLon(); }
   else if (routeN) { cLat = routeLat[0]; cLon = routeLon[0]; }
@@ -468,6 +494,19 @@ static void drawMap(int top, int bottom) {
     x = cx + (int)(((lo - cLon) * kx) / mPerPx);
     y = cy - (int)(((la - cLat) * 110540.0) / mPerPx);
   };
+  // streets first, so the route and markers sit on top
+  for (int w = 0; w < streetN; w++) {
+    int a = streetStart[w], b = (w + 1 < streetN) ? streetStart[w + 1] : streetPtN;
+    uint16_t col = streetMajor[w] ? C_GREY : C_LINE;
+    for (int i = a + 1; i < b; i++) {
+      int x0, y0, x1, y1;
+      px(streetLat[i - 1], streetLon[i - 1], x0, y0);
+      px(streetLat[i], streetLon[i], x1, y1);
+      if ((x0 < 0 && x1 < 0) || (x0 > W && x1 > W) || (y0 < top && y1 < top) || (y0 > bottom && y1 > bottom)) continue;
+      gfx->drawLine(x0, y0, x1, y1, col);
+      if (streetMajor[w]) { gfx->drawLine(x0 + 1, y0, x1 + 1, y1, col); gfx->drawLine(x0, y0 + 1, x1, y1 + 1, col); }
+    }
+  }
   for (int i = 0; i < lockerN; i++) {
     int x, y; px(lockerLat[i], lockerLon[i], x, y);
     if (x > 2 && x < W - 2 && y > top + 2 && y < bottom - 2) gfx->fillRect(x - 2, y - 2, 5, 5, C_ORANGE);
@@ -503,6 +542,11 @@ static void drawScreen() {
   gfx->fillScreen(C_WHITE);
   char a[24], b[24];
   int headBottom = 104;
+  // map first, then blank the bands above and below it so streets that run off the map never cover the text
+  drawMap(headBottom, 272);
+  gfx->fillRect(0, 0, W, headBottom, C_WHITE);
+  gfx->fillRect(0, 272, W, H - 272, C_WHITE);
+  gfx->drawFastHLine(0, headBottom, W, C_LINE);
   if (routeActive || turnText[0]) {
     const char *t = turnText;
     if (haveFix && routeActive && stepN && stepNext < stepN) t = steps[stepNext].text;
@@ -520,7 +564,6 @@ static void drawScreen() {
     gfx->print((int)roundf(mySpeed * 2.23694f));
     gfx->setTextSize(1); gfx->setTextColor(C_GREY); gfx->print(" mph");
   }
-  drawMap(headBottom, 272);
 
   // status strip
   gfx->setTextSize(1);

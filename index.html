@@ -6969,6 +6969,48 @@ function ftcSendRoute() {
   (r.steps || []).slice(0, 80).forEach(st => ftcSend('RS|' + st.lat.toFixed(5) + '|' + st.lon.toFixed(5) + '|' + ftcClean(st.text)));
   ftcSend('RG');
 }
+// Streets for the companion screen: the phone asks OpenStreetMap for the roads within about a mile of you, thins
+// them out, and sends them as simple lines. It fetches again once you have driven most of the way to the edge.
+let ftcStreetsAt = null, ftcStreetsBusy = false;
+const FTC_MAJOR = { motorway: 1, trunk: 1, primary: 1, secondary: 1, motorway_link: 1, trunk_link: 1, primary_link: 1 };
+async function ftcSendStreets(force) {
+  if (ftcState !== 'linked' || ftcStreetsBusy) return;
+  const me = mySpot();
+  if (!me) return;
+  if (!force && ftcStreetsAt && ftpDist(me.lat, me.lon, ftcStreetsAt.lat, ftcStreetsAt.lon) < 1100) return;
+  ftcStreetsBusy = true;
+  try {
+    const r = 0.016, k = Math.cos(me.lat * Math.PI / 180);
+    const box = [me.lat - r, me.lon - r / k, me.lat + r, me.lon + r / k].map(x => x.toFixed(4)).join(',');
+    const q = '[out:json][timeout:25];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|service)$"](' + box + ');out geom;';
+    let data = null;
+    for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+      try { const res = await fetch(host, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }); if (res.ok) { data = await res.json(); break; } } catch (e) {}
+    }
+    if (!data) return;
+    let ways = (data.elements || []).filter(w => w.geometry && w.geometry.length > 1);
+    // big roads first, and service drives only when there is room left
+    ways.sort((a, b) => (FTC_MAJOR[b.tags.highway] ? 2 : b.tags.highway === 'service' ? 0 : 1) - (FTC_MAJOR[a.tags.highway] ? 2 : a.tags.highway === 'service' ? 0 : 1));
+    let budget = 2300, sentWays = 0;
+    ftcSend('W0');
+    for (const w of ways) {
+      if (sentWays >= 395 || budget < 2) break;
+      // thin each street: keep a point only when it is at least about fifteen yards from the last one kept
+      const pts = [];
+      w.geometry.forEach((g, i) => {
+        const last = pts[pts.length - 1];
+        if (!last || i === w.geometry.length - 1 || ftpDist(last.lat, last.lon, g.lat, g.lon) > 14) pts.push(g);
+      });
+      if (pts.length < 2 || pts.length > budget) continue;
+      ftcSend('WN|' + (FTC_MAJOR[w.tags.highway] ? 1 : 0));
+      for (let i = 0; i < pts.length; i += 9) ftcSend('WP|' + pts.slice(i, i + 9).map(g => g.lat.toFixed(5) + ',' + g.lon.toFixed(5)).join(';') + ';');
+      budget -= pts.length;
+      sentWays++;
+    }
+    ftcStreetsAt = { lat: me.lat, lon: me.lon };
+  } finally { ftcStreetsBusy = false; }
+}
+setInterval(() => { if (ftcOn && ftcState === 'linked') ftcSendStreets(false); }, 15000);
 function ftcSendLockers() {
   const me = mySpot();
   let list = ftPlaces.filter(p => p.kind === 'locker');
@@ -6984,6 +7026,8 @@ window.ftCompanionIn = function (kind, text) {
     if (text === 'linked' && was !== 'linked') {
       setStatus('FT Companion linked');
       ftcSendLockers();
+      ftcStreetsAt = null;
+      ftcSendStreets(true);
       if (navState && navState.route) ftcSendRoute();
     }
     return;
