@@ -112,6 +112,8 @@ unsigned long noticeUntil = 0;
 int brightness = 220;
 
 bool bleLinked = false;
+unsigned long usbSeenAt = 0;  // last command that came in over the USB cable
+static bool usbLinked() { return usbSeenAt && millis() - usbSeenAt < 8000; }
 BLEServer *server = nullptr;
 BLECharacteristic *chPos = nullptr, *chRoad = nullptr;
 QueueHandle_t cmdQueue;
@@ -154,6 +156,7 @@ static double posLat() { return haveFix ? myLat : phoneLat; }
 static double posLon() { return haveFix ? myLon : phoneLon; }
 
 static void notify(BLECharacteristic *ch, const char *msg) {
+  if (usbLinked()) Serial.println(msg);
   if (!bleLinked || !ch) return;
   ch->setValue((uint8_t *)msg, strlen(msg));
   ch->notify();
@@ -190,8 +193,16 @@ static void bleStart() {
   chRoad = svc->createCharacteristic(UUID_ROAD, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   chRoad->addDescriptor(new BLE2902());
   svc->start();
+  // An advert packet holds very little. The service ID goes in the advert, so the phone app can find the board, and
+  // the name goes in the scan response, so phones list it as FT Companion. Both together did not fit in one packet.
   BLEAdvertising *adv = BLEDevice::getAdvertising();
-  adv->addServiceUUID(UUID_SERVICE);
+  BLEAdvertisementData ad;
+  ad.setFlags(0x06);
+  ad.setCompleteServices(BLEUUID(UUID_SERVICE));
+  BLEAdvertisementData sr;
+  sr.setName(BLE_NAME);
+  adv->setAdvertisementData(ad);
+  adv->setScanResponseData(sr);
   adv->setScanResponse(true);
   BLEDevice::startAdvertising();
 }
@@ -243,6 +254,27 @@ static void handleCommand(char *c) {
   if (c[0] == 'B' && c[1] == '|') { brightness = constrain(atoi(c + 2), 10, 255); analogWrite(PIN_LCD_BL, brightness); return; }
   if (c[0] == 'N' && c[1] == '|') { showNotice(c + 2, 5000); return; }
   if (c[0] == 'F') { strobeUntil = millis() + 1500; return; }
+}
+
+// ---------- USB link ----------
+// Plugged into the phone, the same commands arrive one per line over the USB cable, and readings go back the same way.
+static char usbLine[CMD_LEN];
+static int usbLen = 0;
+static void usbTick() {
+  while (Serial.available()) {
+    int ch = Serial.read();
+    if (ch < 0) break;
+    if (ch == '\n' || ch == '\r') {
+      if (usbLen > 0) {
+        usbLine[usbLen] = 0;
+        bool was = usbLinked();
+        usbSeenAt = millis();
+        if (!was) showNotice("phone linked by USB", 3000);
+        if (strcmp(usbLine, "PING") != 0) handleCommand(usbLine);
+        usbLen = 0;
+      }
+    } else if (usbLen < CMD_LEN - 1) usbLine[usbLen++] = (char)ch;
+  }
 }
 
 // ---------- route following on the board's own GPS ----------
@@ -496,8 +528,8 @@ static void drawScreen() {
   gfx->setTextColor(haveFix ? C_GREEN : C_RED);
   if (haveFix) { gfx->print("GPS "); gfx->print(mySats); } else gfx->print(gps.passedChecksum() > 0 ? "GPS no fix" : "GPS none");
   gfx->setCursor(78, 278);
-  gfx->setTextColor(bleLinked ? C_BLUE : C_GREY);
-  gfx->print(bleLinked ? "linked" : "no phone");
+  gfx->setTextColor(bleLinked || usbLinked() ? C_BLUE : C_GREY);
+  gfx->print(usbLinked() ? "usb" : (bleLinked ? "linked" : "no phone"));
   gfx->setCursor(130, 278);
   gfx->setTextColor(imuOk ? C_INK : C_GREY);
   gfx->print(imuOk ? (imuKind == 2 ? "lis3d" : "mpu") : "no imu");
@@ -552,6 +584,7 @@ unsigned long lastDraw = 0;
 void loop() {
   char c[CMD_LEN];
   while (xQueueReceive(cmdQueue, c, 0) == pdTRUE) handleCommand(c);
+  usbTick();
   gpsTick();
   imuTick();
   if (millis() - lastDraw > (strobeUntil > millis() ? 60UL : 200UL)) { drawScreen(); lastDraw = millis(); }

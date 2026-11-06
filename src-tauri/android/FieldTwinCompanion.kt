@@ -37,6 +37,7 @@ object FieldTwinCompanion {
   const val PERM_CODE = 4419
 
   private val main = Handler(Looper.getMainLooper())
+  private val usbExec = java.util.concurrent.Executors.newSingleThreadExecutor()
   private var ctx: Context? = null
   private var gatt: BluetoothGatt? = null
   private var nav: BluetoothGattCharacteristic? = null
@@ -64,9 +65,19 @@ object FieldTwinCompanion {
     return need.toTypedArray()
   }
 
+  // Called by the USB link when the cable connects or drops. While the cable is up, everything goes over it.
+  fun usbState(up: Boolean) {
+    if (up) announce("linked") else if (gatt != null && nav != null && descQueue.isEmpty()) announce("linked") else announce(if (wanted) "searching" else "off")
+  }
+  fun fromUsb(line: String) {
+    if (line.startsWith("FT Companion")) return
+    toPage(if (line.startsWith("Q|")) "road" else "pos", line)
+  }
+
   fun start(activity: Activity) {
     ctx = activity.applicationContext
     wanted = true
+    FieldTwinCompanionUsb.watch(activity)
     if (gatt != null) { announce(state); return }
     val need = permsNeeded(activity)
     if (need.isNotEmpty()) { announce("asking"); ActivityCompat.requestPermissions(activity, need, PERM_CODE); return }
@@ -81,6 +92,7 @@ object FieldTwinCompanion {
   @SuppressLint("MissingPermission")
   fun stop() {
     wanted = false
+    FieldTwinCompanionUsb.stopWatching()
     try { stopScan() } catch (e: Exception) {}
     try { gatt?.disconnect(); gatt?.close() } catch (e: Exception) {}
     gatt = null; nav = null; queue.clear(); busy = false
@@ -185,6 +197,7 @@ object FieldTwinCompanion {
 
   // Commands go out one at a time; the next leaves when the board confirms the last one.
   fun send(cmd: String) {
+    if (FieldTwinCompanionUsb.open) { usbExec.execute { FieldTwinCompanionUsb.write(cmd) }; return }
     val b = cmd.toByteArray(Charsets.UTF_8)
     main.post {
       if (queue.size > 400) queue.clear()
