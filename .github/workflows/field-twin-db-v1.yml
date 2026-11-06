@@ -1,0 +1,27 @@
+name: Field Twin database
+
+# Applies every database change in supabase/ to the shared Supabase project whenever one is pushed.
+on:
+  push:
+    branches: [master]
+    paths: ['supabase/**', '.github/workflows/field-twin-db-v1.yml']
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply database changes
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -e
+          [ -n "$TOKEN" ] || { echo "SUPABASE_ACCESS_TOKEN secret is not set"; exit 1; }
+          for f in supabase/field-twin-places-v1.sql supabase/field-twin-photos-v1.sql supabase/field-twin-team-lockers-v1.sql; do
+            jq -Rs '{query: .}' "$f" > body.json
+            out=$(curl -s -w '\n%{http_code}' -X POST https://api.supabase.com/v1/projects/zasyjjoypkpvyqdueums/database/query -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary @body.json)
+            code=$(echo "$out" | tail -n1)
+            echo "$f: $code $(echo "$out" | head -n1 | head -c 300)"
+            [ "$code" -lt 300 ] || exit 1
+          done
