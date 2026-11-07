@@ -3691,7 +3691,7 @@ function showOdometer(locked) {
   odoLocked = false;
   const panel = document.getElementById('panel');
   const list = odoList();
-  const last = list[list.length - 1];
+  let last = list[list.length - 1];
   const now = new Date();
   const cls = classifyWork(now);
   let vehicle = '';
@@ -3748,11 +3748,23 @@ function showOdometer(locked) {
       return;
     }
     // A typo here would teach the correction a wrong fact, so a reading far from the GPS estimate needs a second tap.
-    const guess = calEstimate(Date.now());
+    let guess = calEstimate(Date.now());
     if (guess && last && btn.dataset.confirmed !== String(reading)) {
-      const off = Math.abs(reading - guess.reading);
-      const room = Math.max(5, guess.gpsMi * 0.3);
-      if (reading < last.odometer.reading || off > room) {
+      let off = Math.abs(reading - guess.reading);
+      let room = Math.max(5, guess.gpsMi * 0.3);
+      // Another phone may have saved a newer reading that has not synced here yet. Pull first, then check again,
+      // so the warning only shows when the number still looks wrong against the newest reading on any phone.
+      if ((reading < last.odometer.reading || off > room) && btn.dataset.pulled !== '1' && typeof cloudReady === 'function' && cloudReady()) {
+        btn.dataset.pulled = '1';
+        btn.disabled = true; btn.textContent = 'CHECKING';
+        try { await Promise.race([cloudPull(), new Promise(r => setTimeout(r, 6000))]); } catch (e) {}
+        btn.disabled = false; btn.textContent = 'SAVE READING';
+        const fresh = odoList().filter(e => new Date(e.timestamp).getTime() <= Date.now());
+        if (fresh.length) last = fresh[fresh.length - 1];
+        guess = calEstimate(Date.now());
+        if (guess) { off = Math.abs(reading - guess.reading); room = Math.max(5, guess.gpsMi * 0.3); }
+      }
+      if (guess && (reading < last.odometer.reading || off > room)) {
         btn.dataset.confirmed = String(reading);
         document.getElementById('odoMsg').textContent = (reading < last.odometer.reading ? 'That is lower than the last reading of ' + last.odometer.reading + '.' : 'That is ' + Math.round(off) + ' miles away from what GPS expects.') + ' Check the number, then tap SAVE READING again to keep it.';
         return;
