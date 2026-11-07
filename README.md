@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-03, v2026.11.03. Added the Field Twin Companion, a small dashboard screen that pairs with the phone app over Bluetooth. The phone sends it the route, turns, and lockers, and the companion screen has a browser installer page. An ALL LOCKERS switch shows every team locker as a pin, and the locker list can be read without signing in. Cameras on the map now group into teal count bubbles. A Field Chat room shares members with Cat Command Chat and flashes the map when a message arrives. GO now handles routes around the airport fence.
+Latest change. 2026-11-06, v2026.11.06. The Field Twin Companion now draws the streets around you, sent by the phone from OpenStreetMap and refreshed as you drive. The companion shows up more reliably over Bluetooth and can also link over a USB cable. Team lockers shown without signing in now show only the locker, not who shared it or when. Info buttons were brought up to date.
 
 Full history is in CHANGELOG.md.
