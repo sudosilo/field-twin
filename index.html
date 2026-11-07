@@ -4850,7 +4850,7 @@ function showInfo() {
   html += '<div class="question">Photos</div>';
   html += '<div>An entry or a locker can hold as many photos as you like. Each photo goes straight up to your account in the cloud and waits on the phone only until it uploads, so every phone signed in sees them. Tap a photo square to see it full size. The first time in the phone app, Android asks for camera permission.</div>';
   html += '<div class="question">Daily miles and CarData</div>';
-  html += '<div>DAILY MILES in the menu gives each workday a start, an end and business miles. The day starts at your day start point and ends at the last ticket, so the drive home is never business. Missing readings at a stop are filled in from your real readings before and after it. Each day has a For CarData box with Beginning, Ending and Business mileage laid out like the CarData form, and COPY FOR CARDATA copies them. Miles off the clock shows how far the truck went from the last ticket of one workday to the start of the next, which is the drive home and back plus anything personal, compared with your typical night, along with the GPS times you reached the first ticket and left the last one. The spreadsheet includes those off the clock miles too.</div>';
+  html += '<div>DAILY MILES in the menu gives each workday a start, an end and business miles. The day starts at your day start point and ends at the last ticket, so the drive home is never business. Missing readings at a stop are filled in from your real readings before and after it. Leg check compares each drive, from the day start to a ticket and from ticket to ticket, with the road route between the two addresses, flags any leg where the odometer went well over the road route along with side stops logged on the way such as lunch, and USE ROAD ROUTE MILES sets business miles to the road route plus your extra miles. Each day has a For CarData box with Beginning, Ending and Business mileage laid out like the CarData form, and COPY FOR CARDATA copies them. Miles off the clock shows how far the truck went from the last ticket of one workday to the start of the next, which is the drive home and back plus anything personal, compared with your typical night, along with the GPS times you reached the first ticket and left the last one. The spreadsheet includes those off the clock miles too.</div>';
   html += '<div class="question">Odometer entries</div>';
   html += '<div>Edit on an odometer entry keeps it an odometer entry and lets you change the reading, the vehicle, and whether those miles were work or personal. Mileage splits your miles into work and personal from those choices.</div>';
   html += '<div class="question">Traffic cameras</div>';
@@ -6129,6 +6129,67 @@ function dmNights() {
   const typical = plain.length ? plain[Math.floor(plain.length / 2)] : null;
   return { nights: out, typical: typical, count: plain.length, nums: nums };
 }
+// Leg check: for each drive from the day start to a ticket, or from one ticket to the next, compare what the odometer
+// went with the road route between the two addresses. A leg that ran well over the road route is flagged with any
+// side stops logged on the way, such as lunch, so you can look at it before you send business miles.
+const DM_ROAD_KEY = 'fieldTwinRoadMiles';
+function dmRoadCache() { try { return JSON.parse(localStorage.getItem(DM_ROAD_KEY) || '{}') || {}; } catch (e) { return {}; } }
+async function dmRoadMiles(a, b) {
+  const k = [a.lat, a.lon, b.lat, b.lon].map(v => Number(v).toFixed(4)).join(',');
+  const cache = dmRoadCache();
+  if (isFinite(cache[k])) return cache[k];
+  try {
+    const r = await fetch('https://router.project-osrm.org/route/v1/driving/' + a.lon + ',' + a.lat + ';' + b.lon + ',' + b.lat + '?overview=false');
+    const j = await r.json();
+    const mi = j && j.routes && j.routes[0] ? j.routes[0].distance / 1609.344 : null;
+    if (mi !== null) { cache[k] = Math.round(mi * 10) / 10; try { localStorage.setItem(DM_ROAD_KEY, JSON.stringify(cache)); } catch (e) {} return cache[k]; }
+  } catch (e) {}
+  return null;
+}
+function dmLegList(c) {
+  const legs = [];
+  if (!c.stops.length) return legs;
+  if (c.startPoint && c.start) legs.push({ a: { lat: c.startPoint.lat, lon: c.startPoint.lon, label: 'the day start point', t1: null, odo: c.start }, b: c.stops[0] });
+  for (let i = 1; i < c.stops.length; i++) legs.push({ a: c.stops[i - 1], b: c.stops[i] });
+  return legs.map(L => {
+    const ao = L.a.odo, bo = L.b.odo;
+    const side = c.all.filter(st => c.stops.indexOf(st) === -1 && st.t0 >= (L.a.t1 || L.b.t0 - 4 * 3600000) && st.t0 <= L.b.t0);
+    return { from: L.a, to: L.b, odoMi: ao && bo ? bo.v - ao.v : null, sure: !!(ao && bo && ao.src === 'reading' && bo.src === 'reading'), side: side };
+  });
+}
+async function dmLegsFill(c, el, onTotal) {
+  const legs = dmLegList(c);
+  if (!legs.length) { el.textContent = 'No legs to check yet.'; return; }
+  let html = '', road = 0, roadOk = true, flags = 0;
+  for (const L of legs) {
+    const mi = await dmRoadMiles(L.from, L.to);
+    if (mi === null) roadOk = false; else road += mi;
+    const name = (L.from.label || 'Stop') + ' to ' + (L.to.label || 'Stop');
+    let line = name + ': road route ' + (mi === null ? 'unknown' : mi + ' miles');
+    let flag = false;
+    if (L.odoMi !== null) {
+      line += ', odometer went ' + Math.round(L.odoMi * 10) / 10 + (L.sure ? '' : ' (from filled in readings)');
+      if (mi !== null) {
+        const extra = L.odoMi - mi;
+        if (extra > Math.max(3, mi * 0.3)) {
+          flag = true; flags++;
+          line += '. About ' + Math.round(extra) + ' miles more than the road route, so only about ' + mi + ' of them count as business';
+          if (L.side.length) line += '. Logged on the way: ' + L.side.map(st => st.label + ' at ' + dmClock(st.t0)).join(', ');
+        } else if (extra < -Math.max(3, mi * 0.3) && L.sure) {
+          flag = true; flags++;
+          line += '. That is less than the road route, so one of the readings is likely wrong';
+        }
+      }
+    } else line += ', no odometer at both ends';
+    html += '<div class="mi-row" style="border-left:4px solid ' + (flag ? '#d93636' : '#1f5fbf') + ';padding-left:8px;">' + escapeHtml(line) + '.</div>';
+  }
+  const total = roadOk ? Math.round(road * 10) / 10 : null;
+  html = '<div class="meta-line">' + (flags ? flags + (flags === 1 ? ' leg needs' : ' legs need') + ' a look.' : 'Every leg matches its road route.') +
+    (total !== null ? ' Business miles by road route from the day start through the last ticket: ' + total + '.' : '') + '</div>' + html;
+  el.innerHTML = html;
+  if (onTotal) onTotal(total);
+}
+
 function dmFirstLastTimes(dk) {
   const c = dmCompute(dk, true);
   if (!c.stops.length) return null;
@@ -6242,6 +6303,8 @@ function showDailyMilesDay(dk) {
     if (sv !== '' && ev !== '' && bv !== '' && ev - sv - bv > 0.5) off += ' During the day, ' + Math.round((ev - sv - bv) * 10) / 10 + ' miles between the start and the last ticket are not counted as business.';
     html += '<div class="meta-line">' + escapeHtml(off) + '</div>';
   }
+  html += '<div class="question">Leg check</div><div id="dmLegs" class="meta-line">Checking each leg against the road route.</div>' +
+    (lock ? '' : '<div class="panel-actions"><button class="secondary" id="dmUseRoad" disabled>USE ROAD ROUTE MILES</button></div>');
   html += '<div class="question">Stops that day, tap to mark tickets</div>';
   if (!c.all.length) html += '<div class="meta-line">No stops logged on this day.</div>';
   c.all.forEach(st => {
@@ -6283,6 +6346,17 @@ function showDailyMilesDay(dk) {
     document.getElementById('cdD').textContent = a !== null && b !== null && z !== null ? Math.round((b - a - z) * 10) / 10 : '';
   };
   ['dmStart', 'dmEnd', 'dmBiz'].forEach(id => document.getElementById(id).addEventListener('input', cdSync));
+  dmLegsFill(c, document.getElementById('dmLegs'), total => {
+    const b = document.getElementById('dmUseRoad');
+    if (!b || total === null) return;
+    b.disabled = false;
+    b.addEventListener('click', () => {
+      const z = document.getElementById('dmBiz');
+      z.value = Math.round((total + dmMargin()) * 10) / 10;
+      z.dispatchEvent(new Event('input'));
+      setStatus('business miles set to the road route plus your extra miles');
+    });
+  });
   document.getElementById('cdCopy').addEventListener('click', async () => {
     const a = num('dmStart'), b = num('dmEnd'), z = num('dmBiz');
     const text = dmDayLabel(dk, true) + '\nBeginning ' + (a === null ? '' : a) + '\nEnding ' + (b === null ? '' : b) + '\nBusiness mileage ' + (z === null ? '' : z);
