@@ -19,4 +19,6 @@ grant select, insert, update, delete on public.field_twin_team_lockers to authen
 -- that signs into a different Supabase project still preload this list.
 drop policy if exists field_twin_team_lockers_public on public.field_twin_team_lockers;
 create policy field_twin_team_lockers_public on public.field_twin_team_lockers for select to anon using (true);
-grant select on public.field_twin_team_lockers to anon;
+-- Without signing in, only the locker itself shows: never who added it or when it was last shared.
+revoke select on public.field_twin_team_lockers from anon;
+grant select (id, name, lat, lon, address) on public.field_twin_team_lockers to anon;
