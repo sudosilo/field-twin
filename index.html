@@ -4849,6 +4849,8 @@ function showInfo() {
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with MAKE LOCKER. LOCKERS in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, GO HERE, and ADD PHOTO OF THIS LOCKER. ADD LOCKERS FROM OPEN MAP DATA finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The ALL LOCKERS switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
   html += '<div class="question">Photos</div>';
   html += '<div>An entry or a locker can hold as many photos as you like. Each photo goes straight up to your account in the cloud and waits on the phone only until it uploads, so every phone signed in sees them. Tap a photo square to see it full size. The first time in the phone app, Android asks for camera permission.</div>';
+  html += '<div class="question">Daily miles and CarData</div>';
+  html += '<div>DAILY MILES in the menu gives each workday a start, an end and business miles. The day starts at your day start point and ends at the last ticket, so the drive home is never business. Missing readings at a stop are filled in from your real readings before and after it. Each day has a For CarData box with Beginning, Ending and Business mileage laid out like the CarData form, and COPY FOR CARDATA copies them. Miles off the clock shows how far the truck went from the last ticket of one workday to the start of the next, which is the drive home and back plus anything personal, compared with your typical night, along with the GPS times you reached the first ticket and left the last one. The spreadsheet includes those off the clock miles too.</div>';
   html += '<div class="question">Odometer entries</div>';
   html += '<div>Edit on an odometer entry keeps it an odometer entry and lets you change the reading, the vehicle, and whether those miles were work or personal. Mileage splits your miles into work and personal from those choices.</div>';
   html += '<div class="question">Traffic cameras</div>';
@@ -6060,7 +6062,7 @@ function dmCompute(dk, quick) {
   picked.sort((a, b) => a.t0 - b.t0);
   const out = { dk: dk, state: state, all: all, stops: picked, missing: missing, warns: [] };
   const rs = dmReadings();
-  const pairs = quick ? [] : dmPairs();
+  const pairs = quick ? [] : (dmPairsMemo || dmPairs());
   picked.forEach(s => { s.odo = dmOdoAt(s, rs, pairs); });
   if (quick) return out;
   const p = dmStartGet();
@@ -6100,14 +6102,51 @@ function dmDays() {
   return Object.keys(days).sort().reverse().slice(0, 45);
 }
 
+// Miles off the clock, worked out by elimination. Business miles run from the day start point to the last ticket.
+// Everything between the last ticket of one workday and the start of the next workday is the drive home and back
+// plus anything personal. Saved odometer readings and GPS timestamps are the facts; the typical round trip is the
+// middle of your recent nights, so a night far above it stands out as personal driving.
+function dmDayNums(dk) {
+  const st = dmState(dk);
+  if (st.locked && st.start !== null && st.end !== null) return { start: st.start, end: st.end, business: st.business, locked: true };
+  const c = dmCompute(dk);
+  return { start: c.start ? c.start.v : null, end: c.end ? c.end.v : null, business: c.suggest !== undefined ? Math.round(c.suggest) : null, locked: false };
+}
+let dmPairsMemo = null;
+function dmNights() {
+  const days = dmDays().slice(0, 30).slice().reverse();
+  const nums = {};
+  dmPairsMemo = dmPairs();
+  try { days.forEach(dk => { nums[dk] = dmDayNums(dk); }); } finally { dmPairsMemo = null; }
+  const out = {};
+  for (let i = 1; i < days.length; i++) {
+    const a = nums[days[i - 1]], b = nums[days[i]];
+    const gapDays = (new Date(days[i] + 'T12:00:00') - new Date(days[i - 1] + 'T12:00:00')) / 86400000;
+    if (a.end === null || b.start === null || gapDays > 4) continue;
+    out[days[i]] = { from: days[i - 1], miles: b.start - a.end, gapDays: gapDays, prevEnd: a.end };
+  }
+  const plain = Object.values(out).filter(n => n.gapDays === 1 && n.miles >= 0 && n.miles < 1000).map(n => n.miles).sort((x, y) => x - y);
+  const typical = plain.length ? plain[Math.floor(plain.length / 2)] : null;
+  return { nights: out, typical: typical, count: plain.length, nums: nums };
+}
+function dmFirstLastTimes(dk) {
+  const c = dmCompute(dk, true);
+  if (!c.stops.length) return null;
+  return { first: c.stops[0].t0, last: c.stops[c.stops.length - 1].t1 };
+}
+
 function showDailyMiles() {
   const panel = document.getElementById('panel');
   const p = dmStartGet();
   let html = '<h2>DAILY MILES</h2>';
   html += '<div class="meta-line">Each workday gets a start, an end and business miles. Tap a day to check it and confirm it.</div>';
+  const nt = dmNights();
+  if (nt.typical !== null) html += '<div class="meta-line">Your typical drive home and back between workdays is about ' + nt.typical + ' miles, from ' + nt.count + (nt.count === 1 ? ' night' : ' nights') + ' of odometer readings. None of it is business mileage.</div>';
   dmDays().forEach(dk => {
     const s = dmState(dk);
-    const line = s.locked ? 'Start ' + s.start + ', end ' + s.end + ', business ' + s.business + ', confirmed' : 'not confirmed yet';
+    const n = nt.nights[dk];
+    const line = (s.locked ? 'Start ' + s.start + ', end ' + s.end + ', business ' + s.business + ', confirmed' : 'not confirmed yet') +
+      (n ? ', ' + n.miles + ' miles off the clock before it' : '');
     html += '<div class="mi-row" data-dm="' + dk + '"' + (s.locked ? ' style="border-left:4px solid #2e9e4f;padding-left:8px;"' : '') + '><b>' + escapeHtml(dmDayLabel(dk)) + '</b><br><span class="meta-line">' + escapeHtml(line) + '</span></div>';
   });
   html += '<div class="question">Day start point</div>';
@@ -6146,10 +6185,12 @@ function showDailyMiles() {
     } catch (e) { setStatus('could not find that address, add the city and state'); }
   });
   document.getElementById('dmCsvBtn').addEventListener('click', () => {
-    const rows = [['date', 'start mileage', 'end mileage', 'odometer miles', 'business miles']];
+    const rows = [['date', 'start mileage', 'end mileage', 'odometer miles', 'business miles', 'not business during the day', 'off the clock before the day']];
+    const nt2 = dmNights();
     dmDays().slice().reverse().forEach(dk => {
       const s = dmState(dk);
-      if (s.locked) rows.push([dk, s.start, s.end, s.end - s.start, s.business]);
+      const n = nt2.nights[dk];
+      if (s.locked) rows.push([dk, s.start, s.end, s.end - s.start, s.business, Math.round((s.end - s.start - s.business) * 10) / 10, n ? n.miles : '']);
     });
     if (rows.length < 2) { setStatus('confirm a day first'); return; }
     saveTextFile('field-twin-daily-miles-' + localDay(new Date()) + '.csv', 'text/csv', rows.map(r => r.map(csvCell).join(',')).join('\n'));
@@ -6174,6 +6215,33 @@ function showDailyMilesDay(dk) {
       (c.start ? ' Start is ' + (c.start.src === 'reading' ? 'a reading at the day start point.' : 'worked back from the first ticket.') : '') + '</div>';
   }
   c.warns.forEach(w => { html += '<div class="meta-line" style="color:#b00020;">' + escapeHtml(w) + '</div>'; });
+  {
+    const nt = dmNights(), n = nt.nights[dk], ft = dmFirstLastTimes(dk);
+    const sv = val(s.start, c.start && c.start.v), ev = val(s.end, c.end && c.end.v), bv = val(s.business, c.suggest !== undefined ? c.suggest : '');
+    html += '<div class="question">For CarData</div>';
+    html += '<div class="cd-box" style="border:2px solid #1f5fbf;border-radius:10px;padding:10px 12px;background:#eef4fc;">' +
+      '<div class="meta-line">Beginning <b id="cdB" style="font-size:20px;">' + escapeHtml(String(sv)) + '</b></div>' +
+      '<div class="meta-line">Ending <b id="cdE" style="font-size:20px;">' + escapeHtml(String(ev)) + '</b></div>' +
+      '<div class="meta-line">Business mileage <b id="cdZ" style="font-size:20px;">' + escapeHtml(String(bv)) + '</b></div>' +
+      '<div class="meta-line">Difference in odometer readings minus business mileage <b id="cdD">' + (sv !== '' && ev !== '' && bv !== '' ? Math.round((ev - sv - bv) * 10) / 10 : '') + '</b></div>' +
+      '<div class="panel-actions"><button class="secondary" id="cdCopy">COPY FOR CARDATA</button></div></div>';
+    html += '<div class="question">Miles off the clock</div>';
+    let off = '';
+    if (n) {
+      off += 'From the last ticket ' + (n.gapDays === 1 ? 'the day before' : 'of ' + dmDayLabel(n.from)) + ' at odometer ' + n.prevEnd + ' to the start this morning, the truck went ' + n.miles + ' miles. That is the drive home and back plus anything personal, and none of it is business.';
+      if (nt.typical !== null && n.gapDays === 1) {
+        const extra = n.miles - nt.typical;
+        if (extra > Math.max(8, nt.typical * 0.25)) off += ' That is about ' + Math.round(extra) + ' miles more than your typical night of ' + nt.typical + ', so there was personal driving.';
+        else if (extra < -Math.max(8, nt.typical * 0.25)) off += ' That is about ' + Math.round(-extra) + ' miles less than your typical night of ' + nt.typical + ', so check the start reading or the last ticket the day before.';
+        else off += ' That matches your typical night of ' + nt.typical + ' miles.';
+      }
+      if (n.miles < 0) off += ' The start is lower than the night before ended, so one of those readings is wrong.';
+      if (n.miles >= 1000) off += ' CarData treats a jump of a thousand miles or more as a different vehicle.';
+    } else off += 'No ending reading from the workday before, so the drive home and back cannot be worked out for this day yet.';
+    if (ft) off += ' GPS has you at the first ticket at ' + dmClock(ft.first) + ' and leaving the last ticket at ' + dmClock(ft.last) + '.';
+    if (sv !== '' && ev !== '' && bv !== '' && ev - sv - bv > 0.5) off += ' During the day, ' + Math.round((ev - sv - bv) * 10) / 10 + ' miles between the start and the last ticket are not counted as business.';
+    html += '<div class="meta-line">' + escapeHtml(off) + '</div>';
+  }
   html += '<div class="question">Stops that day, tap to mark tickets</div>';
   if (!c.all.length) html += '<div class="meta-line">No stops logged on this day.</div>';
   c.all.forEach(st => {
@@ -6207,6 +6275,19 @@ function showDailyMilesDay(dk) {
   };
   check();
   ['dmStart', 'dmEnd', 'dmBiz'].forEach(id => document.getElementById(id).addEventListener('input', check));
+  const cdSync = () => {
+    const a = num('dmStart'), b = num('dmEnd'), z = num('dmBiz');
+    document.getElementById('cdB').textContent = a === null ? '' : a;
+    document.getElementById('cdE').textContent = b === null ? '' : b;
+    document.getElementById('cdZ').textContent = z === null ? '' : z;
+    document.getElementById('cdD').textContent = a !== null && b !== null && z !== null ? Math.round((b - a - z) * 10) / 10 : '';
+  };
+  ['dmStart', 'dmEnd', 'dmBiz'].forEach(id => document.getElementById(id).addEventListener('input', cdSync));
+  document.getElementById('cdCopy').addEventListener('click', async () => {
+    const a = num('dmStart'), b = num('dmEnd'), z = num('dmBiz');
+    const text = dmDayLabel(dk, true) + '\nBeginning ' + (a === null ? '' : a) + '\nEnding ' + (b === null ? '' : b) + '\nBusiness mileage ' + (z === null ? '' : z);
+    try { await navigator.clipboard.writeText(text); setStatus('copied for CarData'); } catch (e) { setStatus('could not copy, the numbers are on screen'); }
+  });
   document.getElementById('dmBack').addEventListener('click', showDailyMiles);
   document.getElementById('dmDayClose').addEventListener('click', closePanel);
   const curPick = () => (s.pick ? s.pick.slice() : c.stops.map(x => x.id));
