@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-06, v2026.11.06. The Field Twin Companion now draws the streets around you, sent by the phone from OpenStreetMap and refreshed as you drive. The companion shows up more reliably over Bluetooth and can also link over a USB cable. Team lockers shown without signing in now show only the locker, not who shared it or when. Info buttons were brought up to date.
+Latest change. 2026-11-07, v2026.11.07. The odometer check now pulls the newest readings from other phones before it warns. Added a daily miles box that works out miles off the clock by elimination. A leg check compares each leg with the road route and flags side trips.
 
 Full history is in CHANGELOG.md.
