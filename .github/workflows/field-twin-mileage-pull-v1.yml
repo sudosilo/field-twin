@@ -1,0 +1,44 @@
+name: Field Twin mileage pull
+on:
+  push:
+    branches: [mileage-pull]
+    paths: ['.github/workflows/field-twin-mileage-pull-v1.yml']
+permissions:
+  contents: write
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          cat > pub.pem <<'KEY'
+          -----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvV2iSZwp07TnVMDLo5zC
+          JjyEBtchuC0ajeUyCNJkyz1sz0wP6JQsS8d8USjF3loEI8WW1H6e0GgW9eMd36bJ
+          +chPCaZhgUbUPJ02BBCSzqzVn7RgUb44qKC0gPR4060gCqfaaw13CzshZW8DNOxl
+          EeR1OCuEC83jrUA4NWhGK8C1ugiXdfs9WDj9+c+azbex76dk8bbghSSnRvkpn6x8
+          beaC4qGN1FxpRab73F/8Q0BI9slWSxhUtsysfAQeAEi+GQiEw9HGxZFn6BMTKtmI
+          ZnNR3mcjikZGSCOA7qdgYoQlH2mYzUgtv24uWqkvwUvNLPAJgmYRw6vhEIbL39cf
+          xRLxUIXoZ5rNv01eeBIM5qwZqWri5/+ZIPKtpVpVL4DRCU56D+00Z5pWCbHMe7iF
+          zQrKHZOrGjzxM47pU4FHxTtPeUOZCY/+ceS6KBY5bM9NwMJpNkHnD4Amyz8EdfzM
+          Gf7/EPcC/Ufjz6LDEvwTNNEfMmiG6wV1iZQfmF3FRNKIHCIbOl6ViV1J1sMcbsay
+          c70PZCU8lG2ivdGMySh/B6QvZsjbxuVGZJsLJLen0YVsqQxL+jh7BD0H1Dlbdz97
+          gjC3gBWKtdhcmPqlUFbmlQK5botLT+fO55Y6bXKLwAyDwWejsyagB7RupMMiIwAa
+          /VAmdLzjk/OwjT4MvibsKQUCAwEAAQ==
+          -----END PUBLIC KEY-----
+          KEY
+          sed -i 's/^ *//' pub.pem
+          q() { python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1" > body.json; curl -s -X POST https://api.supabase.com/v1/projects/zasyjjoypkpvyqdueums/database/query -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary @body.json; }
+          { echo '{"entries":'; q "select id, twin_id, ts, lat, lon, address_label, category, form_type, place_type, questions, answers, context from entries order by ts"; echo ',"receipts":'; q "select * from receipts"; echo ',"cols":'; q "select table_name, column_name, data_type from information_schema.columns where table_schema='public' order by table_name"; echo '}'; } > out.json
+          wc -c out.json
+          openssl rand -hex 32 > k.txt
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in out.json -out mileage-pull.enc -pass file:k.txt
+          openssl pkeyutl -encrypt -pubin -inkey pub.pem -in k.txt -out mileage-pull.key
+          rm -f out.json k.txt body.json pub.pem
+          git config user.name sudosilo
+          git config user.email sudosilo@users.noreply.github.com
+          git add mileage-pull.enc mileage-pull.key
+          git commit -m "encrypted mileage pull"
+          git push
