@@ -4984,6 +4984,8 @@ function showInfo() {
   html += '<div>In the phone app, leaving Field Twin while a route is running shrinks it into a small floating window over your other apps. Only the map and the next turn show, centered on you, and the page keeps running so the route and your position stay live. Open Field Twin again and it goes back to full size.</div>';
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
+  html += '<div class="question">Locker site for Parcelsun</div>';
+  html += '<div>Each locker page has a Site for Parcelsun section: door count, module count, generation, placement, awning, whether the back sits against a wall, and which way the front faces. Aim phone measures the facing with the compass: stand a few steps out in front of the locker, point the back of the phone at its middle, and tap Capture. Steel throws a compass off, so stand back from the bank rather than pressing the phone against it. Add shade blocker measures a wall, building or tree that shades the locker: from in front of the locker, aim at its left edge, its right edge, then tilt up to its top edge, then name it and add its height and distance if you know them. Open in Parcelsun opens the heat model with this locker already set up, its blockers casting shade at the right hours. The site stays with the locker and syncs to your other phones, and it is never shared on the team list.</div>';
   html += '<div class="question">Photos</div>';
   html += '<div>An entry or a locker can hold as many photos as you like. Each photo goes straight up to your account in the cloud and waits on the phone only until it uploads, so every phone signed in sees them. Tap a photo square to see it full size. The first time in the phone app, Android asks for camera permission.</div>';
   html += '<div class="question">Daily miles and CarData</div>';
@@ -6918,7 +6920,7 @@ function ftpNear(lat, lon, m, kind) {
 }
 function ftpRow(p) {
   return { id: p.id, kind: p.kind, name: p.name || '', lat: p.lat, lon: p.lon, address: p.address || '', notes: p.notes || '',
-    arrivals: p.arrivals || 0, searches: p.searches || 0, last_at: p.last_at || null, updated_at: p.updated_at, source: p.source || null };
+    arrivals: p.arrivals || 0, searches: p.searches || 0, last_at: p.last_at || null, updated_at: p.updated_at, source: p.source || null, site: p.site || null };
 }
 async function ftpPush(p) {
   p.updated_at = new Date().toISOString();
@@ -6938,7 +6940,7 @@ async function ftpPull() {
       const mine = byId[row.id];
       if (!mine || (!mine.dirty && String(row.updated_at) > String(mine.updated_at || ''))) {
         byId[row.id] = { id: row.id, kind: row.kind, name: row.name, lat: row.lat, lon: row.lon, address: row.address, notes: row.notes,
-          arrivals: row.arrivals, searches: row.searches, last_at: row.last_at, updated_at: row.updated_at, source: row.source || null };
+          arrivals: row.arrivals, searches: row.searches, last_at: row.last_at, updated_at: row.updated_at, source: row.source || null, site: row.site || null };
       }
     });
     ftPlaces = Object.keys(byId).map(k => byId[k]);
@@ -7574,6 +7576,7 @@ function showLocker(p) {
   html += '<div class="question">Locker name</div><input type="text" id="lockerName" autocomplete="off" placeholder="Name, like Lasso" value="' + escapeHtml(p.name || '').replace(/"/g, '&quot;') + '">';
   html += '<div class="question">Locker notes</div><textarea id="lockerNotes" rows="3" placeholder="Gate code, where to park, which bank">' + escapeHtml(p.notes || '') + '</textarea>';
   html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">Save</button><button class="secondary" id="lockerGo" style="flex:1;">Go here</button></div>';
+  html += ftsSiteHtml(p);
   const extra = ftphAt(p);
   html += '<button class="secondary" id="lockerAddPhoto" style="width:100%;margin:6px 0;">Add photo of this locker</button>';
   if (pics.length || extra.length) {
@@ -7602,7 +7605,9 @@ function showLocker(p) {
     const e = entries.find(x => x.id === (el.getAttribute('data-ph') || el.getAttribute('data-st')));
     if (e) showEntry(e);
   }));
+  ftsSiteBind(p);
   document.getElementById('lockerSave').addEventListener('click', () => {
+    ftsReadForm(p);
     p.name = document.getElementById('lockerName').value.trim();
     p.notes = document.getElementById('lockerNotes').value.trim();
     p.nameSet = true;
@@ -7615,6 +7620,197 @@ function showLocker(p) {
   document.getElementById('lockerGo').addEventListener('click', () => navStart({ lat: p.lat, lon: p.lon, name: ftpLabel(p), label: p.address, placeId: p.id }));
   document.getElementById('lockerBack').addEventListener('click', showLockers);
   document.getElementById('lockerClose').addEventListener('click', closePanel);
+}
+
+// Locker site for Parcelsun: door count, module count, generation, placement, which way the front faces, and the
+// walls or buildings that shade it. Kept on the locker in p.site and synced in field_twin_places. Facing and blockers
+// are measured with the phone: the compass gives the bearing the back of the phone points, the tilt gives the angle up.
+const FTS_GENS = [['', 'Not set'], ['v2', 'Generation 2, screen and keypad'], ['v3', 'Generation 3, screen and keypad'], ['v4', 'Generation 4, Bluetooth phone only'], ['v5', 'Generation 5, Bluetooth phone only']];
+const FTS_PLACES = [['', 'Not set'], ['none', 'Outdoors, open sky'], ['awning', 'Outdoors, awning over the front'], ['full', 'Outdoors, full shade structure'], ['indoor', 'Indoors, in a lobby']];
+const PARCELSUN_URL = 'https://parcelsun-kq.vercel.app/';
+function ftsDir(d) { return ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'][Math.round(((d % 360) + 360) % 360 / 22.5) % 16]; }
+function ftsNum(id) { const el = document.getElementById(id); if (!el) return null; const v = String(el.value).trim(); if (v === '') return null; const n = parseFloat(v); return isFinite(n) ? n : null; }
+function ftsSite(p) { if (!p.site || typeof p.site !== 'object') p.site = {}; if (!Array.isArray(p.site.blockers)) p.site.blockers = []; return p.site; }
+// Magnetic north to true north, close enough across Nevada, Arizona and California.
+function ftsDecl(lon) { return Math.max(5, Math.min(16, 11 - 0.25 * ((isFinite(lon) ? lon : -115) + 115))); }
+function ftsSiteHtml(p) {
+  const s = ftsSite(p);
+  const opt = (list, v) => list.map(o => '<option value="' + o[0] + '"' + ((v || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
+  const val = v => (v === null || v === undefined) ? '' : String(v);
+  let h = '<div class="question">Site for Parcelsun</div>';
+  h += '<div class="meta-line">What the heat model needs to rebuild this locker in the sun.</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  h += '<label><div class="meta-line">Door count</div><input type="number" id="lsDoors" inputmode="numeric" min="1" value="' + val(s.doors) + '"></label>';
+  h += '<label><div class="meta-line">Module count</div><input type="number" id="lsMods" inputmode="numeric" min="1" value="' + val(s.mods) + '"></label>';
+  h += '</div>';
+  h += '<div class="meta-line" style="margin-top:6px;">Locker generation</div><select id="lsGen">' + opt(FTS_GENS, s.gen) + '</select>';
+  h += '<div class="meta-line" style="margin-top:6px;">Placement</div><select id="lsPlace">' + opt(FTS_PLACES, s.placement) + '</select>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-top:6px;">';
+  h += '<label><div class="meta-line">Awning reach past the front (in)</div><input type="number" id="lsAwning" inputmode="numeric" min="0" value="' + val(s.awning) + '"></label>';
+  h += '<label style="display:flex;align-items:center;gap:8px;min-height:44px;"><input type="checkbox" id="lsBack"' + (s.backWall ? ' checked' : '') + ' style="width:22px;height:22px;accent-color:#0b4ea2;"> Back against a wall</label>';
+  h += '</div>';
+  h += '<div class="meta-line" style="margin-top:6px;">Front of the locker faces (degrees from true north)</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;"><input type="number" id="lsFacing" inputmode="numeric" min="0" max="359" value="' + (isFinite(s.facing) && s.facing !== null ? Math.round(s.facing) : '') + '" style="flex:1;"><span id="lsFacingDir" style="min-width:48px;text-align:center;font-weight:800;color:#0b4ea2;">' + (isFinite(s.facing) && s.facing !== null ? ftsDir(s.facing) : '') + '</span><button class="secondary" id="lsFaceCap">Aim phone</button></div>';
+  h += '<div class="meta-line">' + (s.facingFrom === 'compass' ? 'Measured with the phone compass' : s.facingFrom === 'typed' ? 'Typed in' : 'Not measured yet') + '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0;"><button id="lsSave">Save site</button><button class="secondary" id="lsBlkAdd">Add shade blocker</button><button class="secondary" id="lsPs">Open in Parcelsun</button></div>';
+  h += '<div class="question">Shade blockers</div>';
+  h += '<div id="lsBlkList" style="height:150px;overflow-y:auto;border:2px solid #0b4ea2;border-radius:6px;padding:4px 8px;">';
+  h += s.blockers.length ? s.blockers.map((b, i) => {
+    const top = isFinite(b.top) && b.top !== null ? Math.round(b.top) + ' deg up' : (b.heightFt && b.distFt ? b.heightFt + ' ft tall, ' + b.distFt + ' ft away' : 'top not set');
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);"><div><b>' + escapeHtml(b.label || 'Blocker') + '</b><br><span class="meta-line">' + Math.round(b.left) + ' ' + ftsDir(b.left) + ' to ' + Math.round(b.right) + ' ' + ftsDir(b.right) + ', ' + top + '</span></div><button class="secondary" data-lsrm="' + i + '">Remove</button></div>';
+  }).join('') : '<div class="meta-line" style="padding:6px 0;">None yet. Tap Add shade blocker and aim at the wall or building that shades this locker.</div>';
+  h += '</div>';
+  return h;
+}
+function ftsReadForm(p) {
+  const s = ftsSite(p);
+  if (!document.getElementById('lsDoors')) return s;
+  s.doors = ftsNum('lsDoors'); s.mods = ftsNum('lsMods');
+  s.gen = document.getElementById('lsGen').value || null;
+  s.placement = document.getElementById('lsPlace').value || null;
+  s.awning = ftsNum('lsAwning');
+  s.backWall = document.getElementById('lsBack').checked;
+  const f = ftsNum('lsFacing');
+  if (f === null) { s.facing = null; s.facingFrom = null; }
+  else { const n = ((Math.round(f) % 360) + 360) % 360; if (s.facing === null || s.facing === undefined || Math.round(s.facing) !== n) s.facingFrom = 'typed'; s.facing = n; }
+  s.at = new Date().toISOString();
+  return s;
+}
+function ftsSaveSite(p, msg) {
+  p.kind = 'locker';
+  ftpPush(p);
+  setStatus(msg || 'locker site saved');
+  showLocker(p);
+}
+function ftsSiteBind(p) {
+  const fIn = document.getElementById('lsFacing');
+  fIn.addEventListener('input', () => { const v = ftsNum('lsFacing'); document.getElementById('lsFacingDir').textContent = v === null ? '' : ftsDir(v); });
+  document.getElementById('lsSave').addEventListener('click', () => { ftsReadForm(p); ftsSaveSite(p); });
+  document.getElementById('lsFaceCap').addEventListener('click', () => {
+    ftsReadForm(p);
+    ftsAim(p, 'face', r => { const s = ftsSite(p); s.facing = Math.round(((r[0].heading + 180) % 360 + 360) % 360); s.facingFrom = 'compass'; s.decl = r[0].decl; s.at = new Date().toISOString(); ftsSaveSite(p, 'locker facing saved'); });
+  });
+  document.getElementById('lsBlkAdd').addEventListener('click', () => {
+    ftsReadForm(p);
+    ftsAim(p, 'block', (r, extra) => {
+      const s = ftsSite(p);
+      s.blockers.push({ id: ftpId(), label: extra.label || ('Blocker ' + (s.blockers.length + 1)), left: Math.round(r[0].heading), right: Math.round(r[1].heading),
+        top: Math.max(0, Math.round(r[2].up * 10) / 10), heightFt: extra.heightFt, distFt: extra.distFt, decl: r[0].decl, at: new Date().toISOString() });
+      s.at = new Date().toISOString();
+      ftsSaveSite(p, 'shade blocker saved');
+    });
+  });
+  document.querySelectorAll('[data-lsrm]').forEach(el => el.addEventListener('click', () => {
+    ftsReadForm(p);
+    ftsSite(p).blockers.splice(+el.getAttribute('data-lsrm'), 1);
+    ftsSaveSite(p, 'shade blocker removed');
+  }));
+  document.getElementById('lsPs').addEventListener('click', () => {
+    const s = ftsReadForm(p);
+    ftpPush(p);
+    const d = { v: 1, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods,
+      placement: s.placement, awning: s.awning, backWall: !!s.backWall,
+      blockers: s.blockers.map(b => ({ label: b.label, left: b.left, right: b.right, top: b.top, heightFt: b.heightFt, distFt: b.distFt })) };
+    const bytes = new TextEncoder().encode(JSON.stringify(d));
+    let bin = ''; bytes.forEach(c => { bin += String.fromCharCode(c); });
+    const url = PARCELSUN_URL + '#ft=' + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    if (window.FieldTwinNative && typeof window.FieldTwinNative.openUrl === 'function') { try { window.FieldTwinNative.openUrl(url); return; } catch (e) {} }
+    const w = window.open(url, '_blank', 'noopener');
+    if (!w) window.location.href = url;
+  });
+}
+// Aiming screen. Reads the phone's absolute orientation and turns it into the bearing and angle up of the direction
+// the back of the phone points. A short average smooths out compass jitter.
+function ftsAim(p, mode, done) {
+  const steps = mode === 'face'
+    ? [{ t: 'Stand about three big steps out in front of the locker, facing it, lined up with the middle of the bank. Hold the phone upright and point the back of the phone at the middle of the locker. Tap Capture.' }]
+    : [{ t: 'Stand right in front of the locker. Point the back of the phone at the LEFT edge of the wall, building or tree that blocks the sun, as you face it. Tap Capture.' },
+       { t: 'Now point the back of the phone at the RIGHT edge of the same blocker. Tap Capture.' },
+       { t: 'Now tilt up and point the back of the phone at the TOP edge of the blocker, where it meets the sky. Tap Capture.' }];
+  const decl = ftsDecl(p.lon);
+  const ov = document.createElement('div');
+  ov.id = 'ftsAim';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#dfeaf7;color:#0b1b33;font-family:inherit;overflow:hidden;';
+  ov.innerHTML = '<video id="ftsVid" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>' +
+    '<div style="position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border:3px solid #0b4ea2;border-radius:50%;box-shadow:0 0 0 2px #fff;"></div>' +
+    '<div style="position:absolute;left:50%;top:50%;width:2px;height:120px;margin:-60px 0 0 -1px;background:#0b4ea2;"></div>' +
+    '<div style="position:absolute;left:50%;top:50%;width:120px;height:2px;margin:-1px 0 0 -60px;background:#0b4ea2;"></div>' +
+    '<div id="ftsStep" style="position:absolute;left:10px;right:10px;top:10px;height:118px;overflow-y:auto;background:#fff;border:2px solid #0b4ea2;border-radius:8px;padding:8px 10px;font-size:15px;line-height:1.35;"></div>' +
+    '<div id="ftsRead" style="position:absolute;left:10px;right:10px;bottom:84px;height:54px;background:#fff;border:2px solid #0b4ea2;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#0b4ea2;">Waiting for the compass</div>' +
+    '<div id="ftsForm" style="display:none;position:absolute;left:10px;right:10px;top:138px;background:#fff;border:2px solid #0b4ea2;border-radius:8px;padding:10px;">' +
+      '<div class="meta-line">Blocker name</div><input type="text" id="ftsLabel" placeholder="Like store wall" autocomplete="off">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;"><label><div class="meta-line">Height (ft), if known</div><input type="number" id="ftsH" inputmode="decimal" min="0"></label><label><div class="meta-line">Distance (ft), if known</div><input type="number" id="ftsD" inputmode="decimal" min="0"></label></div>' +
+    '</div>' +
+    '<div style="position:absolute;left:10px;right:10px;bottom:16px;height:56px;display:grid;grid-template-columns:2fr 1fr;gap:10px;"><button id="ftsCap" style="font-size:18px;">Capture</button><button class="secondary" id="ftsCancel">Cancel</button></div>';
+  document.body.appendChild(ov);
+  let i = 0, abs = false, last = 0, stream = null;
+  const got = [], buf = [];
+  const vid = ov.querySelector('#ftsVid');
+  const showStep = () => { ov.querySelector('#ftsStep').textContent = (steps.length > 1 ? 'Step ' + (i + 1) + ' of ' + steps.length + '. ' : '') + steps[i].t; };
+  const vec = e => {
+    const D = Math.PI / 180, a = e.alpha * D, b = e.beta * D, g = e.gamma * D;
+    const E = -(Math.cos(g) * Math.sin(a) * Math.sin(b) + Math.cos(a) * Math.sin(g));
+    const N = -(Math.sin(a) * Math.sin(g) - Math.cos(a) * Math.cos(g) * Math.sin(b));
+    const U = -Math.cos(b) * Math.cos(g);
+    return { E, N, U };
+  };
+  const reading = () => {
+    const now = Date.now();
+    const win = buf.filter(x => now - x.t < 500);
+    if (!win.length) return null;
+    let E = 0, N = 0, U = 0;
+    win.forEach(x => { E += x.E; N += x.N; U += x.U; });
+    const m = Math.sqrt(E * E + N * N + U * U) || 1;
+    const mag = Math.atan2(E, N) * 180 / Math.PI;
+    return { heading: ((mag + decl) % 360 + 360) % 360, up: Math.asin(Math.max(-1, Math.min(1, U / m))) * 180 / Math.PI, decl: decl };
+  };
+  const onOri = (e, isAbs) => {
+    if (e.alpha === null || e.alpha === undefined || e.beta === null) return;
+    if (isAbs) abs = true; else if (abs) return;
+    if (!isAbs && e.absolute !== true) return;
+    const v = vec(e); v.t = Date.now(); buf.push(v);
+    while (buf.length > 120) buf.shift();
+    if (v.t - last > 150) {
+      last = v.t;
+      const r = reading();
+      if (r) ov.querySelector('#ftsRead').textContent = (steps[i] && mode === 'block' && i === 2 ? 'Up ' + Math.round(r.up) + ' deg, ' : '') + 'Bearing ' + Math.round(r.heading) + ' ' + ftsDir(r.heading) + (mode === 'block' && i !== 2 ? ', up ' + Math.round(r.up) : '');
+    }
+  };
+  const hAbs = e => onOri(e, true), hRel = e => onOri(e, false);
+  const close = () => {
+    window.removeEventListener('deviceorientationabsolute', hAbs);
+    window.removeEventListener('deviceorientation', hRel);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    ov.remove();
+  };
+  const start = () => {
+    window.addEventListener('deviceorientationabsolute', hAbs);
+    window.addEventListener('deviceorientation', hRel);
+    setTimeout(() => { if (!buf.length && document.getElementById('ftsAim')) ov.querySelector('#ftsRead').textContent = 'No compass reading on this phone. Cancel and type the angle in.'; }, 2500);
+  };
+  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().then(start).catch(start); else start();
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      .then(st => { if (!document.getElementById('ftsAim')) { st.getTracks().forEach(t => t.stop()); return; } stream = st; vid.srcObject = st; }).catch(() => {});
+  } catch (e) {}
+  showStep();
+  ov.querySelector('#ftsCancel').addEventListener('click', close);
+  ov.querySelector('#ftsCap').addEventListener('click', () => {
+    if (i >= steps.length) {
+      const extra = { label: ov.querySelector('#ftsLabel').value.trim(), heightFt: ftsNum('ftsH'), distFt: ftsNum('ftsD') };
+      close(); done(got, extra); return;
+    }
+    const r = reading();
+    if (!r) { ov.querySelector('#ftsRead').textContent = 'No compass reading yet, hold still and try again'; return; }
+    got.push(r);
+    buf.length = 0;
+    i++;
+    if (i < steps.length) { showStep(); return; }
+    if (mode === 'face') { close(); done(got, {}); return; }
+    ov.querySelector('#ftsStep').textContent = 'Got it. Left edge ' + Math.round(got[0].heading) + ', right edge ' + Math.round(got[1].heading) + ', top ' + Math.round(got[2].up) + ' deg up. Name it, add height and distance if you know them, then tap Save.';
+    ov.querySelector('#ftsForm').style.display = 'block';
+    ov.querySelector('#ftsCap').textContent = 'Save';
+  });
 }
 </script>
 <script>

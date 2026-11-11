@@ -1,5 +1,7 @@
 Field Twin changelog
 
+2026-11-11, v2026.11.11. Each locker page now has a Site for Parcelsun section with door count, module count, generation, placement and facing. Aim phone measures which way the front faces with the compass, and Add shade blocker measures a wall or building that shades the locker by its left edge, right edge and top. Open in Parcelsun opens the heat model with the locker already set up.
+
 2026-11-10, v2026.11.10. Added one look across the Field Twin apps, so the map, inventory, and roads share a design. Added a night look that follows sunset and sunrise, and a drawn sign for every kind of place.
 
 2026-11-07, v2026.11.07. The odometer check now pulls the newest readings from other phones before it warns. Added a daily miles box that works out miles off the clock by elimination. A leg check compares each leg with the road route and flags side trips.
