@@ -7633,6 +7633,26 @@ function ftsNum(id) { const el = document.getElementById(id); if (!el) return nu
 function ftsSite(p) { if (!p.site || typeof p.site !== 'object') p.site = {}; if (!Array.isArray(p.site.blockers)) p.site.blockers = []; return p.site; }
 // Magnetic north to true north, close enough across Nevada, Arizona and California.
 function ftsDecl(lon) { return Math.max(5, Math.min(16, 11 - 0.25 * ((isFinite(lon) ? lon : -115) + 115))); }
+// Survey answers from the latest locker visit near this locker fill any site field left blank.
+function ftsSurvey(p) {
+  const near = (entries || []).filter(e => e && e.category === 'amazon_locker' && typeof e.lat === 'number' && typeof e.lon === 'number' &&
+    Math.abs(e.lat - p.lat) < 0.0008 && Math.abs(e.lon - p.lon) < 0.0009).sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+  const out = {};
+  near.forEach(e => {
+    const qs = (e.questions || []).map(q => (q && typeof q === 'object') ? q.text : String(q || ''));
+    qs.forEach((q, i) => { const a = (e.answers || [])[i]; if (a && out[q] === undefined) out[q] = a; });
+  });
+  return out;
+}
+function ftsFill(site, ans) {
+  const s = Object.assign({}, site);
+  const pick = re => { const k = Object.keys(ans).find(q => re.test(q)); return k ? ans[k] : ''; };
+  const comp = pick(/compartment count/i), scr = pick(/kiosk screen/i), ind = pick(/indoors or outdoors/i), shd = pick(/shaded or exposed/i);
+  if (!s.doors) s.doors = { 'Under 20': 15, '20-50': 35, '50-100': 75, 'Over 100': 110 }[comp] || null;
+  if (!s.gen) s.gen = scr === 'Screen' ? 'v3' : scr === 'Touchpad only' ? 'v4' : null;
+  if (!s.placement) s.placement = ind === 'Indoors' ? 'indoor' : shd === 'Shaded' ? 'full' : (ind === 'Outdoors' || shd === 'Exposed') ? 'none' : null;
+  return s;
+}
 function ftsSiteHtml(p) {
   const s = ftsSite(p);
   const opt = (list, v) => list.map(o => '<option value="' + o[0] + '"' + ((v || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
@@ -7706,9 +7726,10 @@ function ftsSiteBind(p) {
     ftsSaveSite(p, 'shade blocker removed');
   }));
   document.getElementById('lsPs').addEventListener('click', () => {
-    const s = ftsReadForm(p);
+    ftsReadForm(p);
     ftpPush(p);
-    const d = { v: 1, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods,
+    const s = ftsFill(ftsSite(p), ftsSurvey(p));
+    const d = { v: 1, id: p.id, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods,
       placement: s.placement, awning: s.awning, backWall: !!s.backWall,
       blockers: s.blockers.map(b => ({ label: b.label, left: b.left, right: b.right, top: b.top, heightFt: b.heightFt, distFt: b.distFt })) };
     const bytes = new TextEncoder().encode(JSON.stringify(d));
