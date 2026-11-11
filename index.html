@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Field Twin</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="https://fonts.bunny.net/css?family=overpass:400,600,800">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"></script>
@@ -395,7 +394,6 @@
     font-size: 15px;
     font-weight: 800;
     letter-spacing: 0.2px;
-    text-transform: lowercase;
     min-height: 48px;
     padding: 0 16px;
     border-radius: 8px;
@@ -403,7 +401,6 @@
     color: #ffffff;
     border: 2px solid var(--accent);
   }
-  button::first-letter { text-transform: uppercase; }
   button.secondary {
     background: #ffffff;
     color: var(--accent);
@@ -441,7 +438,6 @@
     border-radius: 8px;
   }
   #infoBtn { font-weight: 800; text-transform: none; }
-  #infoBtn::first-letter { text-transform: none; }
   #searchPage { font-family: inherit; }
   #panel .panel-actions {
     position: sticky;
@@ -467,10 +463,8 @@
     font-weight: 800;
     letter-spacing: 0;
     color: var(--text);
-    text-transform: lowercase;
     margin: 0 0 8px 0;
   }
-  #panel h2::first-letter { text-transform: uppercase; }
   .meta-line {
     font-family: inherit;
     font-size: 14px;
@@ -643,7 +637,6 @@
     flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: transparent;
     color: var(--text-dim); font-size: 15px; font-weight: 800; text-transform: none; letter-spacing: 0.3px; box-shadow: none;
   }
-  #twinTabs button::first-letter { text-transform: none; }
   #twinTabs button { background: #ffffff; font-size: 14px; }
   #twinTabs button.on { color: var(--accent); box-shadow: inset 0 -4px 0 var(--text); background: #ffffff; }
   #violetView {
@@ -672,7 +665,6 @@
   .ext-row { display: flex; flex-direction: column; gap: 10px; padding: 6px 14px 12px 14px; }
   #sideMenu .ext-row button.ext { flex: 0 0 auto; width: 100%; height: 46px; text-transform: none; width: auto; min-height: 46px; padding: 6px 8px; text-align: center; font-size: 14px; line-height: 1.15; font-weight: 800; background: var(--accent); color: #ffffff; border: 2px solid var(--text); border-radius: 8px; box-shadow: 3px 3px 0 var(--text); }
   #sideMenu .ext-row button.ext:active { box-shadow: none; transform: translate(3px, 3px); }
-  #sideMenu .ext-row button.ext::first-letter { text-transform: none; }
   #panel.odo-lock {
     position: fixed;
     top: 0;
@@ -711,6 +703,93 @@
   body.pip #navBanner button { display: none !important; }
   body.pip #navBanner div div:first-child { font-size: 13px !important; }
   body.pip #navBanner div div + div { font-size: 10px !important; }
+
+  /* ---- v12 family look: shared with Violet inventory and Glaucous roads ---- */
+  @font-face { font-family: 'Overpass'; font-weight: 400; font-display: swap; unicode-range: U+0000-00B6, U+00B8-FFFF; src: url(field-twin-fonts-v1/field-twin-fonts-v1-overpass-400.woff2) format('woff2'); }
+  @font-face { font-family: 'Overpass'; font-weight: 600; font-display: swap; unicode-range: U+0000-00B6, U+00B8-FFFF; src: url(field-twin-fonts-v1/field-twin-fonts-v1-overpass-600.woff2) format('woff2'); }
+  @font-face { font-family: 'Overpass'; font-weight: 800; font-display: swap; unicode-range: U+0000-00B6, U+00B8-FFFF; src: url(field-twin-fonts-v1/field-twin-fonts-v1-overpass-800.woff2) format('woff2'); }
+  @font-face { font-family: 'Overpass Mono'; font-weight: 400; font-display: swap; unicode-range: U+0000-00B1, U+00B3-FFFF; src: url(field-twin-fonts-v1/field-twin-fonts-v1-overpass-mono-400.woff2) format('woff2'); }
+  @font-face { font-family: 'Overpass Mono'; font-weight: 600; font-display: swap; unicode-range: U+0000-00B1, U+00B3-FFFF; src: url(field-twin-fonts-v1/field-twin-fonts-v1-overpass-mono-600.woff2) format('woff2'); }
+  :root {
+    --bg: #f2f4f7; --panel: #ffffff; --line: #c9d2dc; --hair: #e3e8ee;
+    --accent: #0b4ea2; --accent-dim: #0b4ea2; --accent-deep: #083a7a;
+    --text: #0b1a2b; --text-dim: #44556a; --tint: #e6eefa; --signal: #7fb0f0;
+    --ok: #1b7a43; --warn: #9a5700; --bad: #b3261e;
+    --mono: 'Overpass Mono', ui-monospace, Menlo, Consolas, monospace;
+    --head-h: 60px; --dock-h: 68px;
+  }
+  html, body { font-variant-ligatures: none; -webkit-text-size-adjust: 100%; }
+  button { -webkit-tap-highlight-color: transparent; cursor: pointer; letter-spacing: 0; }
+  button:active { filter: brightness(0.94); }
+  button.secondary { color: var(--text); border: 1.5px solid var(--line); font-weight: 600; }
+  button.secondary:active { background: var(--tint); filter: none; }
+  header { padding: 0 8px; }
+  .title { font-size: 17px; }
+  .status { font-size: 13px; margin-top: 3px; }
+
+  /* the sheet that slides up over the map */
+  #panel {
+    max-height: 76%;
+    border-radius: 14px 14px 0 0;
+    padding: 20px 16px 22px 16px;
+    box-shadow: 0 -10px 28px rgba(11, 26, 43, 0.16);
+    overscroll-behavior: contain;
+  }
+  #panel::before { content: ''; position: absolute; top: 7px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--line); }
+  #panel.odo-lock::before { display: none; }
+  #panel h2 { font-size: 21px; line-height: 1.2; margin: 0 0 10px 0; text-transform: none; }
+  .meta-line { font-size: 14px; line-height: 1.35; margin-bottom: 4px; }
+  .question { margin: 18px 0 5px 0; padding-top: 12px; border-top: 1px solid var(--hair); font-size: 13px; font-weight: 800; color: var(--text); }
+  h2 + .question, .entry-head + .question, .meta-line + .question:first-of-type { border-top: 0; padding-top: 0; }
+  .question + div { font-size: 16px; line-height: 1.4; }
+  input[type=text], input[type=number], input[type=date], input[type=datetime-local], textarea, select,
+  .sq-filters input, .sq-filters select { border-width: 1.5px; border-radius: 8px; }
+  input[type=email], input[type=password], input[type=tel], input[type=search], input[type=time] {
+    width: 100%; background: #ffffff; border: 1.5px solid var(--line); border-radius: 8px; color: var(--text);
+    padding: 11px 10px; font-family: inherit; font-size: 16px; min-height: 48px; margin-top: 4px;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px var(--tint); }
+  button.tg { position: relative; padding-right: 72px; text-align: left; }
+  #panel button.tg { width: 100%; }
+  input[inputmode=numeric], input[inputmode=decimal], input[type=number] { font-family: var(--mono); font-weight: 600; letter-spacing: 0.5px; }
+  #panel .panel-actions { border-top: 1px solid var(--line); box-shadow: 0 -8px 12px -8px rgba(11, 26, 43, 0.12); }
+  .panel-actions button { min-height: 48px; }
+  #panel .panel-actions:not(:last-child) { position: static; margin: 16px 0 0 0; padding: 0; border-top: 0; box-shadow: none; background: none; }
+  .mi-row { padding: 11px 0; border-bottom: 1px solid var(--hair); line-height: 1.35; }
+  .mi-row:active { background: var(--tint); }
+  .mi-row b { font-weight: 800; }
+  .mi-day { border-top: 2px solid var(--text); }
+  .tl-line { padding: 8px 0 8px 12px; margin: 5px 0; line-height: 1.35; }
+  .icon-choice { border-width: 1.5px; }
+  .icon-choice.active { border-color: var(--text); background: var(--tint); box-shadow: inset 0 0 0 1.5px var(--text); }
+  .cd-box b, .sq-amt, .ft-price { font-family: var(--mono); font-weight: 600; }
+  .cd-box { border-radius: 8px !important; border-width: 1.5px !important; }
+
+  /* menu: quiet rows, section names that read as headings */
+  #sideMenu { box-shadow: 10px 0 28px rgba(11, 26, 43, 0.18); }
+  #sideMenu h3 { font-size: 12.5px; font-weight: 800; color: var(--text-dim); margin: 0; padding: 18px 14px 6px 14px; border-top: 6px solid var(--bg); }
+  #sideMenu h3:first-child { border-top: 0; padding-top: 4px; }
+  #sideMenu button, #sideMenu button.secondary { border: 0; border-bottom: 1px solid var(--hair); font-weight: 600; }
+  #sideMenu button:active { background: var(--tint); }
+  .tg-sw { border-width: 1.5px; background: var(--bg); }
+  .tg-sw::after { background: var(--text-dim); }
+  #settingsBox { background: var(--bg); }
+  #settingsBox button.secondary { background: var(--bg); }
+
+  /* tabs and dock */
+  #twinTabs button { text-transform: none; }
+  #actionBar { gap: 10px; }
+  .radar div { border-radius: 1px; }
+  #goDockBtn { background: var(--ok); font-weight: 800; }
+  #mapFilterBar, #pinPlaceBar { box-shadow: 0 6px 18px rgba(11, 26, 43, 0.18); }
+
+  /* search page */
+  .sq-head { min-height: var(--head-h); padding: 8px 10px 8px 14px; }
+  .sq-row { padding: 12px 14px; border-bottom: 1px solid var(--hair); }
+  .sq-summary { font-size: 14px; border-bottom: 1px solid var(--line); background: var(--bg); }
+  .sq-actions button { min-height: 44px; }
+  .leaflet-container { font-family: inherit; }
+  .leaflet-control-attribution { font-size: 10px !important; }
 </style>
 </head>
 <body>
@@ -735,10 +814,10 @@
   <div class="radar" id="radar">
     <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
   </div>
-  <button id="milesDockBtn" style="display:none;">MILES</button>
-  <button id="goDockBtn">GO</button>
-  <button id="updateBtn">LOG</button>
-  <button id="receiptDockBtn">RECEIPT</button>
+  <button id="milesDockBtn" style="display:none;">Miles</button>
+  <button id="goDockBtn">Go</button>
+  <button id="updateBtn">Log</button>
+  <button id="receiptDockBtn">Receipt</button>
 </div>
 
 <div id="map"></div>
@@ -747,46 +826,46 @@
 <div id="menuOverlay"></div>
 <div id="sideMenu">
   <h3>Capture</h3>
-  <button class="secondary" id="receiptBtn">RECEIPT</button>
-  <button class="secondary tg" id="milesToggleBtn" aria-pressed="false"><span>ODOMETER</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="hereToggleBtn" aria-pressed="false"><span>LOCATION</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg native-only" id="autoTrackBtn" aria-pressed="false" hidden><span>AUTO TRACK</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg native-only" id="odoPromptBtn" aria-pressed="false" hidden><span>ODOMETER PROMPTS</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary" id="receiptBtn">Receipt</button>
+  <button class="secondary tg" id="milesToggleBtn" aria-pressed="false"><span>Odometer</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hereToggleBtn" aria-pressed="false"><span>Location</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg native-only" id="autoTrackBtn" aria-pressed="false" hidden><span>Auto track</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg native-only" id="odoPromptBtn" aria-pressed="false" hidden><span>Odometer prompts</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Roads</h3>
-  <button class="secondary tg" id="roadQualityBtn" aria-pressed="false"><span>QUALITY</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="roadHeatBtn" aria-pressed="false"><span>HEAT MAP</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="roadQualityBtn" aria-pressed="false"><span>Quality</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="roadHeatBtn" aria-pressed="false"><span>Heat map</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Road hazards</h3>
-  <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>CRASHES</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>CONSTRUCTION</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>CRASH HISTORY</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzCrashBtn" aria-pressed="false"><span>Crashes</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzWorkBtn" aria-pressed="false"><span>Construction</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg" id="hzFatalBtn" aria-pressed="false"><span>Crash history</span><i class="tg-sw" aria-hidden="true"></i></button>
   <h3>Field chat</h3>
-  <button class="secondary tg" id="fieldChatBtn" aria-pressed="false"><span>FIELD CHAT ALERTS</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary" id="fieldChatOpen">OPEN FIELD CHAT</button>
+  <button class="secondary tg" id="fieldChatBtn" aria-pressed="false"><span>Field Chat alerts</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary" id="fieldChatOpen">Open Field Chat</button>
   <h3>Companion screen</h3>
-  <button class="secondary tg native-only" id="companionBtn" aria-pressed="false" hidden><span>FT COMPANION</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary tg native-only" id="companionBtn" aria-pressed="false" hidden><span>FT Companion</span><i class="tg-sw" aria-hidden="true"></i></button>
   <div class="hz-label native-only" id="companionText" hidden>Off.</div>
   <h3>Lockers</h3>
-  <button class="secondary tg" id="teamLockersBtn" aria-pressed="false"><span>ALL LOCKERS</span><i class="tg-sw" aria-hidden="true"></i></button>
-  <button class="secondary" id="lockersBtn">LOCKERS</button>
+  <button class="secondary tg" id="teamLockersBtn" aria-pressed="false"><span>All lockers</span><i class="tg-sw" aria-hidden="true"></i></button>
+  <button class="secondary" id="lockersBtn">Lockers</button>
   <h3>Look things up</h3>
-  <button class="secondary" id="searchBtn">SEARCH</button>
-  <button class="secondary" id="timelineBtn">TIMELINE</button>
-  <button class="secondary" id="dayLogBtn">DAY LOG</button>
-  <button class="secondary" id="debriefsBtn">DEBRIEFS</button>
-  <button class="secondary" id="historyBtn">HISTORY</button>
-  <button class="secondary" id="spendBtn">SPEND</button>
-  <button class="secondary" id="mileageBtn">MILEAGE</button>
-  <button class="secondary" id="dailyMilesBtn">DAILY MILES</button>
+  <button class="secondary" id="searchBtn">Search</button>
+  <button class="secondary" id="timelineBtn">Timeline</button>
+  <button class="secondary" id="dayLogBtn">Day log</button>
+  <button class="secondary" id="debriefsBtn">Debriefs</button>
+  <button class="secondary" id="historyBtn">History</button>
+  <button class="secondary" id="spendBtn">Spend</button>
+  <button class="secondary" id="mileageBtn">Mileage</button>
+  <button class="secondary" id="dailyMilesBtn">Daily miles</button>
   <h3>Traffic cameras</h3>
-  <button class="secondary" id="camerasBtn">CAMERAS</button>
+  <button class="secondary" id="camerasBtn">Cameras</button>
   <h3>Other apps</h3>
   <div class="ext-row"><button class="ext" id="openCqBtn">Field Twin Glaucous</button><button class="ext" id="openVioletBtn">Field Twin Violet</button></div>
   <h3>Your data</h3>
-  <button class="secondary" id="accountBtn">ACCOUNT AND PROFILE</button>
-  <button class="secondary" id="exportBtn">EXPORT</button>
-  <button class="secondary" id="importBtn">IMPORT</button>
+  <button class="secondary" id="accountBtn">Account and profile</button>
+  <button class="secondary" id="exportBtn">Export</button>
+  <button class="secondary" id="importBtn">Import</button>
   <input type="file" id="importInput" accept="application/json">
-  <button class="secondary" id="settingsBtn" aria-expanded="false"><span>SETTINGS</span><i class="chev" aria-hidden="true"></i></button>
+  <button class="secondary" id="settingsBtn" aria-expanded="false"><span>Settings</span><i class="chev" aria-hidden="true"></i></button>
   <div id="settingsBox" hidden>
     <label class="hz-label" for="hzDays">Crashes and construction from the last</label>
     <select id="hzDays"><option value="1">day</option><option value="7">week</option><option value="30" selected>thirty days</option><option value="90">three months</option><option value="365">year</option><option value="730">two years</option></select>
@@ -806,17 +885,17 @@
     <select id="devColor"><option value="">not picked</option><option value="orange">orange</option><option value="blue">blue</option><option value="green">green</option><option value="red">red</option><option value="teal">teal</option><option value="violet">violet</option><option value="yellow">yellow</option><option value="pink">pink</option></select>
     <label class="hz-label">Home, where stops and odometer prompts are skipped</label>
     <div class="hz-label" id="homeText" style="margin-top:0;">No home set.</div>
-    <button class="secondary" id="homeSetBtn">SET HOME HERE</button>
-    <button class="secondary" id="homeClearBtn">CLEAR HOME</button>
-    <button class="secondary" id="camKeyBtn">SERVICE ADDRESS</button>
-    <button class="secondary" id="checkBtn">SERVICE CHECK</button>
+    <button class="secondary" id="homeSetBtn">Set home here</button>
+    <button class="secondary" id="homeClearBtn">Clear home</button>
+    <button class="secondary" id="camKeyBtn">Service address</button>
+    <button class="secondary" id="checkBtn">Service check</button>
   </div>
   <h3>Color key</h3>
   <div id="legendRows"></div>
 </div>
 
-<div id="mapFilterBar"><span id="mapFilterText"></span><button class="secondary" id="mapFilterClear" style="padding:8px 10px;font-size:11px;">SHOW ALL</button></div>
-<div id="pinPlaceBar" style="position:absolute;left:10px;right:10px;bottom:14px;z-index:950;background:var(--panel);border:2px solid var(--accent);display:none;align-items:center;justify-content:space-between;gap:10px;padding:10px;font-size:13px;"><span>Tap the map where this entry belongs</span><button class="secondary" id="pinPlaceCancel" style="padding:8px 10px;font-size:11px;">CANCEL</button></div>
+<div id="mapFilterBar"><span id="mapFilterText"></span><button class="secondary" id="mapFilterClear" style="padding:8px 10px;font-size:11px;">Show all</button></div>
+<div id="pinPlaceBar" style="position:absolute;left:10px;right:10px;bottom:14px;z-index:950;background:var(--panel);border:2px solid var(--accent);display:none;align-items:center;justify-content:space-between;gap:10px;padding:10px;font-size:13px;"><span>Tap the map where this entry belongs</span><button class="secondary" id="pinPlaceCancel" style="padding:8px 10px;font-size:11px;">Cancel</button></div>
 <div id="panel"></div>
 <div id="searchPage"></div>
 
@@ -1294,7 +1373,7 @@ async function cloudPhotoUrl(path) {
 
 function showAccount() {
   const panel = document.getElementById('panel');
-  let html = '<h2>ACCOUNT AND PROFILE</h2>';
+  let html = '<h2>Account and profile</h2>';
   if (!sb) {
     html += '<div class="meta-line">cloud is not configured in this build</div>';
   } else if (cloudUser) {
@@ -1303,20 +1382,20 @@ function showAccount() {
     html += '<div class="meta-line">' + (pending ? pending + ' entries waiting to upload' : 'everything is uploaded') + '</div>';
     html += '<div class="meta-line">' + entries.length + ' entries on this phone' + (cloudCount !== null ? ', ' + cloudCount + ' in your account' : '') + (lastPullAt ? ', last synced ' + new Date(lastPullAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '') + '</div>';
     html += '<div class="panel-actions">';
-    html += '<button id="syncNowBtn">SYNC NOW</button>';
-    html += '<button class="secondary" id="signOutBtn">SIGN OUT</button>';
+    html += '<button id="syncNowBtn">Sync now</button>';
+    html += '<button class="secondary" id="signOutBtn">Sign out</button>';
     html += '</div>';
     html += '<div class="question">Sign in the other two apps</div>';
     html += '<div class="meta-line">Type your password once and the boxes you check are signed in with this same email. Inventory picks it up right away, Roads the next time you open it.</div>';
     html += '<input type="password" id="twinPass" autocomplete="current-password">';
     html += twinBoxes(false);
     html += '<div class="meta-line" id="twinMsg"></div>';
-    html += '<div class="panel-actions"><button class="secondary" id="twinSignBtn">SIGN THEM IN</button></div>';
+    html += '<div class="panel-actions"><button class="secondary" id="twinSignBtn">Sign them in</button></div>';
     html += '<div class="question">Set or change your password</div>';
     html += '<div class="meta-line">This password belongs to your Field Twin account, the same one Inventory uses. After you set it here, it signs you in on any phone, in Field Twin and in Inventory.</div>';
     html += '<input type="password" id="newPass" autocomplete="new-password">';
     html += '<div class="meta-line" id="passMsg"></div>';
-    html += '<div class="panel-actions"><button class="secondary" id="savePassBtn">SAVE PASSWORD</button></div>';
+    html += '<div class="panel-actions"><button class="secondary" id="savePassBtn">Save password</button></div>';
   } else {
     html += '<div>This is your own Field Twin account, stored on your Field Twin server, and the same account Inventory uses. It is not tied to any outside sign in service. Your email is the account name, and it works on every phone.</div>';
     html += '<div class="question">Email</div>';
@@ -1325,7 +1404,7 @@ function showAccount() {
     html += '<input type="password" id="authPass" autocomplete="current-password">';
     html += twinBoxes(true);
     html += '<div class="meta-line" id="authMsg"></div>';
-    html += '<div class="panel-actions"><button id="passSignInBtn">SIGN IN</button><button class="secondary" id="sendLinkBtn">EMAIL ME A LINK</button></div>';
+    html += '<div class="panel-actions"><button id="passSignInBtn">Sign in</button><button class="secondary" id="sendLinkBtn">Email me a link</button></div>';
     html += '<div class="meta-line">If the password is refused, the account may never have had one set. Press Email me a link, open the link on this phone, then set a password on this page.</div>';
   }
   if (cloudUser) {
@@ -1335,7 +1414,7 @@ function showAccount() {
   }
   html += '<div class="meta-line">Phone tag ' + TWIN_ID + '. This tag is made up by this browser and stamped on each entry so you can tell which phone logged it. It does not identify the phone itself.</div>';
   html += profileHtml();
-  html += '<div class="panel-actions"><button class="secondary" id="closeAccountBtn">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeAccountBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -1347,17 +1426,17 @@ function showAccount() {
       const email = (document.getElementById('authEmail').value || '').trim();
       if (!email) return;
       sendBtn.disabled = true;
-      sendBtn.textContent = 'SENDING';
+      sendBtn.textContent = 'Sending';
       const res = await sb.auth.signInWithOtp({
         email: email,
         options: { emailRedirectTo: window.location.origin }
       });
       if (res.error) {
         sendBtn.disabled = false;
-        sendBtn.textContent = 'EMAIL ME A LINK';
+        sendBtn.textContent = 'Email me a link';
         setStatus('link failed, ' + res.error.message);
       } else {
-        sendBtn.textContent = 'LINK SENT';
+        sendBtn.textContent = 'Link sent';
         setStatus('check your email for the sign in link');
       }
     });
@@ -1372,11 +1451,11 @@ function showAccount() {
       const pick = twinReadBoxes(true);
       if (!pick.teal && !pick.violet && !pick.glaucous) { msg.textContent = 'Check at least one app.'; return; }
       passIn.disabled = true;
-      passIn.textContent = 'SIGNING IN';
+      passIn.textContent = 'Signing in';
       if (!pick.teal) {
         const failedOnly = await twinSignOthers(email, pass, pick);
         passIn.disabled = false;
-        passIn.textContent = 'SIGN IN';
+        passIn.textContent = 'Sign in';
         const okOnly = [pick.violet && !failedOnly.includes('Violet') ? 'Violet' : '', pick.glaucous && !failedOnly.includes('Glaucous') ? 'Glaucous' : ''].filter(Boolean);
         msg.textContent = (okOnly.length ? 'Signed in to ' + okOnly.join(' and ') + '. ' : '') + (failedOnly.length ? failedOnly.join(' and ') + ' refused that email and password.' : '');
         return;
@@ -1384,7 +1463,7 @@ function showAccount() {
       const res = await sb.auth.signInWithPassword({ email: email, password: pass });
       if (res.error) {
         passIn.disabled = false;
-        passIn.textContent = 'SIGN IN';
+        passIn.textContent = 'Sign in';
         msg.textContent = /invalid/i.test(res.error.message) ? 'That email and password did not match. If this account was made with an email link, it has no password yet. Press Email me a link instead.' : res.error.message;
         return;
       }
@@ -1414,7 +1493,7 @@ function showAccount() {
   if (syncBtn) {
     syncBtn.addEventListener('click', async () => {
       syncBtn.disabled = true;
-      syncBtn.textContent = 'SYNCING';
+      syncBtn.textContent = 'Syncing';
       await cloudPull();
       await cloudPush();
       await cloudPull();
@@ -1430,10 +1509,10 @@ function showAccount() {
       if (!pass) { msg.textContent = 'Type your password.'; return; }
       if (!pick.violet && !pick.glaucous) { msg.textContent = 'Check at least one app.'; return; }
       twinBtn.disabled = true;
-      twinBtn.textContent = 'SIGNING IN';
+      twinBtn.textContent = 'Signing in';
       const failed = await twinSignOthers(cloudUser.email, pass, pick);
       twinBtn.disabled = false;
-      twinBtn.textContent = 'SIGN THEM IN';
+      twinBtn.textContent = 'Sign them in';
       document.getElementById('twinPass').value = '';
       const ok = [pick.violet && !failed.includes('Violet') ? 'Violet' : '', pick.glaucous && !failed.includes('Glaucous') ? 'Glaucous' : ''].filter(Boolean);
       msg.textContent = (ok.length ? ok.join(' and ') + ' signed in. ' : '') + (failed.length ? failed.join(' and ') + ' refused that password.' : '');
@@ -1734,7 +1813,7 @@ function runSearch() {
 
   searchResults = list;
   let spent = 0, saved = 0, receipts = 0;
-  list.forEach(e => { if (e.receipt) { spent += e.receipt.total; saved += e.receipt.saved; receipts++; } });
+  list.forEach(e => { if (e.receipt) { spent += Number(e.receipt.total) || 0; saved += Number(e.receipt.saved) || 0; receipts++; } });
   document.getElementById('sqSummary').textContent =
     list.length + ' found' + (receipts ? ', ' + receipts + ' receipts, $' + spent.toFixed(2) + ' spent, $' + saved.toFixed(2) + ' saved' : '');
 
@@ -1789,9 +1868,9 @@ function exportSearchCsv() {
       e.addressLabel || '',
       m.label,
       e.receipt ? e.receipt.store : '',
-      e.receipt ? e.receipt.total.toFixed(2) : '',
-      e.receipt ? e.receipt.saved.toFixed(2) : '',
-      e.receipt ? e.receipt.tax.toFixed(2) : '',
+      e.receipt ? (Number(e.receipt.total) || 0).toFixed(2) : '',
+      e.receipt ? (Number(e.receipt.saved) || 0).toFixed(2) : '',
+      e.receipt ? (Number(e.receipt.tax) || 0).toFixed(2) : '',
       e.receipt ? (e.receipt.work ? 'work' : 'personal') : '',
       ans('Address on receipt'),
       hasPos(e) ? e.lat : '',
@@ -1811,7 +1890,7 @@ function buildSearchPage() {
   Object.keys(CATEGORIES).forEach(k => {
     cats += '<option value="' + k + '">' + CATEGORIES[k].icon + ' ' + CATEGORIES[k].label + '</option>';
   });
-  let html = '<div class="sq-head"><div class="title">[ SEARCH ]</div><button class="secondary" id="sqClose">CLOSE</button></div>';
+  let html = '<div class="sq-head"><div class="title">[ SEARCH ]</div><button class="secondary" id="sqClose">Close</button></div>';
   html += '<div class="sq-filters">';
   html += '<input type="text" id="sqText" placeholder="store, town, note, any word">';
   html += '<div class="sq-pair"><div><label>From</label><input type="date" id="sqFrom"></div><div><label>To</label><input type="date" id="sqTo"></div></div>';
@@ -1820,7 +1899,7 @@ function buildSearchPage() {
   html += '<div class="sq-pair"><div><label>Total at least</label><input type="number" id="sqMin" inputmode="decimal" step="0.01"></div><div><label>Total at most</label><input type="number" id="sqMax" inputmode="decimal" step="0.01"></div></div>';
   html += '<div class="sq-pair"><div><label>Photo</label><select id="sqPhoto"><option value="">Either</option><option value="yes">With photo</option><option value="no">Without photo</option></select></div>';
   html += '<div><label>Sort</label><select id="sqSort"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="high">Highest total</option><option value="low">Lowest total</option><option value="name">Name</option></select></div></div>';
-  html += '<div class="sq-actions"><button class="secondary" id="sqReset">RESET</button><button class="secondary" id="sqMap">SHOW ON MAP</button><button class="secondary" id="sqCsv">SAVE AS SHEET</button></div>';
+  html += '<div class="sq-actions"><button class="secondary" id="sqReset">Reset</button><button class="secondary" id="sqMap">Show on map</button><button class="secondary" id="sqCsv">Save as sheet</button></div>';
   html += '</div>';
   html += '<div class="sq-summary" id="sqSummary"></div>';
   html += '<div id="sqRows"></div>';
@@ -2565,7 +2644,8 @@ function showForm(entry) {
   const formAnswers = {};
   selectedIcon = (CATEGORIES[entry.category] || CATEGORIES.general).icon;
   const panel = document.getElementById('panel');
-  const label = entry.category ? entry.category.toUpperCase().replace('_', ' ') : 'LOG ENTRY';
+  const catWords = entry.category ? entry.category.replace(/_/g, ' ') : '';
+  const label = catWords ? catWords.charAt(0).toUpperCase() + catWords.slice(1) : 'Log entry';
   let html = '<h2>' + label + '</h2>';
   html += '<div class="meta-line">' + entry.addressLabel + '</div>';
   html += '<div class="question">Stop type, changes the form below</div>';
@@ -2605,8 +2685,8 @@ function showForm(entry) {
     }
   });
   html += '<div class="panel-actions">';
-  html += '<button id="saveEntryBtn">SAVE ENTRY</button>';
-  html += '<button class="secondary" id="skipEntryBtn">LOG WITHOUT ANSWERS</button>';
+  html += '<button id="saveEntryBtn">Save entry</button>';
+  html += '<button class="secondary" id="skipEntryBtn">Log without answers</button>';
   html += '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -2728,7 +2808,7 @@ function showForm(entry) {
     if (saveBtn.disabled) return;
     saveBtn.disabled = true;
     skipBtn.disabled = true;
-    saveBtn.textContent = 'SAVED';
+    saveBtn.textContent = 'Saved';
     finalizeEntry(true);
     commitEntry(saveBtn, skipBtn, 'entry saved');
   });
@@ -2739,7 +2819,7 @@ function showForm(entry) {
     if (skipBtn.disabled) return;
     skipBtn.disabled = true;
     saveBtn.disabled = true;
-    skipBtn.textContent = 'LOGGED';
+    skipBtn.textContent = 'Logged';
     finalizeEntry(false);
     commitEntry(saveBtn, skipBtn, 'entry logged without answers');
   });
@@ -2911,7 +2991,7 @@ function playStream(video, url) {
 
 function showCamera(c) {
   const panel = document.getElementById('panel');
-  let html = '<h2>CAMERA</h2>';
+  let html = '<h2>Camera</h2>';
   html += '<div class="meta-line">' + escapeHtml(c.roadway || 'unnamed') + '</div>';
   if (c.direction && c.direction !== 'Unknown') {
     html += '<div class="meta-line">facing ' + escapeHtml(c.direction) + '</div>';
@@ -2933,7 +3013,7 @@ function showCamera(c) {
       html += '<div class="meta-line">' + m.icon + ' ' + escapeHtml(x.e.addressLabel) + ', ' + x.dist.toFixed(2) + ' mi</div>';
     });
   }
-  html += '<div class="panel-actions"><button class="secondary" id="closeCamBtn">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeCamBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -2958,14 +3038,14 @@ async function toggleCameras() {
 
 function showCameraKeyPanel() {
   const panel = document.getElementById('panel');
-  let html = '<h2>SERVICE ADDRESS</h2>';
+  let html = '<h2>Service address</h2>';
   html += '<div>Address of the Field Twin service. Leave it blank to use the address built into the app. No key is stored on this phone, the service holds it.</div>';
   html += '<input type="text" id="apiBaseInput" placeholder="xxxxxxxx.up.railway.app" value="' + escapeHtml((() => { try { return localStorage.getItem(API_BASE_KEY) || ''; } catch (e) { return ''; } })()) + '">';
   html += '<div class="question">Access token. Leave it blank when you are signed in under Account and profile, the receipt reader accepts your account instead.</div>';
   html += '<input type="text" id="apiTokenInput" value="' + escapeHtml(getApiToken()) + '">';
   html += '<div class="panel-actions">';
-  html += '<button id="saveApiBaseBtn">SAVE</button>';
-  html += '<button class="secondary" id="closeApiBaseBtn">CLOSE</button>';
+  html += '<button id="saveApiBaseBtn">Save</button>';
+  html += '<button class="secondary" id="closeApiBaseBtn">Close</button>';
   html += '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -2989,13 +3069,13 @@ async function serviceCheck() {
   const panel = document.getElementById('panel');
   const base = getApiBase().replace(/\/+$/, '');
   const tok = getApiToken();
-  let html = '<h2>SERVICE CHECK</h2>';
+  let html = '<h2>Service check</h2>';
   let stored = '';
   try { stored = localStorage.getItem(API_BASE_KEY) || ''; } catch (e) {}
   html += '<div class="meta-line">' + escapeHtml(base) + (stored ? ', typed in on this phone' : ', built into the app') + '</div>';
   html += '<div class="meta-line">receipt reader access: ' + (tok ? 'access token saved on this phone' : (cloudUser ? 'your signed in account' : 'none, sign in under Account and profile')) + '</div>';
   html += '<div id="checkRows"></div>';
-  html += '<div class="panel-actions"><button class="secondary" id="closeCheckBtn">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeCheckBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -3453,7 +3533,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
            '<input type="text" id="' + id + '" class="rfield' + bad + '" value="' + escapeHtml(value || '') + '">';
   }
 
-  let html = '<h2>RECEIPT</h2>';
+  let html = '<h2>Receipt</h2>';
   html += '<div class="meta-line">' + escapeHtml(addressLabel) + '</div>';
   if (p.fallbackReason) {
     html += '<div class="meta-line" style="color:#b00020;">offline reader used, ' + escapeHtml(p.fallbackReason) + '</div>';
@@ -3481,8 +3561,8 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
   html += '<textarea id="rItems" style="min-height:120px;">' + escapeHtml(itemsToText(p.items || [])) + '</textarea>';
   html += '<div class="question">Notes</div><textarea id="rNotes">' + escapeHtml(p.fuelNote || '') + '</textarea>';
   html += '<div class="panel-actions">';
-  html += '<button id="saveReceiptBtn">SAVE RECEIPT</button>';
-  html += '<button class="secondary" id="cancelReceiptBtn">CANCEL</button>';
+  html += '<button id="saveReceiptBtn">Save receipt</button>';
+  html += '<button class="secondary" id="cancelReceiptBtn">Cancel</button>';
   html += '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -3546,7 +3626,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
       if (town && lat === null) tries.push({ q: town, src: 'town' });
     }
     let found = null;
-    if (tries.length) btn.textContent = 'LOCATING';
+    if (tries.length) btn.textContent = 'Locating';
     for (let i = 0; i < tries.length && !found; i++) {
       if (i > 0) await new Promise(r => setTimeout(r, 1200));
       try {
@@ -3567,7 +3647,7 @@ function showReceiptForm(p, photoData, lat, lon, addressLabel) {
       useLabel = typedAddr || 'no location';
       locSrc = 'none';
     }
-    btn.textContent = 'SAVED';
+    btn.textContent = 'Saved';
     const questions = ['Store', 'Total', 'Saved', 'Tax', 'Date on receipt', 'Time on receipt', 'Address on receipt', 'Work or personal', 'Notes'];
     const answers = [v('rStore'), v('rTotal'), v('rSaved'), v('rTax'), v('rDate'), v('rTime'), v('rAddr'),
                      isWork ? 'Work' : 'Personal', v('rNotes')];
@@ -3696,7 +3776,7 @@ function showOdometer(locked) {
   const cls = classifyWork(now);
   let vehicle = '';
   try { vehicle = localStorage.getItem('milesVehicle') || ''; } catch (e) {}
-  let html = '<h2>ODOMETER</h2>';
+  let html = '<h2>Odometer</h2>';
   if (locked) {
     html += '<button type="button" class="odo-snooze-x" id="odoSnoozeX" aria-label="Not at the car, ask again later">&#10005;</button>';
     html += '<div class="odo-lock-note">Reading due. Away from the car? Tap the X and Field Twin asks again in half an hour.</div>';
@@ -3715,7 +3795,7 @@ function showOdometer(locked) {
   html += '</div>';
   html += '<div class="question">Notes</div><textarea id="odoNotes"></textarea>';
   html += '<div class="meta-line" id="odoMsg" style="color:#b00020;"></div>';
-  html += '<div class="panel-actions"><button id="odoSaveBtn">SAVE READING</button>' + (locked ? '' : '<button class="secondary" id="odoCancelBtn">CANCEL</button>') + '</div>';
+  html += '<div class="panel-actions"><button id="odoSaveBtn">Save reading</button>' + (locked ? '' : '<button class="secondary" id="odoCancelBtn">Cancel</button>') + '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -3756,9 +3836,9 @@ function showOdometer(locked) {
       // so the warning only shows when the number still looks wrong against the newest reading on any phone.
       if ((reading < last.odometer.reading || off > room) && btn.dataset.pulled !== '1' && typeof cloudReady === 'function' && cloudReady()) {
         btn.dataset.pulled = '1';
-        btn.disabled = true; btn.textContent = 'CHECKING';
+        btn.disabled = true; btn.textContent = 'Checking';
         try { await Promise.race([cloudPull(), new Promise(r => setTimeout(r, 6000))]); } catch (e) {}
-        btn.disabled = false; btn.textContent = 'SAVE READING';
+        btn.disabled = false; btn.textContent = 'Save reading';
         const fresh = odoList().filter(e => new Date(e.timestamp).getTime() <= Date.now());
         if (fresh.length) last = fresh[fresh.length - 1];
         guess = calEstimate(Date.now());
@@ -3771,7 +3851,7 @@ function showOdometer(locked) {
       }
     }
     btn.disabled = true;
-    btn.textContent = 'LOCATING';
+    btn.textContent = 'Locating';
     const veh = (document.getElementById('odoVehicle').value || '').trim();
     const notes = (document.getElementById('odoNotes').value || '').trim();
     try { localStorage.setItem('milesVehicle', veh); } catch (e) {}
@@ -3858,7 +3938,7 @@ function mileageLegs() {
 function showMileage() {
   const panel = document.getElementById('panel');
   const legs = mileageLegs();
-  let html = '<h2>MILEAGE</h2>';
+  let html = '<h2>Mileage</h2>';
   if (!legs.length) {
     html += '<div class="meta-line">No odometer readings yet. Turn on the odometer button in the menu, then press Miles at the bottom of the screen and type the number on the odometer.</div>';
   } else {
@@ -3883,9 +3963,9 @@ function showMileage() {
         (g.crow !== null ? ', ' + g.crow + ' miles apart in a straight line' : '') +
         '<br><span class="meta-line">' + escapeHtml(g.entry.addressLabel || '') + '</span></div>';
     });
-    html += '<div class="panel-actions"><button id="miCsvBtn">SAVE SPREADSHEET</button><button class="secondary" id="closeMileageBtn">CLOSE</button></div>';
+    html += '<div class="panel-actions"><button id="miCsvBtn">Save spreadsheet</button><button class="secondary" id="closeMileageBtn">Close</button></div>';
   }
-  if (!legs.length) html += '<div class="panel-actions"><button class="secondary" id="closeMileageBtn">CLOSE</button></div>';
+  if (!legs.length) html += '<div class="panel-actions"><button class="secondary" id="closeMileageBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -4380,7 +4460,7 @@ function showSpend() {
   let spent = 0, work = 0, personal = 0, saved = 0;
   rs.forEach(e => {
     spent += e.receipt.total;
-    saved += e.receipt.saved;
+    saved += Number(e.receipt.saved) || 0;
     if (e.receipt.work) work += e.receipt.total; else personal += e.receipt.total;
   });
   const byStore = {};
@@ -4389,10 +4469,10 @@ function showSpend() {
     if (!byStore[k]) byStore[k] = { visits: 0, spent: 0, saved: 0 };
     byStore[k].visits++;
     byStore[k].spent += e.receipt.total;
-    byStore[k].saved += e.receipt.saved;
+    byStore[k].saved += Number(e.receipt.saved) || 0;
   });
 
-  let html = '<h2>SPEND</h2>';
+  let html = '<h2>Spend</h2>';
   html += '<div class="meta-line">' + rs.length + ' receipts</div>';
   html += '<div style="font-size:30px;color:var(--accent);margin:8px 0;">$' + spent.toFixed(2) + '</div>';
   html += '<div class="meta-line">work $' + work.toFixed(2) + '</div>';
@@ -4413,7 +4493,7 @@ function showSpend() {
       html += '<div style="padding:8px 0;border-bottom:1px solid var(--line);"><div class="meta-line" data-dupe="' + a.id + '" style="cursor:pointer;color:var(--accent);">' + receiptLine(a) + '</div><div class="meta-line" data-dupe="' + b.id + '" style="cursor:pointer;color:var(--accent);">' + receiptLine(b) + '</div></div>';
     });
   }
-  html += '<div class="panel-actions"><button class="secondary" id="closeSpendBtn">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeSpendBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -4649,18 +4729,18 @@ async function showDebrief(dk, rewrite) {
   const r = buildDayLog(dk);
   let saved = debriefFor(dk);
   const paint = (bodyHtml) => {
-    panel.innerHTML = '<h2>DEBRIEF</h2><div class="meta-line">' + escapeHtml(r.label) + '</div>' + bodyHtml;
+    panel.innerHTML = '<h2>Debrief</h2><div class="meta-line">' + escapeHtml(r.label) + '</div>' + bodyHtml;
     panel.scrollTop = 0;
     panel.classList.add('open');
   };
   if (!saved || rewrite) {
-    if (!r.list.length) { paint('<div class="meta-line">No entries on this day, so there is nothing to debrief.</div><div class="panel-actions"><button class="secondary" id="dbClose">CLOSE</button></div>'); document.getElementById('dbClose').addEventListener('click', closePanel); return; }
+    if (!r.list.length) { paint('<div class="meta-line">No entries on this day, so there is nothing to debrief.</div><div class="panel-actions"><button class="secondary" id="dbClose">Close</button></div>'); document.getElementById('dbClose').addEventListener('click', closePanel); return; }
     paint('<div class="odo-lock-note">Writing the debrief from this day\'s log.</div>');
     try {
       const text = await requestDebrief(dk);
       saved = await saveDebrief(dk, text, saved ? undefined : '');
     } catch (err) {
-      paint('<div class="meta-line" style="color:#b00020;">Debrief failed, ' + escapeHtml(err.message) + '</div><div class="panel-actions"><button id="dbRetry">TRY AGAIN</button><button class="secondary" id="dbClose">CLOSE</button></div>');
+      paint('<div class="meta-line" style="color:#b00020;">Debrief failed, ' + escapeHtml(err.message) + '</div><div class="panel-actions"><button id="dbRetry">Try again</button><button class="secondary" id="dbClose">Close</button></div>');
       document.getElementById('dbRetry').addEventListener('click', () => showDebrief(dk, true));
       document.getElementById('dbClose').addEventListener('click', closePanel);
       return;
@@ -4673,8 +4753,8 @@ async function showDebrief(dk, rewrite) {
   html += '<div class="meta-line">Explain anything it flagged, or correct it. Your reply is saved with this day and the next debriefs read it.</div>';
   html += '<textarea id="dbReply" style="min-height:120px;">' + escapeHtml(reply) + '</textarea>';
   html += '<div class="meta-line" id="dbMsg"></div>';
-  html += '<div class="panel-actions"><button id="dbSave">SAVE REPLY</button><button class="secondary" id="dbRewrite">WRITE IT AGAIN</button></div>';
-  html += '<div class="panel-actions"><button class="secondary" id="dbLog">DAY LOG</button><button class="secondary" id="dbAll">ALL DEBRIEFS</button><button class="secondary" id="dbClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button id="dbSave">Save reply</button><button class="secondary" id="dbRewrite">Write it again</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="dbLog">Day log</button><button class="secondary" id="dbAll">All debriefs</button><button class="secondary" id="dbClose">Close</button></div>';
   paint(html);
   const t = panel.querySelector('.debrief-text');
   if (t) t.innerHTML = '<p>' + t.innerHTML + '</p>';
@@ -4699,9 +4779,9 @@ function showDebriefList() {
   const today = localDay(new Date());
   const days = dayLogDays();
   const undone = Object.keys(days).filter(k => !debriefFor(k) && buildDayLog(k).list.length).sort().reverse().slice(0, 14);
-  let html = '<h2>DEBRIEFS</h2>';
+  let html = '<h2>Debriefs</h2>';
   html += '<div class="meta-line">Each workday gets a written debrief from its day log. Read them back to spot what your tracking misses.</div>';
-  html += '<div class="panel-actions"><button id="dbToday">DEBRIEF TODAY</button></div>';
+  html += '<div class="panel-actions"><button id="dbToday">Debrief today</button></div>';
   if (list.length) {
     html += '<div class="question">Saved debriefs</div>';
     list.forEach(e => {
@@ -4721,7 +4801,7 @@ function showDebriefList() {
       html += '<div class="mi-row" data-db="' + dk + '">' + escapeHtml(new Date(dk + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })) + '<br><span class="meta-line">tap to write its debrief</span></div>';
     });
   }
-  html += '<div class="panel-actions"><button class="secondary" id="dbListClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="dbListClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -4739,10 +4819,10 @@ function showDayLog(dk) {
   const next = keys.filter(k => k > dk)[0] || '';
   const r = buildDayLog(dk);
 
-  let html = '<h2>DAY LOG</h2>';
+  let html = '<h2>Day log</h2>';
   html += '<div class="meta-line">' + escapeHtml(r.label) + '</div>';
   html += '<input type="date" id="dlDate" value="' + dk + '" style="width:100%;padding:10px;font:inherit;margin:6px 0;border:1px solid var(--line);background:var(--panel);color:var(--text);">';
-  html += '<div class="panel-actions" style="margin-top:6px;"><button class="secondary" id="dlPrev"' + (prev ? '' : ' disabled') + '>EARLIER DAY</button><button class="secondary" id="dlNext"' + (next ? '' : ' disabled') + '>LATER DAY</button></div>';
+  html += '<div class="panel-actions" style="margin-top:6px;"><button class="secondary" id="dlPrev"' + (prev ? '' : ' disabled') + '>Earlier day</button><button class="secondary" id="dlNext"' + (next ? '' : ' disabled') + '>Later day</button></div>';
   html += '<div class="meta-line">The earlier and later buttons skip to the nearest day that has entries. ' + keys.length + ' days have entries.</div>';
 
   if (!r.list.length) {
@@ -4764,8 +4844,8 @@ function showDayLog(dk) {
   }
   html += '<div class="meta-line" id="dlMsg"></div>';
   const hasDebrief = Boolean(debriefFor(dk));
-  if (r.list.length || hasDebrief) html += '<div class="panel-actions"><button id="dlDebriefBtn">' + (hasDebrief ? 'OPEN DEBRIEF' : 'DEBRIEF THIS DAY') + '</button></div>';
-  html += '<div class="panel-actions"><button id="dlCopyBtn">COPY LOG</button><button class="secondary" id="dlCloseBtn">CLOSE</button></div>';
+  if (r.list.length || hasDebrief) html += '<div class="panel-actions"><button id="dlDebriefBtn">' + (hasDebrief ? 'Open debrief' : 'Debrief this day') + '</button></div>';
+  html += '<div class="panel-actions"><button id="dlCopyBtn">Copy log</button><button class="secondary" id="dlCloseBtn">Close</button></div>';
   panel.innerHTML = html;
   const dbBtn = document.getElementById('dlDebriefBtn');
   if (dbBtn) dbBtn.addEventListener('click', () => showDebrief(dk, false));
@@ -4836,29 +4916,29 @@ function showProfile() { showAccount(); }
 
 function showInfo() {
   const panel = document.getElementById('panel');
-  let html = '<h2>ABOUT</h2>';
+  let html = '<h2>About</h2>';
   html += '<div class="question">Field Twin</div>';
   html += '<div>A notebook on a map. Stops, receipts and odometer readings become signs you can open, edit, search and add up.</div>';
   html += '<div class="question">Bottom buttons</div>';
-  html += '<div>Log saves where you are and opens a short form for that kind of place. The kind of place list has a search box at the top, and includes mailbox, casino, parking structure and diner. Receipt photographs a receipt and reads the store, totals, date, address and items. Miles saves an odometer reading, and appears when Odometer is switched on in the menu. GO gives you a route, explained under GO and routes.</div>';
-  html += '<div class="question">GO and routes</div>';
-  html += '<div>Tap GO, then say or type where you are going. Your own places come first, named lockers and spots you drove to or picked before, ranked by how often you arrive, pick or log there, so the list learns your routine. If nothing you saved matches, the Field Twin service reads what you said and finds the address near you. Routes come from free open map data with no ads and no traffic feed. Drift off the line for three position checks in a row and a new route is made from where you are. The Avoid airport switch on the GO screen keeps routes out of the Las Vegas airport terminal loops, runways and tunnel, where routes used to send you onto roads that do not exist. The route has no sound at all. While driving, the next turn shows near the bottom of the map with three small round buttons beside it: the map button opens the route in your phone maps app, the target button puts you back in the middle and follows you again, and the X ends the route.</div>';
+  html += '<div>Log saves where you are and opens a short form for that kind of place. The kind of place list has a search box at the top, and includes mailbox, casino, parking structure and diner. Receipt photographs a receipt and reads the store, totals, date, address and items. Miles saves an odometer reading, and appears when Odometer is switched on in the menu. Go gives you a route, explained under Go and routes.</div>';
+  html += '<div class="question">Go and routes</div>';
+  html += '<div>Tap Go, then say or type where you are going. Your own places come first, named lockers and spots you drove to or picked before, ranked by how often you arrive, pick or log there, so the list learns your routine. If nothing you saved matches, the Field Twin service reads what you said and finds the address near you. Routes come from free open map data with no ads and no traffic feed. Drift off the line for three position checks in a row and a new route is made from where you are. The Avoid airport switch on the Go screen keeps routes out of the Las Vegas airport terminal loops, runways and tunnel, where routes used to send you onto roads that do not exist. The route has no sound at all. While driving, the next turn shows near the bottom of the map with three small round buttons beside it: the map button opens the route in your phone maps app, the target button puts you back in the middle and follows you again, and the X ends the route.</div>';
   html += '<div class="question">Floating window</div>';
   html += '<div>In the phone app, leaving Field Twin while a route is running shrinks it into a small floating window over your other apps. Only the map and the next turn show, centered on you, and the page keeps running so the route and your position stay live. Open Field Twin again and it goes back to full size.</div>';
   html += '<div class="question">Lockers</div>';
-  html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with MAKE LOCKER. LOCKERS in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, GO HERE, and ADD PHOTO OF THIS LOCKER. ADD LOCKERS FROM OPEN MAP DATA finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The ALL LOCKERS switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
+  html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
   html += '<div class="question">Photos</div>';
   html += '<div>An entry or a locker can hold as many photos as you like. Each photo goes straight up to your account in the cloud and waits on the phone only until it uploads, so every phone signed in sees them. Tap a photo square to see it full size. The first time in the phone app, Android asks for camera permission.</div>';
   html += '<div class="question">Daily miles and CarData</div>';
-  html += '<div>DAILY MILES in the menu gives each workday a start, an end and business miles. The day starts at your day start point and ends at the last ticket, so the drive home is never business. Missing readings at a stop are filled in from your real readings before and after it. Leg check compares each drive, from the day start to a ticket and from ticket to ticket, with the road route between the two addresses, flags any leg where the odometer went well over the road route along with side stops logged on the way such as lunch, and USE ROAD ROUTE MILES sets business miles to the road route plus your extra miles. Each day has a For CarData box with Beginning, Ending and Business mileage laid out like the CarData form, and COPY FOR CARDATA copies them. Miles off the clock shows how far the truck went from the last ticket of one workday to the start of the next, which is the drive home and back plus anything personal, compared with your typical night, along with the GPS times you reached the first ticket and left the last one. The spreadsheet includes those off the clock miles too.</div>';
+  html += '<div>Daily miles in the menu gives each workday a start, an end and business miles. The day starts at your day start point and ends at the last ticket, so the drive home is never business. Missing readings at a stop are filled in from your real readings before and after it. Leg check compares each drive, from the day start to a ticket and from ticket to ticket, with the road route between the two addresses, flags any leg where the odometer went well over the road route along with side stops logged on the way such as lunch, and Use road route miles sets business miles to the road route plus your extra miles. Each day has a For CarData box with Beginning, Ending and Business mileage laid out like the CarData form, and Copy for CarData copies them. Miles off the clock shows how far the truck went from the last ticket of one workday to the start of the next, which is the drive home and back plus anything personal, compared with your typical night, along with the GPS times you reached the first ticket and left the last one. The spreadsheet includes those off the clock miles too.</div>';
   html += '<div class="question">Odometer entries</div>';
   html += '<div>Edit on an odometer entry keeps it an odometer entry and lets you change the reading, the vehicle, and whether those miles were work or personal. Mileage splits your miles into work and personal from those choices.</div>';
   html += '<div class="question">Traffic cameras</div>';
   html += '<div>Cameras sit in teal bubbles with a count, so hundreds of them do not draw at once and the map stays smooth. Zoom in or tap a bubble to spread them out, and road names show under single cameras when zoomed in close.</div>';
   html += '<div class="question">Field chat</div>';
-  html += '<div>Field Chat is a chat room for your team, run on the same backend as Cat Command Chat, so the same members, names and invites get you into both while the messages stay separate. OPEN FIELD CHAT opens it. With FIELD CHAT ALERTS on, a new message from someone else flashes the screen in rainbow colors for a moment, on the full map, the floating window and the companion screen alike, with no sound and no pop up.</div>';
+  html += '<div>Field Chat is a chat room for your team, run on the same backend as Cat Command Chat, so the same members, names and invites get you into both while the messages stay separate. Open Field Chat opens it. With Field Chat alerts on, a new message from someone else flashes the screen in rainbow colors for a moment, on the full map, the floating window and the companion screen alike, with no sound and no pop up.</div>';
   html += '<div class="question">FT Companion screen</div>';
-  html += '<div>FT Companion is a small dashboard screen board, a Waveshare ESP32 C6 with its own GPS and motion sensor. In the phone app, switch FT COMPANION on and the phone links to it by Bluetooth, or by USB cable through an OTG adapter. Once linked it draws the streets around you and the route with each turn, its GPS takes over following the route, it flashes for Field Chat, and its road roughness readings are saved with where they were measured. The line under the switch says what the link is doing.</div>';
+  html += '<div>FT Companion is a small dashboard screen board, a Waveshare ESP32 C6 with its own GPS and motion sensor. In the phone app, switch FT Companion on and the phone links to it by Bluetooth, or by USB cable through an OTG adapter. Once linked it draws the streets around you and the route with each turn, its GPS takes over following the route, it flashes for Field Chat, and its road roughness readings are saved with where they were measured. The line under the switch says what the link is doing.</div>';
   html += '<div class="question">Receipts</div>';
   html += '<div>Fields the reader was unsure of are highlighted. The pin goes at your location or the receipt address, your choice. The entry is filed under the date printed on the receipt. Before saving, the app checks for a receipt you already saved with the same total plus the same printed date and time, or the same date and store, or with no date the same store nearby, and warns you. Spend lists any likely duplicates already saved.</div>';
   html += '<div class="question">Map</div>';
@@ -4866,7 +4946,7 @@ function showInfo() {
   html += '<div class="question">Entries</div>';
   html += '<div>Tap a sign to open it. Edit changes anything, Delete is on the Edit screen, and the four arrows button moves the pin.</div>';
   html += '<div class="question">Menu</div>';
-  html += '<div>Search, Day log, History, Spend and Mileage look back over your entries. Cameras shows Nevada highway cameras. Lockers holds the ALL LOCKERS switch and the locker list. Quality and Heat map draw road roughness and how often you travel a road. Crashes, Construction and Crash history show road hazards, and Settings picks how far back and how wide an area. Switches stay the way you leave them.</div>';
+  html += '<div>Search, Day log, History, Spend and Mileage look back over your entries. Cameras shows Nevada highway cameras. Lockers holds the All lockers switch and the locker list. Quality and Heat map draw road roughness and how often you travel a road. Crashes, Construction and Crash history show road hazards, and Settings picks how far back and how wide an area. Switches stay the way you leave them.</div>';
   html += '<div class="question">Road hazards</div>';
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
@@ -4883,7 +4963,7 @@ function showInfo() {
   html += '<div>New in version 1.0.6. The sign in screen under Account and profile has a check box for each app: Teal, the map, Violet, the inventory, and Glaucous, the roads. Check the ones you want and sign in once with your email and password. Violet signs in as soon as the Inventory tab opens, and Glaucous signs in the next time you tap Roads. If you are already signed in here, Account and profile has a Sign the other two in box that does the same with one password. Signing out here signs the checked apps out too. Glaucous keeps its own accounts, so it needs the same email and password as this app.</div>';
   html += '<div class="question">Sync</div>';
   html += '<div>Signed in, everything saves to your account and matches across phones, deletes included. Account and profile shows the counts, your points and trophies, and where to set a password. Without an account, entries stay on this phone for thirty days, and Export and Import move them by file.</div>';
-  html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeInfoBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -4892,7 +4972,7 @@ function showInfo() {
 
 function showHistory() {
   const panel = document.getElementById('panel');
-  let html = '<h2>HISTORY</h2>';
+  let html = '<h2>History</h2>';
   if (!entries.length) {
     html += '<div class="question">No entries recorded yet</div>';
   } else {
@@ -4902,7 +4982,7 @@ function showHistory() {
       html += '</div>';
     });
   }
-  html += '<div class="panel-actions"><button class="secondary" id="closeHistoryBtn">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="closeHistoryBtn">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -4940,7 +5020,7 @@ function showEdit(entry, fromHistory) {
   const originalAddr = addrIdx >= 0 ? (answers[addrIdx] || '') : '';
   let isWork = entry.receipt ? Boolean(entry.receipt.work) : (workIdx >= 0 && answers[workIdx] !== 'Personal');
 
-  let html = '<h2>EDIT</h2>';
+  let html = '<h2>Edit</h2>';
   html += '<div class="question">Name shown in history</div>';
   html += '<input type="text" id="edLabel" value="' + escapeHtml(entry.addressLabel || '') + '">';
   if (!isReceipt) {
@@ -4981,15 +5061,15 @@ function showEdit(entry, fromHistory) {
     html += '<div class="question">Items, one per line, name then a bar then the price</div>';
     html += '<textarea id="edItems" style="min-height:120px;">' + escapeHtml(itemsToText((entry.receipt && entry.receipt.items) || [])) + '</textarea>';
     if (entry.photo || entry.photoPath) {
-      html += '<button class="secondary" id="edReread" style="margin-top:8px;width:100%;">READ ITEMS FROM THE PHOTO</button>';
+      html += '<button class="secondary" id="edReread" style="margin-top:8px;width:100%;">Read items from the photo</button>';
     }
   }
   html += '<div class="question">Notes</div>';
   html += '<textarea id="edNotes">' + escapeHtml(notesIdx >= 0 ? (answers[notesIdx] || '') : '') + '</textarea>';
   html += '<div class="panel-actions">';
-  html += '<button id="edSaveBtn">SAVE CHANGES</button>';
-  html += '<button class="secondary" id="edCancelBtn">CANCEL</button>';
-  html += '<button class="secondary" id="edDeleteBtn" style="color:#b00020;border-color:#b00020;">DELETE</button>';
+  html += '<button id="edSaveBtn">Save changes</button>';
+  html += '<button class="secondary" id="edCancelBtn">Cancel</button>';
+  html += '<button class="secondary" id="edDeleteBtn" style="color:#b00020;border-color:#b00020;">Delete</button>';
   html += '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
@@ -5007,7 +5087,7 @@ function showEdit(entry, fromHistory) {
   document.getElementById('edDeleteBtn').addEventListener('click', async function () {
     if (this.getAttribute('data-armed') !== '1') {
       this.setAttribute('data-armed', '1');
-      this.textContent = 'TAP AGAIN TO DELETE';
+      this.textContent = 'Tap again to delete';
       return;
     }
     this.disabled = true;
@@ -5021,16 +5101,16 @@ function showEdit(entry, fromHistory) {
   if (rereadBtn) {
     rereadBtn.addEventListener('click', async () => {
       rereadBtn.disabled = true;
-      rereadBtn.textContent = 'READING';
+      rereadBtn.textContent = 'Reading';
       try {
         const data = await entryPhotoData(entry);
         if (!data) throw new Error('photo not available');
         const r = await extractWithVision(data);
         const found = cleanItems(r.items);
         document.getElementById('edItems').value = itemsToText(found);
-        rereadBtn.textContent = found.length ? 'ITEMS READ, REVIEW THEN SAVE' : 'NO ITEMS FOUND ON THE PHOTO';
+        rereadBtn.textContent = found.length ? 'Items read, review then save' : 'No items found on the photo';
       } catch (e) {
-        rereadBtn.textContent = 'COULD NOT READ, ' + e.message;
+        rereadBtn.textContent = 'Could not read, ' + e.message;
       }
       rereadBtn.disabled = false;
     });
@@ -5090,7 +5170,7 @@ function showEdit(entry, fromHistory) {
     entry.addressLabel = val('edLabel') || entry.addressLabel;
 
     if (moveTo) {
-      btn.textContent = 'LOCATING';
+      btn.textContent = 'Locating';
       try {
         const g = await geocodeSmart(moveTo);
         entry.lat = g.lat;
@@ -5119,7 +5199,7 @@ function showEdit(entry, fromHistory) {
 
 function showEntry(entry, fromHistory) {
   const panel = document.getElementById('panel');
-  let html = '<div class="entry-head"><h2>ENTRY</h2><button class="secondary" id="movePinBtn" aria-label="Move pin" title="Move pin"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button></div>';
+  let html = '<div class="entry-head"><h2>Entry</h2><button class="secondary" id="movePinBtn" aria-label="Move pin" title="Move pin"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button></div>';
   if (pinNotice && pinNotice.id === entry.id) {
     html += '<div style="margin:6px 0;padding:8px;border:1px solid ' + (pinNotice.ok ? 'var(--accent-dim)' : '#b00020') + ';color:' + (pinNotice.ok ? 'var(--text)' : '#b00020') + ';font-size:13px;">' + escapeHtml(pinNotice.text) + '</div>';
     pinNotice = null;
@@ -5172,9 +5252,9 @@ function showEntry(entry, fromHistory) {
     }
   }
   html += ftphGridHtml(ftphFor(entry.id), 'More photos');
-  html += '<button class="secondary" id="entryAddPhoto" style="width:100%;margin-top:8px;">ADD PHOTO</button>';
+  html += '<button class="secondary" id="entryAddPhoto" style="width:100%;margin-top:8px;">Add photo</button>';
   const lockerHere = hasPos(entry) ? ftpNear(entry.lat, entry.lon, 80, 'locker') : null;
-  html += '<div class="panel-actions"><button id="editEntryBtn">EDIT</button>' + (hasPos(entry) ? '<button class="secondary" id="lockerPageBtn">' + (lockerHere ? 'LOCKER PAGE' : 'MAKE LOCKER') + '</button>' : '') + '<button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'BACK' : 'CLOSE') + '</button></div>';
+  html += '<div class="panel-actions"><button id="editEntryBtn">Edit</button>' + (hasPos(entry) ? '<button class="secondary" id="lockerPageBtn">' + (lockerHere ? 'Locker page' : 'Make locker') + '</button>' : '') + '<button class="secondary" id="closeEntryBtn">' + (fromHistory ? 'Back' : 'Close') + '</button></div>';
   panel.innerHTML = html;
   ftphFill(panel);
   document.getElementById('entryAddPhoto').addEventListener('click', () => ftphPick(async d => {
@@ -5871,9 +5951,9 @@ function showTimeline(dk) {
     blocks.push({ t: t, end: end, count: Object.values(phones).reduce((x, y) => x + y, 0), phones: phones, lines: lines });
   }
   const prevDay = localDay(dayStart - 3600000), nextDay = localDay(dayEnd + 3600000);
-  let html = '<h2>TIMELINE</h2>';
+  let html = '<h2>Timeline</h2>';
   html += '<input type="date" id="tlDate" value="' + dk + '" style="width:100%;padding:10px;font:inherit;margin:6px 0;border:1px solid var(--line);background:var(--panel);color:var(--text);">';
-  html += '<div class="panel-actions" style="margin-top:6px;"><button class="secondary" id="tlPrev">EARLIER DAY</button><button class="secondary" id="tlNext">LATER DAY</button></div>';
+  html += '<div class="panel-actions" style="margin-top:6px;"><button class="secondary" id="tlPrev">Earlier day</button><button class="secondary" id="tlNext">Later day</button></div>';
   if (!blocks.length) html += '<div class="question">Nothing logged on this day</div>';
   blocks.forEach(b => {
     const who = Object.keys(b.phones).map(n => n + ' ' + b.phones[n]).join(', ');
@@ -5881,7 +5961,7 @@ function showTimeline(dk) {
     html += '<div class="meta-line">' + (b.count ? b.count + (b.count === 1 ? ' report' : ' reports') + (who ? ', from ' + escapeHtml(who) : '') : 'No new reports') + '</div>';
     b.lines.forEach(l => { html += '<div class="tl-line"' + (l.id ? ' data-id="' + escapeHtml(l.id) + '"' : '') + '>' + escapeHtml(l.text) + '</div>'; });
   });
-  html += '<div class="panel-actions"><button class="secondary" id="tlClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="tlClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -6199,7 +6279,7 @@ function dmFirstLastTimes(dk) {
 function showDailyMiles() {
   const panel = document.getElementById('panel');
   const p = dmStartGet();
-  let html = '<h2>DAILY MILES</h2>';
+  let html = '<h2>Daily miles</h2>';
   html += '<div class="meta-line">Each workday gets a start, an end and business miles. Tap a day to check it and confirm it.</div>';
   const nt = dmNights();
   if (nt.typical !== null) html += '<div class="meta-line">Your typical drive home and back between workdays is about ' + nt.typical + ' miles, from ' + nt.count + (nt.count === 1 ? ' night' : ' nights') + ' of odometer readings. None of it is business mileage.</div>';
@@ -6213,10 +6293,10 @@ function showDailyMiles() {
   html += '<div class="question">Day start point</div>';
   html += '<div class="meta-line">' + (p ? escapeHtml(p.label || 'Set') + '. Every day starts here before the first ticket.' : 'Not set. Every day starts here before the first ticket.') + '</div>';
   html += '<input type="text" id="dmStartAddr" placeholder="Street address, city, state" autocomplete="off">';
-  html += '<div class="panel-actions"><button class="secondary" id="dmStartAddrBtn">USE THIS ADDRESS</button><button class="secondary" id="dmStartHereBtn">USE WHERE I AM</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="dmStartAddrBtn">Use this address</button><button class="secondary" id="dmStartHereBtn">Use where I am</button></div>';
   html += '<div class="question">Extra miles added to the route</div>';
   html += '<input type="text" id="dmMargin" inputmode="decimal" value="' + dmMargin() + '">';
-  html += '<div class="panel-actions"><button id="dmCsvBtn">SAVE SPREADSHEET</button><button class="secondary" id="dmClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button id="dmCsvBtn">Save spreadsheet</button><button class="secondary" id="dmClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -6265,7 +6345,7 @@ function showDailyMilesDay(dk) {
   const lock = s.locked;
   const val = (saved, comp) => saved !== null ? saved : (comp ? comp : '');
   const big = 'font-size:28px;font-weight:700;padding:8px 10px;width:100%;box-sizing:border-box;';
-  let html = '<h2>' + escapeHtml(dmDayLabel(dk, true).toUpperCase()) + '</h2>';
+  let html = '<h2>' + escapeHtml(dmDayLabel(dk, true)) + '</h2>';
   html += '<div class="question">Start mileage</div><input type="text" id="dmStart" inputmode="numeric" style="' + big + '" value="' + val(s.start, c.start && c.start.v) + '"' + (lock ? ' disabled' : '') + '>';
   html += '<div class="question">End mileage</div><input type="text" id="dmEnd" inputmode="numeric" style="' + big + '" value="' + val(s.end, c.end && c.end.v) + '"' + (lock ? ' disabled' : '') + '>';
   html += '<div class="question">Business miles</div><input type="text" id="dmBiz" inputmode="decimal" style="' + big + '" value="' + val(s.business, c.suggest !== undefined ? c.suggest : '') + '"' + (lock ? ' disabled' : '') + '>';
@@ -6285,7 +6365,7 @@ function showDailyMilesDay(dk) {
       '<div class="meta-line">Ending <b id="cdE" style="font-size:20px;">' + escapeHtml(String(ev)) + '</b></div>' +
       '<div class="meta-line">Business mileage <b id="cdZ" style="font-size:20px;">' + escapeHtml(String(bv)) + '</b></div>' +
       '<div class="meta-line">Difference in odometer readings minus business mileage <b id="cdD">' + (sv !== '' && ev !== '' && bv !== '' ? Math.round((ev - sv - bv) * 10) / 10 : '') + '</b></div>' +
-      '<div class="panel-actions"><button class="secondary" id="cdCopy">COPY FOR CARDATA</button></div></div>';
+      '<div class="panel-actions"><button class="secondary" id="cdCopy">Copy for CarData</button></div></div>';
     html += '<div class="question">Miles off the clock</div>';
     let off = '';
     if (n) {
@@ -6304,7 +6384,7 @@ function showDailyMilesDay(dk) {
     html += '<div class="meta-line">' + escapeHtml(off) + '</div>';
   }
   html += '<div class="question">Leg check</div><div id="dmLegs" class="meta-line">Checking each leg against the road route.</div>' +
-    (lock ? '' : '<div class="panel-actions"><button class="secondary" id="dmUseRoad" disabled>USE ROAD ROUTE MILES</button></div>');
+    (lock ? '' : '<div class="panel-actions"><button class="secondary" id="dmUseRoad" disabled>Use road route miles</button></div>');
   html += '<div class="question">Stops that day, tap to mark tickets</div>';
   if (!c.all.length) html += '<div class="meta-line">No stops logged on this day.</div>';
   c.all.forEach(st => {
@@ -6319,10 +6399,10 @@ function showDailyMilesDay(dk) {
   });
   if (!lock) {
     html += '<div class="question">Add a ticket by address</div><input type="text" id="dmTicket" placeholder="Street address, city, state" autocomplete="off">';
-    html += '<div class="panel-actions"><button class="secondary" id="dmTicketBtn">ADD TICKET</button></div>';
+    html += '<div class="panel-actions"><button class="secondary" id="dmTicketBtn">Add ticket</button></div>';
   }
-  html += '<div class="panel-actions">' + (lock ? '<button class="secondary" id="dmUnlock">UNLOCK DAY</button>' : '<button id="dmConfirm">CONFIRM DAY</button>') +
-    '<button class="secondary" id="dmBack">ALL DAYS</button><button class="secondary" id="dmDayClose">CLOSE</button></div>';
+  html += '<div class="panel-actions">' + (lock ? '<button class="secondary" id="dmUnlock">Unlock day</button>' : '<button id="dmConfirm">Confirm day</button>') +
+    '<button class="secondary" id="dmBack">All days</button><button class="secondary" id="dmDayClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -6490,13 +6570,13 @@ async function navStorefront(spot, name) {
 
 function showGo() {
   const panel = document.getElementById('panel');
-  let html = '<h2>GO</h2>';
+  let html = '<h2>Go</h2>';
   html += '<div class="meta-line">Say or type where you are going. Tap the microphone on your keyboard to talk.</div>';
   html += '<input type="text" id="goText" autocomplete="off" placeholder="Store, street or address">';
-  html += '<button class="secondary tg" id="goAirport" aria-pressed="' + (avoidAirport ? 'true' : 'false') + '" style="width:100%;margin:6px 0;"><span>AVOID AIRPORT</span><i class="tg-sw" aria-hidden="true"></i></button>';
+  html += '<button class="secondary tg" id="goAirport" aria-pressed="' + (avoidAirport ? 'true' : 'false') + '" style="width:100%;margin:6px 0;"><span>Avoid airport</span><i class="tg-sw" aria-hidden="true"></i></button>';
   html += '<div id="goList"></div>';
   html += '<div class="meta-line" id="goMsg"></div>';
-  html += '<div class="panel-actions"><button id="goFind">FIND IT</button>' + (navState ? '<button class="secondary" id="goStop">END ROUTE</button>' : '') + '<button class="secondary" id="goClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button id="goFind">Find it</button>' + (navState ? '<button class="secondary" id="goStop">End route</button>' : '') + '<button class="secondary" id="goClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -7318,7 +7398,7 @@ function fcFlash() {
 }
 function fcBadge() {
   const b = document.getElementById('fieldChatOpen');
-  if (b) b.textContent = fcUnread ? 'OPEN FIELD CHAT (' + fcUnread + ' NEW)' : 'OPEN FIELD CHAT';
+  if (b) b.textContent = fcUnread ? 'Open Field Chat (' + fcUnread + ' new)' : 'Open Field Chat';
 }
 async function fcSetAlerts(on) {
   fcAlerts = on;
@@ -7334,14 +7414,14 @@ function fcDraw() {
 }
 async function fcOpen() {
   const panel = document.getElementById('panel');
-  panel.innerHTML = '<h2>FIELD CHAT</h2><div class="meta-line" id="fcMsg">Connecting.</div>';
+  panel.innerHTML = '<h2>Field Chat</h2><div class="meta-line" id="fcMsg">Connecting.</div>';
   panel.classList.add('open');
   if (!(await fcStart())) { document.getElementById('fcMsg').textContent = 'Could not reach the chat. Check the signal and try again.'; return; }
   fcUnread = 0; fcBadge();
   if (!fcMember) {
-    panel.innerHTML = '<h2>FIELD CHAT</h2><div class="meta-line">Field Chat shares members with Cat Command Chat. Get an invite code from someone in it, or make one yourself in Cat Command Chat by tapping your own face, then Invite someone.</div>' +
+    panel.innerHTML = '<h2>Field Chat</h2><div class="meta-line">Field Chat shares members with Cat Command Chat. Get an invite code from someone in it, or make one yourself in Cat Command Chat by tapping your own face, then Invite someone.</div>' +
       '<input type="text" id="fcCode" autocomplete="off" placeholder="Invite code"><input type="text" id="fcNameIn" autocomplete="off" placeholder="Your name in the chat">' +
-      '<div class="meta-line" id="fcErr"></div><div class="panel-actions"><button id="fcJoin">JOIN</button><button class="secondary" id="fcClose">CLOSE</button></div>';
+      '<div class="meta-line" id="fcErr"></div><div class="panel-actions"><button id="fcJoin">Join</button><button class="secondary" id="fcClose">Close</button></div>';
     document.getElementById('fcClose').addEventListener('click', closePanel);
     document.getElementById('fcJoin').addEventListener('click', async () => {
       const code = document.getElementById('fcCode').value.trim();
@@ -7359,9 +7439,9 @@ async function fcOpen() {
     });
     return;
   }
-  panel.innerHTML = '<h2>FIELD CHAT</h2><div id="fcList" style="max-height:46vh;overflow-y:auto;margin:6px 0;"></div>' +
+  panel.innerHTML = '<h2>Field Chat</h2><div id="fcList" style="max-height:46vh;overflow-y:auto;margin:6px 0;"></div>' +
     '<textarea id="fcText" rows="2" placeholder="Message the field crew"></textarea>' +
-    '<div class="panel-actions"><button id="fcSend">SEND</button><button class="secondary" id="fcClose">CLOSE</button></div>';
+    '<div class="panel-actions"><button id="fcSend">Send</button><button class="secondary" id="fcClose">Close</button></div>';
   document.getElementById('fcClose').addEventListener('click', closePanel);
   const send = async () => {
     const t = document.getElementById('fcText');
@@ -7398,11 +7478,11 @@ function showLockers() {
   ftpSeedLockers();
   const panel = document.getElementById('panel');
   const list = ftPlaces.filter(p => p.kind === 'locker');
-  let html = '<h2>LOCKERS</h2><div class="meta-line">Lockers you logged, plus any loaded from the team list or open map data. Tap one to name it and see its visits and photos.</div>';
+  let html = '<h2>Lockers</h2><div class="meta-line">Lockers you logged, plus any loaded from the team list or open map data. Tap one to name it and see its visits and photos.</div>';
   html += '<input type="text" id="lockerFind" autocomplete="off" placeholder="Locker name or street">';
-  html += '<button class="secondary" id="lockerOsm" style="width:100%;margin:6px 0;">ADD LOCKERS FROM OPEN MAP DATA</button><div class="meta-line" id="lockerOsmMsg"></div>';
+  html += '<button class="secondary" id="lockerOsm" style="width:100%;margin:6px 0;">Add lockers from open map data</button><div class="meta-line" id="lockerOsmMsg"></div>';
   html += '<div id="lockerRows"></div>';
-  html += '<div class="panel-actions"><button class="secondary" id="lockersClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="lockersClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');
@@ -7436,9 +7516,9 @@ function showLocker(p) {
   html += '<div class="meta-line">arrived ' + (p.arrivals || 0) + ', picked in GO ' + (p.searches || 0) + ', logged ' + stops.length + '</div>';
   html += '<div class="question">Locker name</div><input type="text" id="lockerName" autocomplete="off" placeholder="Name, like Lasso" value="' + escapeHtml(p.name || '').replace(/"/g, '&quot;') + '">';
   html += '<div class="question">Locker notes</div><textarea id="lockerNotes" rows="3" placeholder="Gate code, where to park, which bank">' + escapeHtml(p.notes || '') + '</textarea>';
-  html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">SAVE</button><button class="secondary" id="lockerGo" style="flex:1;">GO HERE</button></div>';
+  html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">Save</button><button class="secondary" id="lockerGo" style="flex:1;">Go here</button></div>';
   const extra = ftphAt(p);
-  html += '<button class="secondary" id="lockerAddPhoto" style="width:100%;margin:6px 0;">ADD PHOTO OF THIS LOCKER</button>';
+  html += '<button class="secondary" id="lockerAddPhoto" style="width:100%;margin:6px 0;">Add photo of this locker</button>';
   if (pics.length || extra.length) {
     html += '<div class="question">Photos, newest first</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
       extra.map(ph => '<img data-xph="' + ph.id + '" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #0b4ea2;border-radius:6px;background:#eef4fb;cursor:pointer;">').join('') +
@@ -7451,7 +7531,7 @@ function showLocker(p) {
     const note = ftpNoteTexts(e).join(' ').slice(0, 140);
     return '<div class="mi-row" data-st="' + e.id + '"><b>' + new Date(e.timestamp).toLocaleDateString() + '</b> ' + escapeHtml((CATEGORIES[e.category] || {}).label || '') + (note ? '<br><span class="meta-line">' + escapeHtml(note) + '</span>' : '') + '</div>';
   }).join('') : '<div class="meta-line">Nothing logged here yet.</div>';
-  html += '<div class="panel-actions"><button class="secondary" id="lockerBack">ALL LOCKERS</button><button class="secondary" id="lockerClose">CLOSE</button></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="lockerBack">All lockers</button><button class="secondary" id="lockerClose">Close</button></div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
   panel.classList.add('open');

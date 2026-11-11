@@ -11,6 +11,7 @@ on:
     branches: [master]
     paths:
       - "index.html"
+      - "field-twin-fonts-v1/**"
       - "src-tauri/**"
       - ".github/workflows/build-apps.yml"
 
@@ -56,6 +57,7 @@ jobs:
         run: |
           mkdir -p dist
           cp index.html dist/
+          cp -r field-twin-fonts-v1 dist/
           node src-tauri/scripts/set-version.cjs "${{ steps.v.outputs.version }}"
       - name: Build Android app
         run: |
