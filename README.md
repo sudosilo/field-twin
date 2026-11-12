@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-12, v2026.11.12. The locker site section now has an oversize module count, so a bank with the two tall doors beside one full height door module is passed to Parcelsun the way it stands.
+Latest change. 2026-11-12, v2026.11.12b. Open in Parcelsun now carries the exact bank saved from Parcelsun, slot by slot, so a locker reopens the way it was specified.
 
 Full history is in CHANGELOG.md.

@@ -7730,7 +7730,7 @@ function ftsSiteBind(p) {
     ftsReadForm(p);
     ftpPush(p);
     const s = ftsFill(ftsSite(p), ftsSurvey(p));
-    const d = { v: 1, id: p.id, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods, qMods: s.qMods,
+    const d = { v: 1, id: p.id, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods, qMods: s.qMods, layout: s.layout || null,
       placement: s.placement, awning: s.awning, backWall: !!s.backWall,
       blockers: s.blockers.map(b => ({ label: b.label, left: b.left, right: b.right, top: b.top, heightFt: b.heightFt, distFt: b.distFt })) };
     const bytes = new TextEncoder().encode(JSON.stringify(d));
