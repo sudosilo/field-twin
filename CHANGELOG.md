@@ -1,5 +1,7 @@
 Field Twin changelog
 
+2026-11-12, v2026.11.12. The locker site section now has an oversize module count, so a bank with the two tall doors beside one full height door module is passed to Parcelsun the way it stands.
+
 2026-11-11, v2026.11.11b. Open in Parcelsun now fills any blank site field from the latest locker visit survey at that locker: compartment count gives a door count, screen or touchpad gives the generation, and indoors, outdoors, shaded or exposed give the placement.
 
 2026-11-11, v2026.11.11. Each locker page now has a Site for Parcelsun section with door count, module count, generation, placement and facing. Aim phone measures which way the front faces with the compass, and Add shade blocker measures a wall or building that shades the locker by its left edge, right edge and top. Open in Parcelsun opens the heat model with the locker already set up.

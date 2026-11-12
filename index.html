@@ -7663,6 +7663,7 @@ function ftsSiteHtml(p) {
   h += '<label><div class="meta-line">Door count</div><input type="number" id="lsDoors" inputmode="numeric" min="1" value="' + val(s.doors) + '"></label>';
   h += '<label><div class="meta-line">Module count</div><input type="number" id="lsMods" inputmode="numeric" min="1" value="' + val(s.mods) + '"></label>';
   h += '</div>';
+  h += '<label><div class="meta-line" style="margin-top:6px;">Oversize modules in that count (two tall doors beside one full height door)</div><input type="number" id="lsQ" inputmode="numeric" min="0" value="' + val(s.qMods) + '"></label>';
   h += '<div class="meta-line" style="margin-top:6px;">Locker generation</div><select id="lsGen">' + opt(FTS_GENS, s.gen) + '</select>';
   h += '<div class="meta-line" style="margin-top:6px;">Placement</div><select id="lsPlace">' + opt(FTS_PLACES, s.placement) + '</select>';
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-top:6px;">';
@@ -7685,7 +7686,7 @@ function ftsSiteHtml(p) {
 function ftsReadForm(p) {
   const s = ftsSite(p);
   if (!document.getElementById('lsDoors')) return s;
-  s.doors = ftsNum('lsDoors'); s.mods = ftsNum('lsMods');
+  s.doors = ftsNum('lsDoors'); s.mods = ftsNum('lsMods'); s.qMods = ftsNum('lsQ');
   s.gen = document.getElementById('lsGen').value || null;
   s.placement = document.getElementById('lsPlace').value || null;
   s.awning = ftsNum('lsAwning');
@@ -7729,7 +7730,7 @@ function ftsSiteBind(p) {
     ftsReadForm(p);
     ftpPush(p);
     const s = ftsFill(ftsSite(p), ftsSurvey(p));
-    const d = { v: 1, id: p.id, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods,
+    const d = { v: 1, id: p.id, name: ftpLabel(p), lat: p.lat, lon: p.lon, facing: s.facing, gen: s.gen, doors: s.doors, mods: s.mods, qMods: s.qMods,
       placement: s.placement, awning: s.awning, backWall: !!s.backWall,
       blockers: s.blockers.map(b => ({ label: b.label, left: b.left, right: b.right, top: b.top, heightFt: b.heightFt, distFt: b.distFt })) };
     const bytes = new TextEncoder().encode(JSON.stringify(d));

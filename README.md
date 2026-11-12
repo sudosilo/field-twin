@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-11, v2026.11.11b. Open in Parcelsun now fills any blank site field from the latest locker visit survey at that locker: compartment count gives a door count, screen or touchpad gives the generation, and indoors, outdoors, shaded or exposed give the placement.
+Latest change. 2026-11-12, v2026.11.12. The locker site section now has an oversize module count, so a bank with the two tall doors beside one full height door module is passed to Parcelsun the way it stands.
 
 Full history is in CHANGELOG.md.
