@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-13, v2026.11.13. Each locker page now has a Wireless survey. In the phone app, Scan Wi-Fi and Bluetooth lists every Wi-Fi network and Bluetooth device heard at the locker with band, channel and signal strength, sums up how crowded the 2.4 band is, and saves the scan on the locker.
+Latest change. 2026-11-13, v2026.11.13b. Each wireless survey now also goes to WiGLE once a WiGLE account is connected on the Field Twin server through WIGLE_API_NAME and WIGLE_API_TOKEN. Only the radio list, time and phone position are sent.
 
 Full history is in CHANGELOG.md.

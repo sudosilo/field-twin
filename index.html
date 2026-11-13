@@ -4985,7 +4985,7 @@ function showInfo() {
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
   html += '<div class="question">Wireless survey</div>';
-  html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
+  html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. When a WiGLE account is connected on the Field Twin server, each scan also goes up to that account as a small WiGLE file holding the radio list, the time and where the phone stood, and nothing about the locker. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
   html += '<div>Each locker page has a Site for Parcelsun section: door count, module count, generation, placement, awning, whether the back sits against a wall, and which way the front faces. Aim phone measures the facing with the compass: stand a few steps out in front of the locker, point the back of the phone at its middle, and tap Capture. Steel throws a compass off, so stand back from the bank rather than pressing the phone against it. Add shade blocker measures a wall, building or tree that shades the locker: from in front of the locker, aim at its left edge, its right edge, then tilt up to its top edge, then name it and add its height and distance if you know them. Open in Parcelsun opens the heat model with this locker already set up, its blockers casting shade at the right hours. The site stays with the locker and syncs to your other phones, and it is never shared on the team list.</div>';
   html += '<div class="question">Photos</div>';
@@ -7783,6 +7783,28 @@ function ftrHtml(p) {
   h += '</div>';
   return h;
 }
+// Sends one survey to the WiGLE account connected on the Field Twin server. Only the radio list, the time and
+// the phone's position go up. The locker's name, site and notes stay here.
+async function ftrWigle(p, radio) {
+  const base = typeof getApiBase === 'function' ? getApiBase() : '';
+  if (!base || !radio) return;
+  const me = (typeof mySpot === 'function' && mySpot()) || null;
+  const fresh = me && isFinite(me.lat) && (!me.t || Date.now() - me.t < 120000) && metersBetween(me.lat, me.lon, p.lat, p.lon) < 400;
+  const headers = { 'Content-Type': 'application/json' };
+  try { await apiAuthHeaders(headers); } catch (e) {}
+  let msg = '';
+  try {
+    const res = await fetch(base.replace(/\/+$/, '') + '/wigle/upload', { method: 'POST', headers: headers,
+      body: JSON.stringify({ at: radio.at, lat: fresh ? me.lat : p.lat, lon: fresh ? me.lon : p.lon, acc: fresh ? (me.acc || 20) : 40, wifi: radio.wifi, bt: radio.bt }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.ok) { radio.wigle = new Date().toISOString(); ftpPush(p); msg = 'Sent ' + j.sent + ' radios to WiGLE.'; }
+    else if (res.status === 503) msg = 'Saved here. WiGLE is not connected on the server yet.';
+    else msg = 'Saved here. WiGLE did not take it: ' + (j.detail || j.error || 'status ' + res.status);
+  } catch (e) { msg = 'Saved here. WiGLE could not be reached.'; }
+  setStatus(msg);
+  const st = document.getElementById('ftrStatus');
+  if (st && msg) st.textContent = msg + ' ' + st.textContent;
+}
 function ftrBind(p) {
   const btn = document.getElementById('ftrScan'), st = document.getElementById('ftrStatus');
   btn.addEventListener('click', () => {
@@ -7811,6 +7833,7 @@ function ftrBind(p) {
         const m = ftrSum(s.radio);
         s.radioLog = [{ at: m.at, w24: m.w24, w5: m.w5, w6: m.w6, bt: m.bt, strong: m.strong, btNear: m.btNear, read: m.read }].concat(Array.isArray(s.radioLog) ? s.radioLog : []).slice(0, 10);
         ftsSaveSite(p, 'wireless survey saved');
+        ftrWigle(p, s.radio);
       }
     }, 700);
   });

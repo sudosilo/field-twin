@@ -332,6 +332,55 @@ app.post('/destination', async (req, res) => {
   }
 });
 
+// WiGLE: one wireless survey from the app becomes a small WiGLE CSV file and goes up under the WiGLE
+// account whose API name and token sit in WIGLE_API_NAME and WIGLE_API_TOKEN. Nothing about the locker goes with it.
+const WIGLE_NAME = process.env.WIGLE_API_NAME || '';
+const WIGLE_TOKEN = process.env.WIGLE_API_TOKEN || '';
+function wigleCsv(b) {
+  // the WiGLE app writes fields bare, so commas, quotes and line breaks inside a name become underscores
+  const q = v => String(v === undefined || v === null ? '' : v).replace(/[\r\n,"]+/g, '_');
+  const d = new Date(b.at || Date.now());
+  const when = d.toISOString().slice(0, 19).replace('T', ' ');
+  const lat = Number(b.lat).toFixed(6), lon = Number(b.lon).toFixed(6), acc = Math.max(1, Math.round(Number(b.acc) || 25));
+  const chan = f => f === 2484 ? 14 : f < 3000 ? Math.round((f - 2407) / 5) : f < 5925 ? Math.round((f - 5000) / 5) : Math.round((f - 5950) / 5);
+  const rows = ['WigleWifi-1.4,appRelease=fieldtwin-1,model=fieldtwin,release=1,device=fieldtwin,display=fieldtwin,board=fieldtwin,brand=fieldtwin',
+    'MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type'];
+  (Array.isArray(b.wifi) ? b.wifi : []).slice(0, 400).forEach(x => {
+    if (!/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i.test(String(x.bssid || ''))) return;
+    rows.push([String(x.bssid).toLowerCase(), q(x.ssid), q(x.sec || '[ESS]'), when, chan(Number(x.freq) || 0), Math.round(Number(x.rssi) || -100), lat, lon, 0, acc, 'WIFI'].join(','));
+  });
+  (Array.isArray(b.bt) ? b.bt : []).slice(0, 400).forEach(x => {
+    if (!/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i.test(String(x.addr || ''))) return;
+    rows.push([String(x.addr).toLowerCase(), q(x.name), q('Misc [LE]'), when, 0, Math.round(Number(x.rssi) || -100), lat, lon, 0, acc, 'BLE'].join(','));
+  });
+  return { text: rows.join('\n') + '\n', count: rows.length - 2, stamp: d.toISOString().slice(0, 19).replace(/[-:T]/g, '') };
+}
+app.get('/wigle/status', (req, res) => { res.json({ connected: Boolean(WIGLE_NAME && WIGLE_TOKEN) }); });
+app.post('/wigle/upload', async (req, res) => {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const required = process.env.API_TOKEN || '';
+  if (required && token !== required && !(await isSignedInUser(token))) return res.sendStatus(401);
+  if (!WIGLE_NAME || !WIGLE_TOKEN) return res.status(503).json({ error: 'wigle account not connected' });
+  const b = req.body || {};
+  if (!isFinite(Number(b.lat)) || !isFinite(Number(b.lon))) return res.status(400).json({ error: 'lat and lon required' });
+  const csv = wigleCsv(b);
+  if (!csv.count) return res.status(400).json({ error: 'nothing to send' });
+  try {
+    const form = new FormData();
+    form.append('file', new Blob([csv.text], { type: 'text/csv' }), 'WigleWifi_' + csv.stamp + '.csv');
+    form.append('donate', 'false');
+    const r = await fetch('https://api.wigle.net/api/v2/file/upload', { method: 'POST',
+      headers: { Accept: 'application/json', Authorization: 'Basic ' + Buffer.from(WIGLE_NAME + ':' + WIGLE_TOKEN).toString('base64') }, body: form });
+    const text = await r.text();
+    let j = null; try { j = JSON.parse(text); } catch (e) {}
+    if (!r.ok || (j && j.success === false)) return res.status(502).json({ error: 'wigle refused the file, status ' + r.status, detail: (j && j.message) || text.slice(0, 200) });
+    res.json({ ok: true, sent: csv.count, transid: j && j.results ? j.results.transids && j.results.transids[0] && j.results.transids[0].transId : null });
+  } catch (e) {
+    console.error('wigle upload failed', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({ service: 'fieldtwin-api', endpoints: ['/health', '/cameras', '/status', '/receipts/extract', '/debrief', '/events', '/crashes'] });
 });
