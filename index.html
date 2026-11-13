@@ -4984,6 +4984,8 @@ function showInfo() {
   html += '<div>In the phone app, leaving Field Twin while a route is running shrinks it into a small floating window over your other apps. Only the map and the next turn show, centered on you, and the page keeps running so the route and your position stay live. Open Field Twin again and it goes back to full size.</div>';
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
+  html += '<div class="question">Wireless survey</div>';
+  html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
   html += '<div>Each locker page has a Site for Parcelsun section: door count, module count, generation, placement, awning, whether the back sits against a wall, and which way the front faces. Aim phone measures the facing with the compass: stand a few steps out in front of the locker, point the back of the phone at its middle, and tap Capture. Steel throws a compass off, so stand back from the bank rather than pressing the phone against it. Add shade blocker measures a wall, building or tree that shades the locker: from in front of the locker, aim at its left edge, its right edge, then tilt up to its top edge, then name it and add its height and distance if you know them. Open in Parcelsun opens the heat model with this locker already set up, its blockers casting shade at the right hours. The site stays with the locker and syncs to your other phones, and it is never shared on the team list.</div>';
   html += '<div class="question">Photos</div>';
@@ -7577,6 +7579,7 @@ function showLocker(p) {
   html += '<div class="question">Locker notes</div><textarea id="lockerNotes" rows="3" placeholder="Gate code, where to park, which bank">' + escapeHtml(p.notes || '') + '</textarea>';
   html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">Save</button><button class="secondary" id="lockerGo" style="flex:1;">Go here</button></div>';
   html += ftsSiteHtml(p);
+  html += ftrHtml(p);
   const extra = ftphAt(p);
   html += '<button class="secondary" id="lockerAddPhoto" style="width:100%;margin:6px 0;">Add photo of this locker</button>';
   if (pics.length || extra.length) {
@@ -7606,6 +7609,7 @@ function showLocker(p) {
     if (e) showEntry(e);
   }));
   ftsSiteBind(p);
+  ftrBind(p);
   document.getElementById('lockerSave').addEventListener('click', () => {
     ftsReadForm(p);
     p.name = document.getElementById('lockerName').value.trim();
@@ -7741,6 +7745,77 @@ function ftsSiteBind(p) {
     if (!w) window.location.href = url;
   });
 }
+
+// Wireless survey for a locker: the phone app lists every Wi-Fi network and Bluetooth low energy device it can hear
+// at the locker. The latest scan is kept on the locker in p.site.radio, with a short history in p.site.radioLog.
+const FTR_MAKERS = { 76: 'Apple', 6: 'Microsoft', 117: 'Samsung', 224: 'Google', 369: 'Amazon', 89: 'Nordic' };
+function ftrChan(f) { return f === 2484 ? 14 : f < 3000 ? Math.round((f - 2407) / 5) : f < 5925 ? Math.round((f - 5000) / 5) : Math.round((f - 5950) / 5); }
+function ftrBand(f) { return f < 3000 ? '2.4' : f < 5925 ? '5' : '6'; }
+function ftrSum(r) {
+  const w = r.wifi || [], b = r.bt || [];
+  const w24 = w.filter(x => ftrBand(x.freq) === '2.4');
+  const lanes = { 1: 0, 6: 0, 11: 0 };
+  w24.forEach(x => { const c = ftrChan(x.freq); lanes[c <= 3 ? 1 : c <= 8 ? 6 : 11]++; });
+  const strong = w24.filter(x => x.rssi >= -70).length, btNear = b.filter(x => x.rssi >= -70).length;
+  return { at: r.at, w24: w24.length, w5: w.filter(x => ftrBand(x.freq) === '5').length, w6: w.filter(x => ftrBand(x.freq) === '6').length,
+    bt: b.length, strong, btNear, lanes, read: strong + btNear <= 3 ? 'quiet' : strong + btNear <= 10 ? 'busy' : 'crowded' };
+}
+function ftrHtml(p) {
+  const s = ftsSite(p), r = s.radio;
+  let h = '<div class="question">Wireless survey</div>';
+  h += '<div class="meta-line">Every Wi-Fi network and Bluetooth device the phone hears at this locker. Bluetooth lockers share the 2.4 band with all of them.</div>';
+  h += '<div style="margin:8px 0;"><button id="ftrScan" style="width:100%;">Scan Wi-Fi and Bluetooth</button></div>';
+  h += '<div id="ftrStatus" class="meta-line" style="height:54px;overflow-y:auto;">';
+  if (r) {
+    const m = ftrSum(r);
+    h += 'Last scan ' + escapeHtml(new Date(r.at).toLocaleString()) + '. The 2.4 band is ' + m.read + ': ' + m.w24 + ' networks there, ' + m.strong + ' of them strong, spread ' +
+      m.lanes[1] + ' low, ' + m.lanes[6] + ' middle, ' + m.lanes[11] + ' high. ' + m.w5 + ' on 5, ' + m.w6 + ' on 6. ' + m.bt + ' Bluetooth devices, ' + m.btNear + ' close by.' + (r.note ? ' ' + escapeHtml(r.note) : '');
+  } else h += 'No scan saved for this locker yet.';
+  h += '</div>';
+  h += '<div id="ftrList" style="height:220px;overflow-y:auto;border:2px solid #0b4ea2;border-radius:6px;padding:4px 8px;margin-top:6px;">';
+  if (r) {
+    const row = (a, b2, c) => '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;"><b>' + a + '</b><br><span class="meta-line">' + b2 + '</span></div><div style="font-weight:800;color:#0b4ea2;white-space:nowrap;">' + c + '</div></div>';
+    h += '<div class="meta-line" style="padding-top:4px;">Wi-Fi, strongest first</div>';
+    h += (r.wifi || []).slice().sort((a, b2) => b2.rssi - a.rssi).map(x => row(x.ssid ? escapeHtml(x.ssid) : 'Hidden network', ftrBand(x.freq) + ' band, channel ' + ftrChan(x.freq) + ', ' + x.width + ' wide, ' + escapeHtml(x.bssid || ''), x.rssi + ' dBm')).join('') || '<div class="meta-line">None heard.</div>';
+    h += '<div class="meta-line" style="padding-top:8px;">Bluetooth, strongest first</div>';
+    h += (r.bt || []).slice().sort((a, b2) => b2.rssi - a.rssi).map(x => row(x.name ? escapeHtml(x.name) : 'Unnamed device', (FTR_MAKERS[x.mfg] ? FTR_MAKERS[x.mfg] + ', ' : x.mfg !== undefined ? 'maker code ' + x.mfg + ', ' : '') + escapeHtml(x.addr || ''), x.rssi + ' dBm')).join('') || '<div class="meta-line">None heard.</div>';
+  } else h += '<div class="meta-line" style="padding:6px 0;">Stand at the locker and tap Scan Wi-Fi and Bluetooth. It takes about ten seconds.</div>';
+  h += '</div>';
+  return h;
+}
+function ftrBind(p) {
+  const btn = document.getElementById('ftrScan'), st = document.getElementById('ftrStatus');
+  btn.addEventListener('click', () => {
+    const N = window.FieldTwinNative;
+    if (!N || typeof N.radioScan !== 'function') { st.textContent = 'The wireless scan runs in the Field Twin phone app. A web browser is not allowed to list Wi-Fi networks. Open this locker in the app, updated to the newest version.'; return; }
+    ftsReadForm(p);
+    let res = '';
+    try { res = String(N.radioScan()); } catch (e) { res = 'error: ' + e.message; }
+    if (res.indexOf('error') === 0) { st.textContent = 'The scan would not start. ' + res; return; }
+    btn.disabled = true;
+    const t0 = Date.now();
+    st.textContent = 'Scanning Wi-Fi and Bluetooth';
+    const tick = setInterval(() => {
+      if (!document.getElementById('ftrScan')) { clearInterval(tick); return; }
+      let r = null;
+      try { r = JSON.parse(N.radioResult()); } catch (e) {}
+      if (r && r.state === 'asking') st.textContent = 'Answer the permission prompt to let the scan run';
+      else if (r && r.state === 'scanning') st.textContent = 'Scanning: ' + (r.wifi || []).length + ' Wi-Fi networks and ' + (r.bt || []).length + ' Bluetooth devices so far';
+      if ((r && r.state === 'done') || Date.now() - t0 > 60000) {
+        clearInterval(tick);
+        btn.disabled = false;
+        if (!r || r.state !== 'done') { st.textContent = 'The scan did not finish. Tap Scan Wi-Fi and Bluetooth again.'; return; }
+        const s = ftsSite(p);
+        s.radio = { at: new Date(r.at || Date.now()).toISOString(), note: r.note || '',
+          wifi: (r.wifi || []).sort((a, b) => b.rssi - a.rssi).slice(0, 150), bt: (r.bt || []).sort((a, b) => b.rssi - a.rssi).slice(0, 200) };
+        const m = ftrSum(s.radio);
+        s.radioLog = [{ at: m.at, w24: m.w24, w5: m.w5, w6: m.w6, bt: m.bt, strong: m.strong, btNear: m.btNear, read: m.read }].concat(Array.isArray(s.radioLog) ? s.radioLog : []).slice(0, 10);
+        ftsSaveSite(p, 'wireless survey saved');
+      }
+    }, 700);
+  });
+}
+
 // Aiming screen. Reads the phone's absolute orientation and turns it into the bearing and angle up of the direction
 // the back of the phone points. A short average smooths out compass jitter.
 function ftsAim(p, mode, done) {

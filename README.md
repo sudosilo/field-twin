@@ -8,6 +8,6 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-12, v2026.11.12. The locker site section now has an oversize module count, so a bank with two tall doors beside one full height door module is passed to Parcelsun the way it stands. Open in Parcelsun now carries the exact bank saved from Parcelsun, slot by slot.
+Latest change. 2026-11-13, v2026.11.13. Each locker page now has a Wireless survey. In the phone app, Scan Wi-Fi and Bluetooth lists every Wi-Fi network and Bluetooth device heard at the locker with band, channel and signal strength, sums up how crowded the 2.4 band is, and saves the scan on the locker.
 
 Full history is in CHANGELOG.md.

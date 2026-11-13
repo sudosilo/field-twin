@@ -282,6 +282,13 @@ class FieldTwinBridge(private val activity: Activity) {
   }
 
   // Writes an export or spreadsheet into the phone's Downloads folder, since the app's web view cannot download files itself.
+  // Wireless site survey: radioScan starts one pass over Wi-Fi and Bluetooth, radioResult reads it back as JSON.
+  @JavascriptInterface
+  fun radioScan(): String = try { FieldTwinRadio.start(activity) } catch (e: Exception) { "error: " + (e.message ?: "unknown") }
+
+  @JavascriptInterface
+  fun radioResult(): String = try { FieldTwinRadio.result() } catch (e: Exception) { "{\"state\":\"done\",\"note\":\"scan failed\",\"wifi\":[],\"bt\":[]}" }
+
   @JavascriptInterface
   fun saveFile(name: String, mime: String, text: String): String {
     return try {

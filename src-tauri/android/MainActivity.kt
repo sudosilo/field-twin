@@ -110,5 +110,6 @@ class MainActivity : TauriActivity() {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode == FieldTwinBridge.PERM_CODE) FieldTwinBridge.startIfAllowed(this)
     if (requestCode == FieldTwinCompanion.PERM_CODE) FieldTwinCompanion.afterPermission(this)
+    if (requestCode == FieldTwinRadio.PERM_CODE) FieldTwinRadio.afterPermission(this)
   }
 }

@@ -19,7 +19,10 @@ const perms = [
   "android.permission.CAMERA",
   "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
   "android.permission.BLUETOOTH_SCAN",
-  "android.permission.BLUETOOTH_CONNECT"
+  "android.permission.BLUETOOTH_CONNECT",
+  "android.permission.ACCESS_WIFI_STATE",
+  "android.permission.CHANGE_WIFI_STATE",
+  "android.permission.NEARBY_WIFI_DEVICES"
 ];
 if (!s.includes('android.permission.BLUETOOTH"')) s = s.replace("<application", '    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />\n    <application');
 let add = "";
