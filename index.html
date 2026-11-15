@@ -8003,5 +8003,242 @@ nightApply();
 setInterval(nightApply, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') nightApply(); });
 </script>
+<script>
+// Sites: places surveyed with RTSS and RDSS. The surveys live on the RIE API, the pin, visits and photos live here.
+// A Field Twin place is tied to a survey site by site.rie on the place, so everything about one place collects in one spot.
+const RIE_API = 'https://rie-api-production.up.railway.app';
+const RTSS_SITE = 'https://rtss-sigma.vercel.app/';
+const RDSS_SITE = 'https://ghost-kitchen-builder.vercel.app/';
+let ftxSites = [];
+let ftxLayer = null;
+try { ftxSites = JSON.parse(localStorage.getItem('ftxSites') || '[]') || []; } catch (e) { ftxSites = []; }
+
+async function ftxApi(path, method, body) {
+  const opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(RIE_API + path, opts);
+  if (!res.ok) throw new Error('API ' + res.status);
+  return res.json();
+}
+async function ftxLoad() {
+  try {
+    const rows = await ftxApi('/sites');
+    ftxSites = rows.map(r => ({ id: r.id, name: r.name, profile: r.profile || {}, updated_at: r.updated_at }));
+    try { localStorage.setItem('ftxSites', JSON.stringify(ftxSites)); } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+function ftxPlace(id) { return ftPlaces.find(p => p.site && p.site.rie === id); }
+function ftxNum(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
+function ftxCount(obj, test) { return Object.keys(obj || {}).filter(k => test(k, obj[k])).length; }
+function ftxSet(v) { return !(v === undefined || v === null || v === '' || v === false || (Array.isArray(v) && !v.length)); }
+function ftxWhen(t) { const d = new Date(typeof t === 'number' && t < 1e11 ? t * 1000 : t); return isNaN(d) ? '' : d.toLocaleDateString(); }
+
+// One pin per tied place, drawn on its own layer so it never mixes with lockers.
+function ftxPins() {
+  if (typeof map === 'undefined' || !map) return;
+  if (ftxLayer) { map.removeLayer(ftxLayer); ftxLayer = null; }
+  ftxLayer = L.layerGroup();
+  ftPlaces.filter(p => p.site && p.site.rie && isFinite(p.lat) && isFinite(p.lon)).forEach(p => {
+    const icon = L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+      html: '<div style="width:22px;height:22px;background:#d9610f;border:2px solid #ffffff;box-shadow:0 0 0 2px #0a1b2e;border-radius:4px;color:#fff;font:800 12px/22px sans-serif;text-align:center;">S</div>' });
+    L.marker([p.lat, p.lon], { icon: icon, title: p.name || 'Site' }).on('click', () => showSite(p.site.rie)).addTo(ftxLayer);
+  });
+  ftxLayer.addTo(map);
+}
+
+function ftxOpenPanel(html) {
+  const panel = document.getElementById('panel');
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+  panel.classList.add('open');
+  return panel;
+}
+
+async function showSites() {
+  const draw = () => {
+    const me = mySpot();
+    const rows = ftxSites.map(s => {
+      const p = ftxPlace(s.id);
+      const d = p && me ? ftpDist(me.lat, me.lon, p.lat, p.lon) / 1609.34 : null;
+      return { s, p, d };
+    });
+    rows.sort((a, b) => (a.d === null ? 1e9 : a.d) - (b.d === null ? 1e9 : b.d) || String(a.s.name).localeCompare(String(b.s.name)));
+    const q = (document.getElementById('ftxFind') || {}).value || '';
+    const want = q.toLowerCase().trim();
+    const shown = rows.filter(r => !want || (r.s.name + ' ' + (r.s.profile.address || '') + ' ' + (r.s.profile.city || '')).toLowerCase().indexOf(want) !== -1);
+    const box = document.getElementById('ftxRows');
+    if (!box) return;
+    box.innerHTML = shown.length ? '<div class="meta-line">' + shown.length + (shown.length === 1 ? ' site' : ' sites') + ', nearest first</div>' + shown.map(r =>
+      '<div class="mi-row" data-sx="' + escapeHtml(r.s.id) + '"><b style="color:var(--accent);">' + escapeHtml(r.s.name) + '</b><br><span class="meta-line">' +
+      escapeHtml([r.s.profile.address, r.s.profile.city].filter(Boolean).join(', ') || 'No address yet') + ', ' +
+      (r.p ? (r.d === null ? 'pinned' : r.d.toFixed(1) + ' mi away') : 'not pinned') + '</span></div>').join('')
+      : '<div class="meta-line">No sites yet. Start one here, or create one in RTSS or RDSS.</div>';
+    box.querySelectorAll('[data-sx]').forEach(el => el.addEventListener('click', () => showSite(el.getAttribute('data-sx'))));
+  };
+  let html = '<h2>Sites</h2><div class="meta-line">Every place surveyed in RTSS and RDSS. Pin one to the map and its visits and photos collect here over time.</div>';
+  html += '<input type="text" id="ftxFind" autocomplete="off" placeholder="Site name or street">';
+  html += '<button id="ftxNew" style="width:100%;margin:6px 0;">Start a site here</button>';
+  html += '<div id="ftxRows"><div class="meta-line">Loading sites.</div></div>';
+  html += '<div class="panel-actions"><button class="secondary" id="ftxClose">Close</button></div>';
+  ftxOpenPanel(html);
+  document.getElementById('ftxClose').addEventListener('click', closePanel);
+  document.getElementById('ftxFind').addEventListener('input', draw);
+  document.getElementById('ftxNew').addEventListener('click', ftxNewHere);
+  if (ftxSites.length) draw();
+  const ok = await ftxLoad();
+  if (!ok && !ftxSites.length) { const b = document.getElementById('ftxRows'); if (b) b.innerHTML = '<div class="meta-line">The survey server did not answer. Try again in a minute.</div>'; return; }
+  draw();
+  ftxPins();
+}
+
+async function ftxHere() {
+  const me = mySpot();
+  if (me) return me;
+  return await new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), () => res(null), { enableHighAccuracy: true, timeout: 15000 });
+  });
+}
+
+// Tie a place on the map to a survey site, reusing a place already at that spot.
+function ftxTie(id, name, lat, lon) {
+  let p = ftxPlace(id);
+  if (!p) {
+    const near = ftpNear(lat, lon, 40);
+    p = near && !(near.site && near.site.rie) ? near : null;
+  }
+  if (!p) { p = { id: ftpId(), kind: 'site', name: name || '', lat, lon, address: '', notes: '', arrivals: 0, searches: 0 }; ftPlaces.push(p); }
+  if (!p.site || typeof p.site !== 'object') p.site = {};
+  p.site.rie = id;
+  p.lat = lat; p.lon = lon;
+  if (!p.name) p.name = name || '';
+  ftpPush(p);
+  ftxPins();
+  return p;
+}
+
+async function ftxNewHere() {
+  const name = (prompt('Name for the new site') || '').trim();
+  if (!name) return;
+  const me = await ftxHere();
+  if (!me) { setStatus('no location yet, turn on Location and try again'); return; }
+  const id = 'site-' + Date.now().toString(36);
+  try {
+    await ftxApi('/sites', 'POST', { id, name });
+    ftxSites.unshift({ id, name, profile: {}, updated_at: Date.now() / 1000 });
+    ftxTie(id, name, me.lat, me.lon);
+    setStatus('site started');
+    showSite(id);
+  } catch (e) { setStatus('the survey server did not answer'); }
+}
+
+async function showSite(id) {
+  let s = ftxSites.find(x => x.id === id);
+  if (!s) { await ftxLoad(); s = ftxSites.find(x => x.id === id); }
+  if (!s) { setStatus('that site was not found'); return; }
+  const p = ftxPlace(id);
+  const P = s.profile || {};
+  let html = '<h2 style="text-transform:none;">' + escapeHtml(s.name) + '</h2>';
+  html += '<div class="meta-line">' + escapeHtml([P.business_name && P.business_name !== s.name ? P.business_name : '', P.address, P.city, P.state].filter(Boolean).join(', ') || 'No address yet') + '</div>';
+  html += '<div class="meta-line">' + (p ? 'Pinned at ' + p.lat.toFixed(5) + ', ' + p.lon.toFixed(5) : 'Not pinned to the map yet') + '</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;">';
+  html += '<button id="ftxRtss">Open RTSS</button><button id="ftxRdss">Open RDSS</button>';
+  html += '<button class="secondary" id="ftxPin">' + (p ? 'Move pin here' : 'Pin here') + '</button>';
+  html += '<button class="secondary" id="ftxGo"' + (p ? '' : ' disabled') + '>Go here</button></div>';
+  html += '<div id="ftxSurvey"><div class="meta-line">Reading the surveys.</div></div>';
+  if (p) {
+    html += '<div class="question">Place notes</div><textarea id="ftxNotes" rows="3" placeholder="Gate code, who to ask for, where to park">' + escapeHtml(p.notes || '') + '</textarea>';
+    html += '<button class="secondary" id="ftxNotesSave" style="width:100%;margin:6px 0;">Save notes</button>';
+    const extra = ftphAt(p);
+    html += '<button class="secondary" id="ftxPhoto" style="width:100%;margin:6px 0;">Add photo of this site</button>';
+    html += extra.length ? ftphGridHtml(extra, 'Photos, newest first') : '<div class="meta-line">No photos here yet.</div>';
+    const stops = ftpStopsAt(p);
+    html += '<div class="question">Field Twin stops here</div>';
+    html += stops.length ? stops.slice(0, 40).map(e => {
+      const note = ftpNoteTexts(e).join(' ').slice(0, 140);
+      return '<div class="mi-row" data-st="' + e.id + '"><b>' + new Date(e.timestamp).toLocaleDateString() + '</b> ' + escapeHtml((CATEGORIES[e.category] || {}).label || '') + (note ? '<br><span class="meta-line">' + escapeHtml(note) + '</span>' : '') + '</div>';
+    }).join('') : '<div class="meta-line">Nothing logged here yet.</div>';
+  }
+  html += '<div class="panel-actions"><button class="secondary" id="ftxBack">All sites</button><button class="secondary" id="ftxClose2">Close</button></div>';
+  const panel = ftxOpenPanel(html);
+  if (p) ftphFill(panel);
+  const link = base => base + '?site=' + encodeURIComponent(id);
+  document.getElementById('ftxRtss').addEventListener('click', () => { window.open(link(RTSS_SITE), '_blank'); });
+  document.getElementById('ftxRdss').addEventListener('click', () => { window.open(link(RDSS_SITE), '_blank'); });
+  document.getElementById('ftxBack').addEventListener('click', showSites);
+  document.getElementById('ftxClose2').addEventListener('click', closePanel);
+  document.getElementById('ftxPin').addEventListener('click', async () => {
+    const me = await ftxHere();
+    if (!me) { setStatus('no location yet, turn on Location and try again'); return; }
+    const q = ftxTie(id, s.name, me.lat, me.lon);
+    if (map) map.setView([q.lat, q.lon], Math.max(map.getZoom(), 16));
+    setStatus('site pinned');
+    showSite(id);
+  });
+  if (p) {
+    document.getElementById('ftxGo').addEventListener('click', () => navStart({ lat: p.lat, lon: p.lon, name: s.name, label: P.address || '', placeId: p.id }));
+    document.getElementById('ftxNotesSave').addEventListener('click', () => { p.notes = document.getElementById('ftxNotes').value.trim(); ftpPush(p); setStatus('site notes saved'); });
+    document.getElementById('ftxPhoto').addEventListener('click', () => ftphPick(async d => { await ftphAdd(d, { place_id: p.id, lat: p.lat, lon: p.lon }); showSite(id); }));
+    panel.querySelectorAll('[data-st]').forEach(el => el.addEventListener('click', () => { const e = entries.find(x => x.id === el.getAttribute('data-st')); if (e) showEntry(e); }));
+  }
+  ftxSurveyBox(id, p, s);
+}
+
+// What RTSS and RDSS hold for this site, read fresh each time.
+async function ftxSurveyBox(id, p, s) {
+  const [tech, design] = await Promise.all([ftxApi('/sites/' + id + '/survey').catch(() => null), ftxApi('/sites/' + id + '/design').catch(() => null)]);
+  const box = document.getElementById('ftxSurvey');
+  if (!box) return;
+  let h = '';
+  if (tech && tech._rtss === 3) {
+    const f = tech.f || {};
+    const L = tech.l || {};
+    const answered = ftxCount(f, (k, v) => ftxSet(v));
+    const dt = tech.dt && Array.isArray(tech.dt.items) ? tech.dt.items.length : 0;
+    h += '<div class="question">RTSS, technology survey</div>';
+    h += '<div class="meta-line">' + answered + ' answers, ' + (L.registers || []).length + ' terminals, ' + (L.kds || []).length + ' kitchen screens' + (dt ? ', drive-thru model with ' + dt + ' parts' : '') + '</div>';
+    if (tech.updatedAt) h += '<div class="meta-line">Last changed ' + ftxWhen(tech.updatedAt) + '</div>';
+    const visits = (L.visits || []).slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    if (visits.length) h += '<div class="question">Visit log</div>' + visits.slice(0, 20).map(v => '<div class="mi-row"><b>' + escapeHtml(v.date || 'No date') + '</b> ' + escapeHtml(v.role || '') + (v.notes ? '<br><span class="meta-line">' + escapeHtml(String(v.notes).slice(0, 200)) + '</span>' : '') + '</div>').join('');
+    // a pin set in RTSS fills in a place here that has none
+    const la = ftxNum(f['site.lat']), lo = ftxNum(f['site.lon']);
+    if (!p && la !== null && lo !== null) { ftxTie(id, s.name, la, lo); setStatus('pinned from the RTSS location'); setTimeout(() => showSite(id), 300); return; }
+  } else if (tech && tech._rtss === 2) {
+    h += '<div class="question">RTSS, technology survey</div><div class="meta-line">Saved on the old RTSS page. Open it in RTSS once to carry it over.</div>';
+  } else {
+    h += '<div class="question">RTSS, technology survey</div><div class="meta-line">Not started.</div>';
+  }
+  if (design && design._rdss === 3) {
+    const f = design.f || {};
+    const b = ftxCount(f, (k, v) => k.charAt(0) === 'b' && ftxSet(v));
+    const sv = ftxCount(f, (k, v) => k.charAt(0) === 's' && ftxSet(v));
+    h += '<div class="question">RDSS, design and setup survey</div><div class="meta-line">' + b + ' build answers, ' + sv + ' survey answers' + (design.updatedAt ? ', last changed ' + ftxWhen(design.updatedAt) : '') + '</div>';
+    if (f['sOpps.gaps']) h += '<div class="meta-line">Gaps: ' + escapeHtml(String(f['sOpps.gaps']).slice(0, 200)) + '</div>';
+    const la = ftxNum(f['sId.lat']), lo = ftxNum(f['sId.lon']);
+    if (!p && la !== null && lo !== null) { ftxTie(id, s.name, la, lo); setStatus('pinned from the RDSS location'); setTimeout(() => showSite(id), 300); return; }
+  } else if (design && design._rdss === 2) {
+    h += '<div class="question">RDSS, design and setup survey</div><div class="meta-line">Saved on the old RDSS page. Open it in RDSS once to carry it over.</div>';
+  } else {
+    h += '<div class="question">RDSS, design and setup survey</div><div class="meta-line">Not started.</div>';
+  }
+  if (!tech && !design) h = '<div class="meta-line">The survey server did not answer. Pin, notes and photos still work.</div>';
+  box.innerHTML = h;
+}
+
+(function () {
+  const tabs = document.getElementById('twinTabs');
+  const btn = document.createElement('button');
+  btn.id = 'tabSites';
+  btn.textContent = 'Sites';
+  tabs.appendChild(btn);
+  btn.addEventListener('click', showSites);
+  setTimeout(ftxPins, 3000);
+  // RTSS and RDSS link here with ?rie=site-id
+  let want = '';
+  try { want = new URLSearchParams(location.search).get('rie') || ''; } catch (e) {}
+  if (want) setTimeout(() => showSite(want), 1500);
+})();
+</script>
 </body>
 </html>
