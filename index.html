@@ -4997,7 +4997,7 @@ function showInfo() {
   html += '<div class="question">Traffic cameras</div>';
   html += '<div>Cameras sit in teal bubbles with a count, so hundreds of them do not draw at once and the map stays smooth. Zoom in or tap a bubble to spread them out, and road names show under single cameras when zoomed in close.</div>';
   html += '<div class="question">Field chat</div>';
-  html += '<div>Field Chat is a chat room for your team, run on the same backend as Cat Command Chat, so the same members, names and invites get you into both while the messages stay separate. Open Field Chat opens it. With Field Chat alerts on, a new message from someone else flashes the screen in rainbow colors for a moment, on the full map, the floating window and the companion screen alike, with no sound and no pop up.</div>';
+  html += '<div>Field Chat is the chat shared by Field Twin and Delivery Twin, where it is called Driver Chat. It runs on this app\'s own database and never reaches Cat Command Chat. Join with an invite code from a member, and members make codes with the Invite code button. With Field Chat alerts on, a new message from someone else flashes the screen in rainbow colors for a moment, on the full map, the floating window and the companion screen alike.</div>';
   html += '<div class="question">FT Companion screen</div>';
   html += '<div>FT Companion is a small dashboard screen board, a Waveshare ESP32 C6 with its own GPS and motion sensor. In the phone app, switch FT Companion on and the phone links to it by Bluetooth, or by USB cable through an OTG adapter. Once linked it draws the streets around you and the route with each turn, its GPS takes over following the route, it flashes for Field Chat, and its road roughness readings are saved with where they were measured. The line under the switch says what the link is doing.</div>';
   html += '<div class="question">Receipts</div>';
@@ -7404,44 +7404,33 @@ setTimeout(() => {
   if (ftcOn && ftcNative()) ftcSet(true);
 }, 3500);
 
-// Field Chat: a room inside the Cat Command Chat backend, shared members, names and invites, its own messages
-// (room field). With alerts on, a message from someone else flashes the screen in rainbow colors for a moment,
-// on the full map, the floating window and the companion screen alike. No sound and no text pops up.
-const FC_URL = 'https://vogxdikogfaxhwcgajfg.supabase.co';
-const FC_KEY = 'sb_publishable_b9N7M8W5NpGgsus1ZUQgaw_3QQBxFm1';
-let fc = null, fcUser = null, fcMember = false, fcChan = null, fcMsgs = [], fcNames = {}, fcAlerts = false, fcUnread = 0;
+// Field Chat: the chat shared by Field Twin and Delivery Twin (Driver Chat there), on the twin_chat tables in
+// this app's own database, signed in with the same account as the rest of Field Twin. Nothing reaches Cat Command Chat.
+// With alerts on, a message from someone else flashes the screen in rainbow colors for a moment.
+let fcMember = false, fcChan = null, fcMsgs = [], fcNames = {}, fcAlerts = false, fcUnread = 0;
 try { fcAlerts = localStorage.getItem('fcAlerts') === '1'; } catch (e) {}
-function fcClient() {
-  if (!fc && window.supabase) fc = window.supabase.createClient(FC_URL, FC_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'fieldchat-auth' } });
-  return fc;
-}
 async function fcStart() {
-  const c = fcClient();
-  if (!c) return false;
+  if (!(sb && cloudUser)) return false;
   try {
-    let s = (await c.auth.getSession()).data.session;
-    if (!s) { const r = await c.auth.signInAnonymously(); s = r.data && r.data.session; }
-    if (!s) return false;
-    fcUser = s.user;
-    const mem = await c.from('chat_members').select('joined_at').eq('user_id', fcUser.id).maybeSingle();
-    fcMember = !!(mem.data);
+    const r = await sb.rpc('twin_chat_member');
+    fcMember = r.data === true;
     if (fcMember) { await fcLoadNames(); fcListen(); }
     return true;
   } catch (e) { return false; }
 }
 async function fcLoadNames() {
-  try { const n = await fc.from('chat_names').select('id,name,color'); (n.data || []).forEach(x => { fcNames[x.id] = x; }); } catch (e) {}
+  try { const n = await sb.from('twin_chat_names').select('id,name,color'); (n.data || []).forEach(x => { fcNames[x.id] = x; }); } catch (e) {}
 }
-function fcName(id) { return id === (fcUser && fcUser.id) ? 'You' : ((fcNames[id] && fcNames[id].name) || 'Someone'); }
+function fcName(id) { return id === (cloudUser && cloudUser.id) ? 'You' : ((fcNames[id] && fcNames[id].name) || 'Someone'); }
 function fcListen() {
-  if (fcChan || !fc) return;
-  fcChan = fc.channel('field-room')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: 'room=eq.field' }, p => {
+  if (fcChan || !sb) return;
+  fcChan = sb.channel('twin-chat')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'twin_chat_messages' }, p => {
       const m = p.new;
       if (!m || fcMsgs.some(x => x.id === m.id)) return;
       fcMsgs.push(m);
       if (!fcNames[m.sender]) fcLoadNames();
-      const mine = fcUser && m.sender === fcUser.id;
+      const mine = cloudUser && m.sender === cloudUser.id;
       const open = document.getElementById('fcList');
       if (open) fcDraw(); else if (!mine) { fcUnread++; fcBadge(); }
       if (!mine && fcAlerts) fcFlash();
@@ -7470,17 +7459,18 @@ async function fcSetAlerts(on) {
 function fcDraw() {
   const list = document.getElementById('fcList');
   if (!list) return;
-  list.innerHTML = fcMsgs.slice(-80).map(m => '<div class="fc-msg' + (fcUser && m.sender === fcUser.id ? ' mine' : '') + '"><b>' + escapeHtml(fcName(m.sender)) + '</b> <span class="meta-line">' + new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '</span><br>' + escapeHtml(m.body || (m.file_name ? 'shared a file' : '')) + '</div>').join('') || '<div class="meta-line">No messages yet.</div>';
+  list.innerHTML = fcMsgs.filter(m => !m.deleted_at).slice(-80).map(m => '<div class="fc-msg' + (cloudUser && m.sender === cloudUser.id ? ' mine' : '') + '"><b>' + escapeHtml(fcName(m.sender)) + '</b> <span class="meta-line">' + new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '</span><div>' + escapeHtml(m.body) + '</div></div>').join('') || '<div class="meta-line">No messages yet.</div>';
   list.scrollTop = list.scrollHeight;
 }
 async function fcOpen() {
   const panel = document.getElementById('panel');
   panel.innerHTML = '<h2>Field Chat</h2><div class="meta-line" id="fcMsg">Connecting.</div>';
   panel.classList.add('open');
+  if (!(sb && cloudUser)) { document.getElementById('fcMsg').textContent = 'Sign in to Field Twin first, under Account and profile.'; return; }
   if (!(await fcStart())) { document.getElementById('fcMsg').textContent = 'Could not reach the chat. Check the signal and try again.'; return; }
   fcUnread = 0; fcBadge();
   if (!fcMember) {
-    panel.innerHTML = '<h2>Field Chat</h2><div class="meta-line">Field Chat shares members with Cat Command Chat. Get an invite code from someone in it, or make one yourself in Cat Command Chat by tapping your own face, then Invite someone.</div>' +
+    panel.innerHTML = '<h2>Field Chat</h2><div class="meta-line">Field Chat is shared by Field Twin and Delivery Twin and nothing else. Ask a member for an invite code.</div>' +
       '<input type="text" id="fcCode" autocomplete="off" placeholder="Invite code"><input type="text" id="fcNameIn" autocomplete="off" placeholder="Your name in the chat">' +
       '<div class="meta-line" id="fcErr"></div><div class="panel-actions"><button id="fcJoin">Join</button><button class="secondary" id="fcClose">Close</button></div>';
     document.getElementById('fcClose').addEventListener('click', closePanel);
@@ -7490,9 +7480,9 @@ async function fcOpen() {
       const err = document.getElementById('fcErr');
       if (!code || !name) { err.textContent = 'Type the invite code and your name.'; return; }
       err.textContent = 'Joining.';
-      const r = await fc.rpc('join_chat', { code: code });
+      const r = await sb.rpc('twin_chat_join', { code: code });
       if (r.error || r.data !== true) { err.textContent = 'That code did not work. Check it with the person who invited you.'; return; }
-      await fc.from('chat_names').upsert({ id: fcUser.id, name: name, color: '#0b4ea2' });
+      await sb.from('twin_chat_names').upsert({ id: cloudUser.id, name: name, color: '#0b4ea2' });
       fcMember = true;
       await fcLoadNames();
       fcListen();
@@ -7502,20 +7492,26 @@ async function fcOpen() {
   }
   panel.innerHTML = '<h2>Field Chat</h2><div id="fcList" style="max-height:46vh;overflow-y:auto;margin:6px 0;"></div>' +
     '<textarea id="fcText" rows="2" placeholder="Message the field crew"></textarea>' +
-    '<div class="panel-actions"><button id="fcSend">Send</button><button class="secondary" id="fcClose">Close</button></div>';
+    '<div class="panel-actions"><button id="fcSend">Send</button><button class="secondary" id="fcInvite">Invite code</button><button class="secondary" id="fcClose">Close</button></div>' +
+    '<div class="meta-line" id="fcInviteOut"></div>';
   document.getElementById('fcClose').addEventListener('click', closePanel);
+  document.getElementById('fcInvite').addEventListener('click', async () => {
+    const out = document.getElementById('fcInviteOut');
+    const r = await sb.rpc('twin_chat_invite', { p_max_uses: 1, p_days: 7 });
+    out.textContent = r.error ? 'Could not make a code, ' + r.error.message : 'Invite code, good for one person for seven days: ' + r.data;
+  });
   const send = async () => {
     const t = document.getElementById('fcText');
     const body = t.value.trim();
     if (!body) return;
     t.value = '';
-    const r = await fc.from('chat_messages').insert({ body: body, room: 'field' }).select().single();
+    const r = await sb.from('twin_chat_messages').insert({ body: body }).select().single();
     if (r.error) { t.value = body; setStatus('message did not send, ' + r.error.message); return; }
     if (r.data && !fcMsgs.some(x => x.id === r.data.id)) { fcMsgs.push(r.data); fcDraw(); }
   };
   document.getElementById('fcSend').addEventListener('click', send);
   try {
-    const r = await fc.from('chat_messages').select('*').eq('room', 'field').is('deleted_at', null).order('id', { ascending: false }).limit(80);
+    const r = await sb.from('twin_chat_messages').select('*').is('deleted_at', null).order('id', { ascending: false }).limit(80);
     if (!r.error) fcMsgs = (r.data || []).reverse();
   } catch (e) {}
   fcDraw();
