@@ -5000,7 +5000,7 @@ function showInfo() {
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
   html += '<div class="question">RTSS and RDSS</div>';
-  html += '<div>RTSS, the technology site survey, and RDSS, the design and setup survey, open inside Field Twin from Other apps in the menu, from a site on the Sites tab, or from the Survey site row on a log form or an entry. They open over the map with Back to Field Twin at the top, so a form you were filling stays as it was. When no survey site is near the stop, Start an RTSS and RDSS site here makes one from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop, and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and each one goes into the RTSS visit log only when you tap Add to visit log. The survey server is open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
+  html += '<div>RTSS, the technology site survey, and RDSS, the design and setup survey, open inside Field Twin from Other apps in the menu, from a site on the Sites tab, or from the Survey site row on a log form or an entry. They open over the map with Back to Field Twin at the top, so a form you were filling stays as it was. When no survey site is near the stop, Start an RTSS and RDSS site here makes one from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop, and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and each one goes into the RTSS visit log only when you tap Add to visit log. The survey server is open to anyone with a link, so your stops, dates and notes stay off it unless you add them. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with this same email and password. Every save to the survey server is marked with the account that made it.</div>';
   html += '<div class="question">Wireless survey</div>';
   html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. When a WiGLE account is connected on the Field Twin server, each scan also goes up to that account as a small WiGLE file holding the radio list, the time and where the phone stood, and nothing about the locker. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
@@ -8035,6 +8035,8 @@ try { ftxSites = JSON.parse(localStorage.getItem('ftxSites') || '[]') || []; } c
 async function ftxApi(path, method, body) {
   const opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) opts.body = JSON.stringify(body);
+  const tok = await ftxToken();
+  if (tok) opts.headers.Authorization = 'Bearer ' + tok.token;
   const res = await fetch(RIE_API + path, opts);
   if (!res.ok) throw new Error('API ' + res.status);
   return res.json();
@@ -8344,6 +8346,25 @@ function ftxContext(siteId) {
     }))
   };
 }
+// The Field Twin account, handed to RTSS and RDSS so they never ask for a separate sign in.
+// Only the short lived access key goes over, never the refresh key, and only to the RTSS or RDSS address.
+async function ftxToken() {
+  if (!sb) return null;
+  try {
+    const r = await sb.auth.getSession();
+    const ses = r.data && r.data.session;
+    return ses ? { token: ses.access_token, email: ses.user.email || '', expires: ses.expires_at || 0 } : null;
+  } catch (e) { return null; }
+}
+window.addEventListener('message', async ev => {
+  const f = document.querySelector('#surveyView iframe');
+  if (!f || ev.source !== f.contentWindow || !ev.data || !ev.data.rieAuthAsk) return;
+  let origin = '';
+  try { origin = new URL(f.src).origin; } catch (e) { return; }
+  if (![RTSS_SITE, RDSS_SITE].some(u => new URL(u).origin === origin)) return;
+  const tok = await ftxToken();
+  try { f.contentWindow.postMessage({ rieAuth: tok || { token: '', email: '' } }, origin); } catch (e) {}
+});
 window.addEventListener('message', ev => {
   const f = document.querySelector('#surveyView iframe');
   if (!f || ev.source !== f.contentWindow || !ev.data || !ev.data.rieReady) return;
