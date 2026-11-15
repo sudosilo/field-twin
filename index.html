@@ -835,6 +835,18 @@
   :root[data-theme=night] .leaflet-control-attribution { background: rgba(20, 28, 39, 0.75) !important; color: var(--text-dim) !important; }
   :root[data-theme=night] .leaflet-control-attribution a { color: var(--accent) !important; }
   #menuOverlay { background: var(--shade); }
+
+  /* RTSS and RDSS open in place over the map, so a form underneath is kept as it was */
+  #surveyView { position: absolute; top: calc(var(--head-h) + var(--tabs-h)); left: 0; right: 0; bottom: 0; z-index: 1300; display: none; flex-direction: column; background: var(--bg); }
+  #surveyView.open { display: flex; }
+  #surveyView .sv-bar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel); border-bottom: 2px solid var(--edge); flex: 0 0 auto; }
+  #surveyView .sv-bar button { width: auto; min-height: 40px; padding: 6px 12px; font-size: 14px; }
+  #surveyView .sv-bar span { flex: 1; min-width: 0; font-size: 13px; font-weight: 800; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #surveyView .sv-frame { flex: 1; min-height: 0; }
+  #surveyView iframe { width: 100%; height: 100%; border: 0; display: block; background: #ffffff; }
+  body.pip #surveyView { display: none !important; }
+  .ftx-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 4px 0; }
+  .ftx-row button { min-height: 44px; }
 </style>
 </head>
 <body>
@@ -854,6 +866,7 @@
   <button id="tabRoads">Roads</button>
 </div>
 <div id="violetView"></div>
+<div id="surveyView"><div class="sv-bar"><button class="secondary" id="svBack">Back to Field Twin</button><span id="svTitle"></span></div><div class="sv-frame"></div></div>
 
 <div id="actionBar">
   <div class="radar" id="radar">
@@ -906,7 +919,7 @@
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">Cameras</button>
   <h3>Other apps</h3>
-  <div class="ext-row"><button class="ext" id="openCqBtn">Field Twin Glaucous</button><button class="ext" id="openVioletBtn">Field Twin Violet</button></div>
+  <div class="ext-row"><button class="ext" id="openCqBtn">Field Twin Glaucous</button><button class="ext" id="openVioletBtn">Field Twin Violet</button><button class="ext" id="openRtssBtn">RTSS, technology site survey</button><button class="ext" id="openRdssBtn">RDSS, design and setup survey</button><button class="ext" id="openSitesBtn">Survey sites</button></div>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">Account and profile</button>
   <button class="secondary" id="exportBtn">Export</button>
@@ -2701,6 +2714,7 @@ function showForm(entry) {
   const label = catWords ? catWords.charAt(0).toUpperCase() + catWords.slice(1) : 'Log entry';
   let html = '<h2>' + label + '</h2>';
   html += '<div class="meta-line">' + entry.addressLabel + '</div>';
+  html += '<div id="ftxHere"></div>';
   html += '<div class="question">Stop type, changes the form below</div>';
   html += '<input type="text" id="typeSearch" placeholder="Search types" autocomplete="off" style="margin-bottom:6px;">';
   html += '<div class="icon-picker" id="iconPicker">';
@@ -2743,6 +2757,7 @@ function showForm(entry) {
   html += '</div>';
   panel.innerHTML = html;
   panel.scrollTop = 0;
+  if (typeof ftxHereRow === 'function') ftxHereRow(document.getElementById('ftxHere'), entry);
   panel.classList.add('open');
 
   const typeSearch = document.getElementById('typeSearch');
@@ -4984,6 +4999,8 @@ function showInfo() {
   html += '<div>In the phone app, leaving Field Twin while a route is running shrinks it into a small floating window over your other apps. Only the map and the next turn show, centered on you, and the page keeps running so the route and your position stay live. Open Field Twin again and it goes back to full size.</div>';
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
+  html += '<div class="question">RTSS and RDSS</div>';
+  html += '<div>RTSS, the technology site survey, and RDSS, the design and setup survey, open inside Field Twin from Other apps in the menu, from a site on the Sites tab, or from the Survey site row on a log form or an entry. They open over the map with Back to Field Twin at the top, so a form you were filling stays as it was. When no survey site is near the stop, Start an RTSS and RDSS site here makes one from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop, and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and each one goes into the RTSS visit log only when you tap Add to visit log. The survey server is open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
   html += '<div class="question">Wireless survey</div>';
   html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. When a WiGLE account is connected on the Field Twin server, each scan also goes up to that account as a small WiGLE file holding the radio list, the time and where the phone stood, and nothing about the locker. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
@@ -5270,6 +5287,7 @@ function showEntry(entry, fromHistory) {
   }
   html += '<div class="meta-line">' + new Date(entry.timestamp).toLocaleString() + '</div>';
   html += '<div class="meta-line">' + entry.addressLabel + '</div>';
+  html += '<div id="ftxHere"></div>';
   if (entry.photo) {
     html += '<img src="' + entry.photo + '" style="max-width:100%;margin-top:8px;">';
   } else if (entry.photoPath) {
@@ -5325,6 +5343,7 @@ function showEntry(entry, fromHistory) {
   const lpb = document.getElementById('lockerPageBtn');
   if (lpb) lpb.addEventListener('click', () => showLocker(lockerHere || ftpMakeLocker(entry)));
   panel.scrollTop = 0;
+  if (typeof ftxHereRow === 'function') ftxHereRow(document.getElementById('ftxHere'), entry);
   panel.classList.add('open');
   if (!entry.photo && entry.photoPath) {
     cloudPhotoUrl(entry.photoPath).then(u => {
@@ -8164,8 +8183,8 @@ async function showSite(id) {
   const panel = ftxOpenPanel(html);
   if (p) ftphFill(panel);
   const link = base => base + '?site=' + encodeURIComponent(id);
-  document.getElementById('ftxRtss').addEventListener('click', () => { window.open(link(RTSS_SITE), '_blank'); });
-  document.getElementById('ftxRdss').addEventListener('click', () => { window.open(link(RDSS_SITE), '_blank'); });
+  document.getElementById('ftxRtss').addEventListener('click', () => ftxOpenApp('rtss', id));
+  document.getElementById('ftxRdss').addEventListener('click', () => ftxOpenApp('rdss', id));
   document.getElementById('ftxBack').addEventListener('click', showSites);
   document.getElementById('ftxClose2').addEventListener('click', closePanel);
   document.getElementById('ftxPin').addEventListener('click', async () => {
@@ -8238,6 +8257,166 @@ async function ftxSurveyBox(id, p, s) {
   let want = '';
   try { want = new URLSearchParams(location.search).get('rie') || ''; } catch (e) {}
   if (want) setTimeout(() => showSite(want), 1500);
+})();
+
+// ---- RTSS and RDSS inside Field Twin ----
+// A survey opens in a window over the map, so whatever form is open underneath stays as it was, and Back returns
+// to it. The survey page asks Field Twin what it knows about its site and fills only the questions still blank:
+// name, address, city, state and the location. Field Twin stops at the site are offered there too, one tap each to
+// add to the RTSS visit log, so nothing about where you have been is sent unless you choose it.
+const FTX_APPS = { rtss: { url: RTSS_SITE, name: 'RTSS' }, rdss: { url: RDSS_SITE, name: 'RDSS' } };
+let ftxOpenSite = '';
+function ftxOpenApp(app, siteId) {
+  const a = FTX_APPS[app];
+  const view = document.getElementById('surveyView');
+  const box = view.querySelector('.sv-frame');
+  const s = ftxSites.find(x => x.id === siteId);
+  ftxOpenSite = siteId || '';
+  box.innerHTML = '';
+  const f = document.createElement('iframe');
+  f.src = a.url + '?ft=1' + (siteId ? '&site=' + encodeURIComponent(siteId) : '');
+  f.title = a.name;
+  f.allow = 'camera; geolocation; clipboard-write';
+  box.appendChild(f);
+  document.getElementById('svTitle').textContent = a.name + (s ? ', ' + s.name : '');
+  view.classList.add('open');
+  const ov = document.getElementById('menuOverlay');
+  if (ov && document.getElementById('sideMenu').classList.contains('open')) ov.click();
+}
+function ftxCloseApp() {
+  const view = document.getElementById('surveyView');
+  view.classList.remove('open');
+  view.querySelector('.sv-frame').innerHTML = '';
+  ftxOpenSite = '';
+  // what was filled in there may have changed the site, so a site page underneath is read again
+  ftxLoad().then(() => { ftxPins(); });
+}
+document.getElementById('svBack').addEventListener('click', ftxCloseApp);
+
+// The survey site at or near a spot: a place tied to a site within 80 meters.
+function ftxSiteNear(lat, lon) {
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  let best = null, bd = 80;
+  ftPlaces.forEach(p => {
+    if (!p.site || !p.site.rie || !isFinite(p.lat)) return;
+    const d = ftpDist(lat, lon, p.lat, p.lon);
+    if (d <= bd) { bd = d; best = p; }
+  });
+  return best;
+}
+
+// Street, city and state out of a Field Twin address line, as well as it can be read.
+const FTX_STATES = { nevada: 'NV', arizona: 'AZ', california: 'CA', utah: 'UT', texas: 'TX', 'new mexico': 'NM', colorado: 'CO', oregon: 'OR', washington: 'WA' };
+function ftxSplitAddress(label) {
+  const parts = String(label || '').split(',').map(x => x.trim()).filter(Boolean).filter(x => !/^(unresolved address|location not captured)$/i.test(x));
+  let state = '';
+  const out = [];
+  parts.forEach(x => {
+    const st = FTX_STATES[x.toLowerCase()] || (/^[A-Z]{2}( \d{5})?$/.test(x) ? x.slice(0, 2) : '');
+    if (st) state = st; else if (!/^\d{5}$/.test(x) && !/united states/i.test(x)) out.push(x);
+  });
+  return { street: out[0] || '', city: out.length > 1 ? out[out.length - 1] : '', state };
+}
+
+// What Field Twin knows about a site, for the survey page.
+function ftxContext(siteId) {
+  const s = ftxSites.find(x => x.id === siteId);
+  const p = ftxPlace(siteId);
+  if (!p) return { site: siteId };
+  const stops = ftpStopsAt(p);
+  const addrEntry = stops.find(e => e.addressLabel && !/unresolved|not captured/.test(e.addressLabel));
+  const a = ftxSplitAddress(p.address || (addrEntry ? addrEntry.addressLabel : ''));
+  const P = (s && s.profile) || {};
+  if (P.address) a.street = P.address;
+  if (P.city) a.city = P.city;
+  if (P.state) a.state = P.state;
+  const day = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  return {
+    site: siteId,
+    business: p.name || (s ? s.name : ''),
+    address: a.street, city: a.city, state: a.state,
+    lat: Math.round(p.lat * 1e6) / 1e6, lon: Math.round(p.lon * 1e6) / 1e6,
+    stops: stops.slice(0, 40).map(e => ({
+      id: e.id, date: day(e.timestamp),
+      role: e.category === 'amazon_locker' ? 'Service call' : 'Other',
+      kind: (CATEGORIES[e.category] || {}).label || '',
+      notes: ftpNoteTexts(e).join(' ').slice(0, 400)
+    }))
+  };
+}
+window.addEventListener('message', ev => {
+  const f = document.querySelector('#surveyView iframe');
+  if (!f || ev.source !== f.contentWindow || !ev.data || !ev.data.rieReady) return;
+  const id = String(ev.data.rieReady.site || '');
+  if (!id) return;
+  try { f.contentWindow.postMessage({ rieContext: ftxContext(id) }, '*'); } catch (e) {}
+});
+
+// The survey row on a log form or an entry: open the site here, or make this spot a survey site.
+function ftxHereRow(box, entry) {
+  if (!box || !entry) return;
+  const lat = entry.lat, lon = entry.lon;
+  const draw = () => {
+    const p = ftxSiteNear(lat, lon);
+    if (p) {
+      const s = ftxSites.find(x => x.id === p.site.rie);
+      box.innerHTML = '<div class="question">Survey site, ' + escapeHtml(s ? s.name : (p.name || 'here')) + '</div>' +
+        '<div class="ftx-row"><button class="secondary" data-fx="rtss">Open RTSS</button><button class="secondary" data-fx="rdss">Open RDSS</button></div>';
+      box.querySelectorAll('[data-fx]').forEach(b => b.addEventListener('click', () => ftxOpenApp(b.getAttribute('data-fx'), p.site.rie)));
+    } else if (isFinite(lat) && isFinite(lon)) {
+      box.innerHTML = '<button class="secondary" id="ftxMake" style="width:100%;margin:8px 0 4px 0;">Start an RTSS and RDSS site here</button>';
+      document.getElementById('ftxMake').addEventListener('click', () => ftxMakeAt(entry));
+    } else box.innerHTML = '';
+  };
+  draw();
+}
+
+// Start a survey site at a stop: named from the stop, address sent to the shared site profile, pinned here.
+// Street, city and state for a spot from the open map address lookup, with the business name when the map has one.
+async function ftxLookup(lat, lon) {
+  try {
+    const g = await reverseGeocode(lat, lon);
+    const a = g.address || {};
+    const iso = String(a['ISO3166-2-lvl4'] || '');
+    return {
+      street: [a.house_number, a.road].filter(Boolean).join(' '),
+      city: a.city || a.town || a.village || a.hamlet || '',
+      state: iso.indexOf('US-') === 0 ? iso.slice(3) : (FTX_STATES[String(a.state || '').toLowerCase()] || ''),
+      business: (g.namedetails && g.namedetails.name) || g.name || ''
+    };
+  } catch (e) { return null; }
+}
+async function ftxMakeAt(entry) {
+  const looked = await ftxLookup(entry.lat, entry.lon);
+  const a = looked && (looked.street || looked.city) ? looked : ftxSplitAddress(entry.addressLabel);
+  const guess = (looked && looked.business) || a.street || '';
+  const name = (prompt('Name for this site, like the store name', guess) || '').trim();
+  if (!name) return;
+  const id = 'site-' + Date.now().toString(36);
+  try {
+    await ftxApi('/sites', 'POST', { id, name, address: a.street });
+    const prof = { business_name: name };
+    if (a.street) prof.address = a.street;
+    if (a.city) prof.city = a.city;
+    if (a.state) prof.state = a.state;
+    await ftxApi('/sites/' + id + '/profile', 'PATCH', prof).catch(() => null);
+    ftxSites.unshift({ id, name, profile: prof, updated_at: Date.now() / 1000 });
+    try { localStorage.setItem('ftxSites', JSON.stringify(ftxSites)); } catch (e) {}
+    const p = ftxTie(id, name, entry.lat, entry.lon);
+    const line = [a.street, a.city, a.state].filter(Boolean).join(', ');
+    if (line) { p.address = line; ftpPush(p); }
+    setStatus('survey site started');
+    ftxHereRow(document.getElementById('ftxHere'), entry);
+  } catch (e) { setStatus('the survey server did not answer'); }
+}
+
+// Menu links: open each survey on the site you are standing at, or on its own list when there is none.
+(function () {
+  const near = () => { const me = mySpot(); const p = me ? ftxSiteNear(me.lat, me.lon) : null; return p ? p.site.rie : ''; };
+  document.getElementById('openRtssBtn').addEventListener('click', () => ftxOpenApp('rtss', near()));
+  document.getElementById('openRdssBtn').addEventListener('click', () => ftxOpenApp('rdss', near()));
+  document.getElementById('openSitesBtn').addEventListener('click', () => { const ov = document.getElementById('menuOverlay'); if (ov) ov.click(); showSites(); });
+  if (!ftxSites.length) ftxLoad();
 })();
 </script>
 </body>
