@@ -883,10 +883,12 @@
   <button id="goDockBtn">Go</button>
   <button id="updateBtn">Log</button>
   <button id="receiptDockBtn">Receipt</button>
+  <button id="ticketDockBtn">Tickets</button>
 </div>
 
 <div id="map"></div>
 <input type="file" id="receiptFile" accept="image/*" capture="environment">
+<input type="file" id="ticketFile" accept="image/*" capture="environment" style="display:none;">
 
 <div id="menuOverlay"></div>
 <div id="sideMenu">
@@ -894,6 +896,7 @@
   <button class="secondary" id="nightBtn">Night look, automatic</button>
   <h3>Capture</h3>
   <button class="secondary" id="receiptBtn">Receipt</button>
+  <button class="secondary" id="ticketsBtn">Tickets</button>
   <button class="secondary tg" id="milesToggleBtn" aria-pressed="false"><span>Odometer</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg" id="hereToggleBtn" aria-pressed="false"><span>Location</span><i class="tg-sw" aria-hidden="true"></i></button>
   <button class="secondary tg native-only" id="autoTrackBtn" aria-pressed="false" hidden><span>Auto track</span><i class="tg-sw" aria-hidden="true"></i></button>
@@ -3165,7 +3168,9 @@ async function serviceCheck() {
   try {
     const r = await fetch(base + '/health');
     const j = await r.json();
-    row('health', 'status ' + r.status + ', vision key ' + (j.keyConfigured ? 'set' : 'MISSING') + ', redis ' + j.redis);
+    row('health', 'status ' + r.status + ', vision key ' + (j.visionKey === undefined ? 'unknown, old build' : (j.visionKey ? 'set' : 'MISSING')) + ', camera key ' + (j.keyConfigured ? 'set' : 'missing') + ', redis ' + j.redis);
+    if (j.visionLast && j.visionLast.error) row('last reader call', j.visionLast.model + ', ' + j.visionLast.error);
+    else if (j.visionLast && j.visionLast.model) row('last reader call', j.visionLast.model + ', ok');
   } catch (e) {
     row('health', 'unreachable, ' + e.message);
   }
@@ -5004,6 +5009,8 @@ function showInfo() {
   html += '<div>Every kind of place has its own drawn sign: a colored shape with a white picture, the same on every phone. The shape tells the group, such as octagons for food, squares for services and diamonds for work sites, and the picture tells the kind.</div>';
   html += '<div class="question">Floating window</div>';
   html += '<div>In the phone app, leaving Field Twin while a route is running shrinks it into a small floating window over your other apps. Only the map and the next turn show, centered on you, and the page keeps running so the route and your position stay live. Open Field Twin again and it goes back to full size.</div>';
+  html += '<div class="question">Tickets</div>';
+  html += '<div>Tickets brings in work tickets from a photo of the work phone screen. Scan ticket screen reads the ticket number, site, priority and SLA due time, then shows a check screen to fix anything misread and pick the locker. Names, phone numbers and customer details are left out by the reader and the photo is not kept. Each open ticket shows on the map as a round countdown ring, green with time to spare, then yellow, orange, and red once late. Slack is the time left to the SLA minus the drive there. Best next plays the day forward and picks the first stop that wins the most SLAs. When two tickets are about the same drive away, the fork card scores each way so the better side is plain. Closing a ticket inside SLA earns one hundred points plus a bonus for time to spare.</div>';
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
   html += '<div class="question">Sites, RTSS and RDSS</div>';
@@ -8494,6 +8501,381 @@ async function ftxMakeAt(entry) {
   document.getElementById('openRtssBtn').addEventListener('click', () => ftxOpenApp('rtss', near()));
   document.getElementById('openRdssBtn').addEventListener('click', () => ftxOpenApp('rdss', near()));
   if (!ftxSites.length) ftxLoad();
+})();
+</script>
+<script>
+// Tickets: work tickets brought in from a photo of the work phone screen. Each ticket gets a countdown to its SLA
+// deadline. Slack is the time left minus the drive there. The lowest slack you can still make is the best next stop,
+// and when two directions are close in drive time the fork card scores each way so the better side wins.
+let ftTickets = [];
+try { ftTickets = JSON.parse(localStorage.getItem('ftTickets') || '[]') || []; } catch (e) { ftTickets = []; }
+let ftkLayer = null, ftkDrive = {}, ftkDriveAt = 0, ftkPending = [];
+const FTK_ONSITE_KEY = 'ftkOnsiteMin';
+function ftkOnsite() { try { return Number(localStorage.getItem(FTK_ONSITE_KEY)) || 45; } catch (e) { return 45; } }
+function ftkSaveLocal() { try { localStorage.setItem('ftTickets', JSON.stringify(ftTickets)); } catch (e) {} }
+function ftkOpen() { return ftTickets.filter(t => t.status === 'open'); }
+function ftkRow(t) {
+  return { id: t.id, ticket: t.ticket || '', site: t.site || '', address: t.address || '', place_id: t.place_id || null,
+    lat: t.lat, lon: t.lon, priority: t.priority || '', summary: t.summary || '', opened_at: t.opened_at || null,
+    due_at: t.due_at, status: t.status, closed_at: t.closed_at || null, made_sla: t.made_sla === undefined ? null : t.made_sla,
+    points: t.points || 0, updated_at: t.updated_at };
+}
+async function ftkPush(t) {
+  t.updated_at = new Date().toISOString();
+  ftkSaveLocal();
+  if (typeof cloudReady !== 'function' || !cloudReady()) { t.dirty = true; ftkSaveLocal(); return; }
+  try { const r = await sb.from('field_twin_tickets').upsert(ftkRow(t), { onConflict: 'id' }); t.dirty = !!r.error; } catch (e) { t.dirty = true; }
+  ftkSaveLocal();
+}
+async function ftkPull() {
+  if (typeof cloudReady !== 'function' || !cloudReady()) return;
+  try {
+    const since = new Date(Date.now() - 14 * 86400000).toISOString();
+    const r = await sb.from('field_twin_tickets').select('*').gte('updated_at', since).range(0, 1999);
+    if (r.error) return;
+    const byId = {};
+    ftTickets.forEach(t => { byId[t.id] = t; });
+    (r.data || []).forEach(row => {
+      const mine = byId[row.id];
+      if (!mine || (!mine.dirty && String(row.updated_at) > String(mine.updated_at || ''))) byId[row.id] = Object.assign({}, row);
+    });
+    ftTickets = Object.keys(byId).map(k => byId[k]);
+    ftkSaveLocal();
+    for (const t of ftTickets.filter(x => x.dirty)) await ftkPush(t);
+    ftkPins();
+  } catch (e) {}
+}
+
+// Time words for the countdowns.
+function ftkMins(ms) { return Math.round(ms / 60000); }
+function ftkClock(ms) {
+  const neg = ms < 0; let m = Math.abs(ftkMins(ms));
+  const h = Math.floor(m / 60); m = m % 60;
+  return (neg ? 'over ' : '') + (h ? h + 'h ' : '') + m + 'm';
+}
+function ftkColor(slackMs) {
+  if (slackMs < 0) return '#c62828';
+  if (slackMs < 30 * 60000) return '#e65100';
+  if (slackMs < 90 * 60000) return '#f9a825';
+  return '#2e7d32';
+}
+
+// Turns what the reader saw into a deadline. A bare time is placed on today, or tomorrow if that time has passed by
+// more than twelve hours. A stated SLA length is added to the opened time.
+function ftkParseWhen(v, ref) {
+  if (!v) return null;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}):(\d{2})/);
+  if (m) { const d = new Date(m[1] + 'T' + m[2].padStart(2, '0') + ':' + m[3] + ':00'); return isNaN(d) ? null : d; }
+  m = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+  if (m) {
+    let h = Number(m[1]);
+    if (m[3]) { const pm = /pm/i.test(m[3]); if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+    const d = new Date(ref || Date.now()); d.setHours(h, Number(m[2]), 0, 0);
+    if (d.getTime() < Date.now() - 12 * 3600000) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function ftkDueFrom(r) {
+  const due = ftkParseWhen(r.due);
+  if (due) return due;
+  const opened = ftkParseWhen(r.opened);
+  if (opened && r.sla_hours) return new Date(opened.getTime() + Number(r.sla_hours) * 3600000);
+  return null;
+}
+function ftkLocalInput(d) {
+  if (!d) return '';
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+// Finds the saved locker that best matches the site name or address the reader saw.
+function ftkMatchPlace(site, address) {
+  const words = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2 && FTP_SKIP.indexOf(w) === -1);
+  const want = words(site).concat(words(address));
+  if (!want.length) return null;
+  let best = null, bestScore = 0;
+  ftPlaces.filter(p => p.kind === 'locker').forEach(p => {
+    const have = words(p.name).concat(words(p.address));
+    let score = 0;
+    want.forEach(w => { if (have.indexOf(w) !== -1) score += /^\d+$/.test(w) ? 2 : 1; });
+    if (p.name && String(site || '').toLowerCase().indexOf(String(p.name).toLowerCase()) !== -1) score += 3;
+    if (score > bestScore) { bestScore = score; best = p; }
+  });
+  return bestScore >= 2 ? best : null;
+}
+
+// Drive times. One road table call covers you and every open ticket. Straight line distance at forty miles an hour,
+// stretched for road bends, is the backup when the road service does not answer.
+function ftkCrowSec(a, b) { return dmCrow(a.lat, a.lon, b.lat, b.lon) * 1.35 / 40 * 3600; }
+async function ftkTable(points) {
+  const key = points.map(p => p.lat.toFixed(4) + ',' + p.lon.toFixed(4)).join(';');
+  if (ftkDrive.key === key && Date.now() - ftkDriveAt < 5 * 60000) return ftkDrive.m;
+  let m = null;
+  try {
+    const coords = points.map(p => p.lon + ',' + p.lat).join(';');
+    const res = await fetch('https://router.project-osrm.org/table/v1/driving/' + coords + '?annotations=duration');
+    if (res.ok) { const j = await res.json(); if (j.code === 'Ok' && j.durations) m = j.durations; }
+  } catch (e) {}
+  if (!m) m = points.map(a => points.map(b => ftkCrowSec(a, b)));
+  m = m.map((row, i) => row.map((v, j) => (v === null || v === undefined) ? ftkCrowSec(points[i], points[j]) : v));
+  ftkDrive = { key: key, m: m }; ftkDriveAt = Date.now();
+  return m;
+}
+
+// Plays the day forward from a chosen first ticket: after each job it takes the lowest slack ticket still makeable,
+// otherwise the nearest. Counts SLA wins and minutes of margin.
+function ftkPlay(firstIdx, list, m, now) {
+  const onsite = ftkOnsite() * 60000;
+  let at = 0, t = now, wins = 0, margin = 0;
+  const left = list.map((x, i) => i);
+  const order = [];
+  let next = firstIdx;
+  while (left.length) {
+    left.splice(left.indexOf(next), 1);
+    t += m[at][next + 1] * 1000;
+    const slack = list[next].dueMs - t;
+    if (slack >= 0) { wins++; margin += Math.min(slack, 3 * 3600000); }
+    order.push(next);
+    t += onsite; at = next + 1;
+    if (!left.length) break;
+    let pick = null, pickSlack = Infinity, near = null, nearSec = Infinity;
+    left.forEach(i => {
+      const arrive = t + m[at][i + 1] * 1000;
+      const s = list[i].dueMs - arrive;
+      if (s >= 0 && s < pickSlack) { pickSlack = s; pick = i; }
+      if (m[at][i + 1] < nearSec) { nearSec = m[at][i + 1]; near = i; }
+    });
+    next = pick !== null ? pick : near;
+  }
+  return { wins: wins, margin: margin, order: order, score: wins * 100 + Math.round(margin / 120000) };
+}
+async function ftkRank() {
+  const me = mySpot();
+  const now = Date.now();
+  const list = ftkOpen().filter(t => isFinite(t.lat) && isFinite(t.lon) && t.due_at).map(t => Object.assign({}, t, { dueMs: new Date(t.due_at).getTime() }));
+  if (!list.length) return { list: [], me: me };
+  const origin = me || { lat: list[0].lat, lon: list[0].lon };
+  const m = await ftkTable([origin].concat(list));
+  list.forEach((t, i) => { t.driveSec = me ? m[0][i + 1] : 0; t.slackMs = t.dueMs - now - t.driveSec * 1000; });
+  const plays = list.map((t, i) => ({ i: i, play: ftkPlay(i, list, m, now) })).sort((a, b) => b.play.score - a.play.score);
+  const best = plays[0];
+  // The fork: the two closest tickets when their drive times are within six minutes of each other.
+  const byDrive = list.map((t, i) => i).sort((a, b) => list[a].driveSec - list[b].driveSec);
+  let fork = null;
+  if (me && byDrive.length >= 2 && Math.abs(list[byDrive[0]].driveSec - list[byDrive[1]].driveSec) <= 360) {
+    const a = plays.find(p => p.i === byDrive[0]), b = plays.find(p => p.i === byDrive[1]);
+    fork = a.play.score >= b.play.score ? [a, b] : [b, a];
+  }
+  return { list: list, me: me, best: best, fork: fork, plays: plays };
+}
+
+// Map signs for tickets: a round countdown ring, unlike the diamond locker signs. The ring empties as slack runs out.
+function ftkIcon(t, slackMs) {
+  const color = ftkColor(slackMs);
+  const total = Math.max(1, new Date(t.due_at).getTime() - new Date(t.opened_at || t.created_at || t.updated_at || Date.now()).getTime());
+  const pct = Math.max(0, Math.min(100, Math.round(slackMs / total * 100)));
+  const label = slackMs < 0 ? 'LATE' : (ftkMins(slackMs) >= 100 ? Math.round(slackMs / 3600000) + 'h' : ftkMins(slackMs) + 'm');
+  return L.divIcon({ className: '', iconSize: [40, 40], iconAnchor: [20, 20],
+    html: '<div style="width:40px;height:40px;border-radius:50%;background:conic-gradient(' + color + ' ' + pct + '%, #e3e8ee 0);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #ffffff,0 1px 4px rgba(0,0,0,.35);">'
+      + '<div style="width:30px;height:30px;border-radius:50%;background:#ffffff;color:' + color + ';font:bold 10px monospace;display:flex;align-items:center;justify-content:center;">' + label + '</div></div>' });
+}
+async function ftkPins() {
+  if (typeof map === 'undefined' || !map) return;
+  if (ftkLayer) { map.removeLayer(ftkLayer); ftkLayer = null; }
+  const open = ftkOpen().filter(t => isFinite(t.lat) && isFinite(t.lon));
+  if (!open.length) return;
+  let ranked = null;
+  try { ranked = await ftkRank(); } catch (e) {}
+  ftkLayer = L.layerGroup();
+  open.forEach(t => {
+    const r = ranked && ranked.list.find(x => x.id === t.id);
+    const slack = r ? r.slackMs : (t.due_at ? new Date(t.due_at).getTime() - Date.now() : 0);
+    L.marker([t.lat, t.lon], { icon: ftkIcon(t, slack), title: 'Ticket ' + (t.ticket || '') + ', ' + ftkClock(slack) + ' slack', zIndexOffset: 900 })
+      .on('click', () => showTicket(t.id)).addTo(ftkLayer);
+  });
+  ftkLayer.addTo(map);
+}
+setInterval(() => { if (ftkOpen().length) ftkPins(); }, 30000);
+
+// Points: one hundred for a close inside SLA, plus a bonus of one point per two minutes to spare, up to sixty.
+function ftkPoints(t) {
+  if (!t.closed_at || !t.due_at) return 0;
+  const spare = new Date(t.due_at).getTime() - new Date(t.closed_at).getTime();
+  return spare >= 0 ? 100 + Math.min(60, Math.round(spare / 120000)) : 0;
+}
+function ftkToday() {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  return ftTickets.filter(t => t.status === 'closed' && t.closed_at && new Date(t.closed_at) >= d0);
+}
+
+async function showTickets() {
+  const panel = document.getElementById('panel');
+  const done = ftkToday();
+  const pts = done.reduce((s, t) => s + (t.points || 0), 0);
+  const wins = done.filter(t => t.made_sla).length;
+  let html = '<h2>Tickets</h2>';
+  html += '<div class="meta-line">Today: ' + pts + ' points, ' + wins + ' of ' + done.length + ' closed inside SLA.</div>';
+  html += '<div class="ftx-row"><button id="ftkScan">Scan ticket screen</button><button class="secondary" id="ftkHand">Add by hand</button></div>';
+  html += '<div id="ftkMsg" class="meta-line"></div><div id="ftkBody"><div class="meta-line">Working out drive times.</div></div>';
+  html += '<label class="hz-label" for="ftkOnsite">Time on site per ticket</label><select id="ftkOnsite">' + [20, 30, 45, 60, 90, 120].map(n => '<option value="' + n + '"' + (n === ftkOnsite() ? ' selected' : '') + '>' + n + ' minutes</option>').join('') + '</select>';
+  html += '<div class="panel-actions"><button class="secondary" id="ftkClose">Close</button></div>';
+  panel.innerHTML = html; panel.scrollTop = 0; panel.classList.add('open');
+  document.getElementById('ftkClose').addEventListener('click', closePanel);
+  document.getElementById('ftkScan').addEventListener('click', () => document.getElementById('ticketFile').click());
+  document.getElementById('ftkHand').addEventListener('click', () => { ftkPending = [{ ticket: '', site: '', address: '', priority: '', summary: '', due: null, opened: null }]; showTicketConfirm(0); });
+  document.getElementById('ftkOnsite').addEventListener('change', ev => { try { localStorage.setItem(FTK_ONSITE_KEY, ev.target.value); } catch (e) {} ftkDriveAt = 0; showTickets(); });
+  const body = document.getElementById('ftkBody');
+  let r;
+  try { r = await ftkRank(); } catch (e) { r = { list: [] }; }
+  if (!document.getElementById('ftkBody')) return;
+  const open = ftkOpen();
+  if (!open.length) { body.innerHTML = '<div class="meta-line">No open tickets. Scan the work phone screen to bring one in.</div>'; return; }
+  let out = '';
+  if (!r.me) out += '<div class="meta-line">Location is off, so drive times start from the first ticket. Turn on Location in the menu for real slack.</div>';
+  if (r.best) {
+    const b = r.list[r.best.i];
+    out += '<div class="question">Best next: ' + escapeHtml(b.ticket || b.site || 'ticket') + '</div>';
+    out += '<div class="meta-line">' + Math.round(b.driveSec / 60) + ' min drive, ' + ftkClock(b.slackMs) + ' slack. Played forward this wins ' + r.best.play.wins + ' of ' + r.list.length + ' SLAs.</div>';
+  }
+  if (r.fork) {
+    const a = r.list[r.fork[0].i], c = r.list[r.fork[1].i];
+    out += '<div class="question">Fork, both about the same drive</div>';
+    out += '<div class="mi-row" style="border-left:6px solid #2e7d32;"><b>Go to ' + escapeHtml(a.ticket || a.site) + '</b><br><span class="meta-line">' + Math.round(a.driveSec / 60) + ' min, wins ' + r.fork[0].play.wins + ' of ' + r.list.length + ', score ' + r.fork[0].play.score + '</span></div>';
+    out += '<div class="mi-row" style="border-left:6px solid #c62828;">' + escapeHtml(c.ticket || c.site) + '<br><span class="meta-line">' + Math.round(c.driveSec / 60) + ' min, wins ' + r.fork[1].play.wins + ' of ' + r.list.length + ', score ' + r.fork[1].play.score + '</span></div>';
+  }
+  out += '<div class="question">Open, lowest slack first</div>';
+  const ranked = r.list.slice().sort((x, y) => x.slackMs - y.slackMs);
+  const placed = new Set(ranked.map(x => x.id));
+  out += ranked.map(t => '<div class="mi-row" data-tk="' + t.id + '" style="border-left:6px solid ' + ftkColor(t.slackMs) + ';"><b style="color:var(--accent);">' + escapeHtml(t.ticket || 'no number') + '</b> ' + escapeHtml(t.site || '') + '<br><span class="meta-line">due ' + new Date(t.dueMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ', ' + Math.round(t.driveSec / 60) + ' min drive, ' + ftkClock(t.slackMs) + ' slack</span></div>').join('');
+  const loose = open.filter(t => !placed.has(t.id));
+  if (loose.length) out += '<div class="meta-line">Missing a site or due time, tap to fix:</div>' + loose.map(t => '<div class="mi-row" data-tk="' + t.id + '">' + escapeHtml(t.ticket || 'no number') + ' ' + escapeHtml(t.site || '') + '</div>').join('');
+  body.innerHTML = out;
+  body.querySelectorAll('[data-tk]').forEach(el => el.addEventListener('click', () => showTicket(el.getAttribute('data-tk'))));
+}
+
+function showTicket(id) {
+  const t = ftTickets.find(x => x.id === id);
+  if (!t) return;
+  const panel = document.getElementById('panel');
+  const slack = t.due_at ? new Date(t.due_at).getTime() - Date.now() : 0;
+  let html = '<h2>Ticket ' + escapeHtml(t.ticket || '') + '</h2>';
+  html += '<div class="meta-line">' + escapeHtml(t.site || '') + (t.address ? ', ' + escapeHtml(t.address) : '') + '</div>';
+  if (t.summary) html += '<div class="meta-line">' + escapeHtml(t.summary) + '</div>';
+  if (t.due_at) html += '<div class="question" style="color:' + ftkColor(slack) + ';">' + (t.status === 'open' ? ftkClock(slack) + ' to SLA, before driving' : (t.made_sla ? 'Closed inside SLA, ' + t.points + ' points' : 'Closed after SLA')) + '</div>';
+  html += '<div class="panel-actions">';
+  if (t.status === 'open') html += '<button id="ftkDone">Closed now</button><button class="secondary" id="ftkGo">Go</button>';
+  html += '<button class="secondary" id="ftkEdit">Edit</button><button class="secondary" id="ftkDel">Delete</button><button class="secondary" id="ftkBack">Back</button></div>';
+  panel.innerHTML = html; panel.scrollTop = 0; panel.classList.add('open');
+  document.getElementById('ftkBack').addEventListener('click', showTickets);
+  document.getElementById('ftkEdit').addEventListener('click', () => { ftkPending = [Object.assign({ _id: t.id }, t)]; showTicketConfirm(0); });
+  document.getElementById('ftkDel').addEventListener('click', async () => {
+    ftTickets = ftTickets.filter(x => x.id !== t.id); ftkSaveLocal();
+    if (typeof cloudReady === 'function' && cloudReady()) { try { await sb.from('field_twin_tickets').delete().eq('id', t.id); } catch (e) {} }
+    ftkPins(); showTickets();
+  });
+  if (t.status === 'open') {
+    document.getElementById('ftkDone').addEventListener('click', async () => {
+      t.status = 'closed'; t.closed_at = new Date().toISOString();
+      t.made_sla = t.due_at ? new Date(t.closed_at) <= new Date(t.due_at) : null;
+      t.points = ftkPoints(t);
+      await ftkPush(t); ftkPins();
+      setStatus(t.made_sla ? 'ticket closed inside SLA, plus ' + t.points + ' points' : 'ticket closed');
+      showTickets();
+    });
+    document.getElementById('ftkGo').addEventListener('click', () => {
+      closePanel();
+      if (isFinite(t.lat)) map.setView([t.lat, t.lon], 15);
+    });
+  }
+}
+
+// Confirm screen: every field the reader filled can be fixed before it counts, since a wrong due time gives a wrong score.
+function showTicketConfirm(idx) {
+  const r = ftkPending[idx];
+  if (!r) { showTickets(); return; }
+  const panel = document.getElementById('panel');
+  const due = r.due_at ? new Date(r.due_at) : ftkDueFrom(r);
+  const match = r.place_id ? ftPlaces.find(p => p.id === r.place_id) : ftkMatchPlace(r.site, r.address);
+  const lockers = ftPlaces.filter(p => p.kind === 'locker' && p.name).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  let html = '<h2>Check ticket' + (ftkPending.length > 1 ? ' ' + (idx + 1) + ' of ' + ftkPending.length : '') + '</h2>';
+  html += '<div class="question">Ticket number</div><input type="text" id="tkNum" value="' + escapeHtml(r.ticket || '') + '">';
+  html += '<div class="question">Site</div><input type="text" id="tkSite" value="' + escapeHtml(r.site || '') + '">';
+  html += '<div class="question">SLA due</div><input type="datetime-local" id="tkDue" value="' + ftkLocalInput(due) + '">';
+  html += '<div class="question">Priority</div><input type="text" id="tkPri" value="' + escapeHtml(r.priority || '') + '">';
+  html += '<div class="question">Problem</div><input type="text" id="tkSum" value="' + escapeHtml(r.summary || '') + '">';
+  html += '<div class="question">Where</div><select id="tkWhere"><option value="">pick a locker</option><option value="here">where I am now</option>'
+    + (r.lat && !r.place_id ? '<option value="keep" selected>keep the saved spot</option>' : '')
+    + lockers.map(p => '<option value="' + p.id + '"' + (match && match.id === p.id ? ' selected' : '') + '>' + escapeHtml(ftpLabel(p)) + '</option>').join('') + '</select>';
+  html += '<div class="meta-line">' + (match ? 'Matched to ' + escapeHtml(ftpLabel(match)) + ' from the site name.' : 'No locker matched the site name.') + '</div>';
+  html += '<div class="panel-actions"><button id="tkSave">Save ticket</button><button class="secondary" id="tkSkip">Skip</button></div>';
+  panel.innerHTML = html; panel.scrollTop = 0; panel.classList.add('open');
+  document.getElementById('tkSkip').addEventListener('click', () => showTicketConfirm(idx + 1));
+  document.getElementById('tkSave').addEventListener('click', async () => {
+    const where = document.getElementById('tkWhere').value;
+    const dueVal = document.getElementById('tkDue').value;
+    const old = r._id ? ftTickets.find(x => x.id === r._id) : null;
+    const t = old || { id: ftpId(), status: 'open', created_at: new Date().toISOString(), opened_at: (ftkParseWhen(r.opened) || new Date()).toISOString() };
+    t.ticket = document.getElementById('tkNum').value.trim();
+    t.site = document.getElementById('tkSite').value.trim();
+    t.priority = document.getElementById('tkPri').value.trim();
+    t.summary = document.getElementById('tkSum').value.trim();
+    t.address = r.address || t.address || '';
+    t.due_at = dueVal ? new Date(dueVal).toISOString() : null;
+    if (where === 'here') { const me = mySpot(); if (me) { t.lat = me.lat; t.lon = me.lon; t.place_id = null; } }
+    else if (where && where !== 'keep') { const p = ftPlaces.find(x => x.id === where); if (p) { t.lat = p.lat; t.lon = p.lon; t.place_id = p.id; if (!t.address) t.address = p.address || ''; } }
+    if (!old) ftTickets.push(t);
+    await ftkPush(t);
+    ftkPins();
+    setStatus('ticket ' + (t.ticket || '') + ' saved');
+    showTicketConfirm(idx + 1);
+  });
+}
+
+async function startTicketScan(file) {
+  setStatus('reading the ticket screen');
+  const msg = document.getElementById('ftkMsg');
+  if (msg) msg.textContent = 'Reading the ticket screen. This takes a few seconds.';
+  try {
+    const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
+    const small = await shrinkDataUrl(data, 1400, 0.7);
+    const base = getApiBase().replace(/\/+$/, '');
+    const headers = { 'Content-Type': 'application/json' };
+    let how = await apiAuthHeaders(headers);
+    let res = null, lastErr = null;
+    for (const wait of [0, 1500, 3000, 6000]) {
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      try { res = await fetch(base + '/tickets/extract', { method: 'POST', headers: headers, body: JSON.stringify({ image: small }) }); break; }
+      catch (e) { lastErr = e; }
+    }
+    if (!res) throw new Error('the Field Twin service did not answer, ' + (lastErr ? lastErr.message : 'no signal'));
+    if (res.status === 401 && how !== 'token') { const h2 = { 'Content-Type': 'application/json' }; if (await apiAuthHeaders(h2, true) !== 'none') res = await fetch(base + '/tickets/extract', { method: 'POST', headers: h2, body: JSON.stringify({ image: small }) }); }
+    if (res.status === 401) throw new Error('sign in under Account and profile so the reader knows it is you');
+    if (res.status === 404) throw new Error('the Field Twin service is running an old build without the ticket reader');
+    let j = {};
+    try { j = await res.json(); } catch (e) {}
+    if (!res.ok) throw new Error(j.error || ('service returned ' + res.status));
+    ftkPending = (j.tickets || []).map(x => Object.assign({}, x));
+    if (!ftkPending.length) throw new Error('no ticket found in that photo');
+    setStatus('found ' + ftkPending.length + (ftkPending.length === 1 ? ' ticket' : ' tickets'));
+    showTicketConfirm(0);
+  } catch (e) {
+    setStatus('ticket reader: ' + e.message);
+    if (document.getElementById('ftkMsg')) document.getElementById('ftkMsg').textContent = 'Ticket reader: ' + e.message + '. Add by hand works without the service.';
+  }
+}
+
+(function () {
+  const inp = document.getElementById('ticketFile');
+  if (inp) inp.addEventListener('change', e => { if (e.target.files[0]) startTicketScan(e.target.files[0]); e.target.value = ''; });
+  const dock = document.getElementById('ticketDockBtn');
+  if (dock) dock.addEventListener('click', showTickets);
+  const mb = document.getElementById('ticketsBtn');
+  if (mb) mb.addEventListener('click', () => { document.getElementById('sideMenu').classList.remove('open'); document.getElementById('menuOverlay').classList.remove('open'); showTickets(); });
+  setTimeout(() => { ftkPins(); ftkPull(); }, 3500);
+  setInterval(ftkPull, 5 * 60000);
 })();
 </script>
 </body>

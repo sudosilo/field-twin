@@ -1,5 +1,7 @@
 Field Twin changelog
 
+2026-11-16, v2026.11.16. Added Tickets. Scan ticket screen reads work tickets from a photo of the work phone, a check screen fixes misreads and picks the locker, and each open ticket shows on the map as a countdown ring. Best next and the fork card rank stops by SLA slack after drive time, and closes inside SLA earn points. The receipt and ticket readers now share one photo reader that falls back through newer models, and Service check shows the reader key and the last reader error.
+
 2026-11-14, v2026.11.14. Field Chat now runs on its own twin chat, apart from Cat Command Chat.
 
 2026-11-13, v2026.11.13b. Each wireless survey now also goes to WiGLE once a WiGLE account is connected on the Field Twin server through WIGLE_API_NAME and WIGLE_API_TOKEN. Only the radio list, time and phone position are sent.

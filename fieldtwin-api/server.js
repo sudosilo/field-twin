@@ -111,7 +111,64 @@ async function fetchCameras() {
 
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
-const VISION_MODEL = process.env.VISION_MODEL || 'claude-haiku-4-5-20251001';
+const VISION_MODEL = process.env.VISION_MODEL || 'claude-haiku-5-5';
+// Tried in order. A model that is retired or not on the account answers 400 or 404, so the next one gets the photo.
+const VISION_CHAIN = [VISION_MODEL, 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001']
+  .filter((m, i, a) => m && a.indexOf(m) === i);
+let visionLast = { model: '', status: 0, at: null, error: '' };
+
+// One shared photo reader for receipts and work tickets. Returns parsed json or throws with a readable reason.
+async function visionJson(image, prompt) {
+  const match = String(image).match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
+  const mediaType = match ? match[1].replace('image/jpg', 'image/jpeg') : 'image/jpeg';
+  const b64 = match ? match[2] : image;
+  let lastReason = 'no model answered';
+  for (const model of VISION_CHAIN) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let apiRes;
+      try {
+        apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: model,
+            max_tokens: 6000,
+            messages: [{ role: 'user', content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
+              { type: 'text', text: prompt }
+            ] }]
+          })
+        });
+      } catch (e) { lastReason = 'could not reach the model, ' + e.message; continue; }
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        visionLast = { model: data.model || model, status: 200, at: new Date().toISOString(), error: '' };
+        const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').replace(/```json|```/g, '').trim();
+        let parsed;
+        try { parsed = JSON.parse(text); }
+        catch (e) {
+          const a = text.indexOf('{'), z = text.lastIndexOf('}');
+          if (a === -1 || z === -1) throw new Error('model did not return json');
+          parsed = JSON.parse(text.slice(a, z + 1));
+        }
+        const usage = data.usage || {};
+        return { parsed: parsed, model: data.model || model, usage: { input: usage.input_tokens || 0, output: usage.output_tokens || 0 } };
+      }
+      const detail = await apiRes.text();
+      let reason = '';
+      try { const j = JSON.parse(detail); reason = j.error && j.error.message ? j.error.message : ''; } catch (e) { reason = detail.slice(0, 160); }
+      lastReason = 'status ' + apiRes.status + (reason ? ', ' + reason : '');
+      visionLast = { model: model, status: apiRes.status, at: new Date().toISOString(), error: lastReason };
+      console.error('vision call failed', model, lastReason);
+      if (apiRes.status === 401 || apiRes.status === 403) { const err = new Error('model key rejected, ' + lastReason); err.upstream = apiRes.status; throw err; }
+      if (apiRes.status === 429 || apiRes.status >= 500) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      break;
+    }
+  }
+  const err = new Error('vision call failed, ' + lastReason);
+  err.upstream = visionLast.status;
+  throw err;
+}
 
 const RECEIPT_PROMPT = [
   'Read this receipt photo and return ONLY a JSON object, no markdown fences and no commentary.',
@@ -161,73 +218,44 @@ app.post('/receipts/extract', async (req, res) => {
     return res.status(400).json({ error: 'image required as a data url or base64 string' });
   }
 
-  const match = image.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
-  const mediaType = match ? match[1].replace('image/jpg', 'image/jpeg') : 'image/jpeg';
-  const b64 = match ? match[2] : image;
-
   try {
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        max_tokens: 6000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
-            { type: 'text', text: RECEIPT_PROMPT }
-          ]
-        }]
-      })
-    });
-
-    if (!apiRes.ok) {
-      const detail = await apiRes.text();
-      console.error('vision call failed', apiRes.status, detail.slice(0, 300));
-      let reason = '';
-      try {
-        const j = JSON.parse(detail);
-        reason = (j.error && j.error.message) ? j.error.message : '';
-      } catch (e) {
-        reason = detail.slice(0, 160);
-      }
-      return res.status(502).json({
-        error: 'vision call failed, status ' + apiRes.status + (reason ? ', ' + reason : ''),
-        upstreamStatus: apiRes.status
-      });
-    }
-
-    const data = await apiRes.json();
-    const text = (data.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('')
-      .replace(/```json|```/g, '')
-      .trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      const braceStart = text.indexOf('{');
-      const braceEnd = text.lastIndexOf('}');
-      if (braceStart === -1 || braceEnd === -1) throw new Error('model did not return json');
-      parsed = JSON.parse(text.slice(braceStart, braceEnd + 1));
-    }
-
-    const usage = data.usage || {};
-    res.json({
-      receipt: parsed,
-      usage: { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
-    });
+    const out = await visionJson(image, RECEIPT_PROMPT);
+    res.json({ receipt: out.parsed, model: out.model, usage: out.usage });
   } catch (e) {
     console.error('extract failed', e.message);
-    res.status(502).json({ error: e.message });
+    res.status(502).json({ error: e.message, upstreamStatus: e.upstream || 0 });
+  }
+});
+
+const TICKET_PROMPT = [
+  'This is a photo of a work phone screen showing one or more field service tickets.',
+  'Return ONLY a JSON object, no markdown fences and no commentary, in this exact shape:',
+  '{"tickets":[{"ticket":string|null,"site":string|null,"address":string|null,"city":string|null,',
+  '"priority":string|null,"status":string|null,"opened":string|null,"due":string|null,"sla_hours":number|null,',
+  '"summary":string|null}],"screen_time":string|null,"confidence":"high"|"medium"|"low"}',
+  'ticket is the ticket or work order number. site is the site, store or locker name as shown.',
+  'opened and due as YYYY-MM-DDTHH:MM in 24 hour local time when a date is visible, or HH:MM when only a time is visible.',
+  'due is the SLA deadline, response by, or resolve by time. sla_hours is a stated SLA length in hours when no due time is shown.',
+  'screen_time is the clock shown in the phone status bar, HH:MM, so relative times can be placed.',
+  'summary is the problem in under ten words.',
+  'Privacy rule: never return person names, phone numbers, email addresses, customer or account numbers, or notes about people. Leave them out entirely.',
+  'Never invent values that are not visible. Use null instead.'
+].join(' ');
+
+app.post('/tickets/extract', async (req, res) => {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const required = process.env.API_TOKEN || '';
+  if (required && token !== required && !(await isSignedInUser(token))) return res.sendStatus(401);
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'vision key not configured' });
+  const image = req.body && req.body.image;
+  if (!image || typeof image !== 'string') return res.status(400).json({ error: 'image required as a data url or base64 string' });
+  try {
+    const out = await visionJson(image, TICKET_PROMPT);
+    const list = Array.isArray(out.parsed.tickets) ? out.parsed.tickets : [];
+    res.json({ tickets: list, screen_time: out.parsed.screen_time || null, confidence: out.parsed.confidence || 'low', model: out.model, usage: out.usage });
+  } catch (e) {
+    console.error('ticket extract failed', e.message);
+    res.status(502).json({ error: e.message, upstreamStatus: e.upstream || 0 });
   }
 });
 
@@ -382,7 +410,7 @@ app.post('/wigle/upload', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({ service: 'fieldtwin-api', endpoints: ['/health', '/cameras', '/status', '/receipts/extract', '/debrief', '/events', '/crashes'] });
+  res.json({ service: 'fieldtwin-api', endpoints: ['/health', '/cameras', '/status', '/receipts/extract', '/tickets/extract', '/debrief', '/events', '/crashes'] });
 });
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -613,6 +641,9 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     keyConfigured: Boolean(NDOT_KEY),
+    visionKey: Boolean(ANTHROPIC_KEY),
+    visionModels: VISION_CHAIN,
+    visionLast: visionLast,
     redis: redis ? redis.status : 'none',
     cached: Boolean(memoryCache.list)
   });
