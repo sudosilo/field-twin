@@ -656,13 +656,14 @@
   #hzDays, #hzYears, #hzArea { display: block; box-sizing: border-box; max-width: calc(100% - 28px); width: calc(100% - 28px); margin: 0 14px 6px 14px; }
   .hz-pop b { color: var(--accent); }
   .here-btn { display: flex !important; align-items: center; justify-content: center; color: var(--accent) !important; }
-  #sideMenu button.tg, #sideMenu #settingsBtn { position: relative; padding-right: 72px; }
+  #sideMenu button.tg, #sideMenu #settingsBtn, #sideMenu #legendBtn { position: relative; padding-right: 72px; }
   .tg-sw { position: absolute; right: 14px; top: 50%; width: 46px; height: 26px; margin-top: -13px; border: 2px solid var(--edge); border-radius: 14px; background: var(--panel); box-sizing: border-box; }
   .tg-sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); }
   button.tg[aria-pressed="true"] .tg-sw { background: var(--accent); border-color: var(--accent); }
   button.tg[aria-pressed="true"] .tg-sw::after { left: 22px; background: var(--panel); }
   .chev { position: absolute; right: 22px; top: 50%; width: 10px; height: 10px; margin-top: -8px; border-right: 3px solid var(--edge); border-bottom: 3px solid var(--edge); transform: rotate(45deg); }
-  #settingsBtn[aria-expanded="true"] .chev { transform: rotate(-135deg); margin-top: -3px; }
+  #settingsBtn[aria-expanded="true"] .chev, #legendBtn[aria-expanded="true"] .chev { transform: rotate(-135deg); margin-top: -3px; }
+  #legendRows { background: var(--tint); padding: 4px 0 8px 0; border-bottom: 1px solid var(--line); }
   #settingsBox { background: var(--tint); padding: 4px 0 8px 0; border-bottom: 1px solid var(--line); }
   #settingsBox button.secondary { background: var(--tint); }
   .ext-row { display: flex; flex-direction: column; gap: 10px; padding: 6px 14px 12px 14px; }
@@ -837,12 +838,18 @@
   #menuOverlay { background: var(--shade); }
 
   /* RTSS and RDSS open in place over the map, so a form underneath is kept as it was */
-  #surveyView { position: absolute; top: calc(var(--head-h) + var(--tabs-h)); left: 0; right: 0; bottom: 0; z-index: 1300; display: none; flex-direction: column; background: var(--bg); }
+  #surveyView { position: absolute; top: calc(var(--head-h) + var(--tabs-h)); left: 0; right: 0; bottom: 0; z-index: 1050; display: none; flex-direction: column; background: var(--bg); }
   #surveyView.open { display: flex; }
   #surveyView .sv-bar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel); border-bottom: 2px solid var(--edge); flex: 0 0 auto; }
   #surveyView .sv-bar button { width: auto; min-height: 40px; padding: 6px 12px; font-size: 14px; }
   #surveyView .sv-bar span { flex: 1; min-width: 0; font-size: 13px; font-weight: 800; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #surveyView .sv-bar .sv-app { padding: 6px 10px; }
+  #surveyView .sv-bar .sv-app.on { background: var(--accent); color: var(--panel); border-color: var(--accent); }
   #surveyView .sv-frame { flex: 1; min-height: 0; }
+  #camView { position: absolute; top: calc(var(--head-h) + var(--tabs-h)); left: 0; right: 0; bottom: 0; background: var(--tint); z-index: 1006; display: none; }
+  #camView.open { display: block; }
+  #camView iframe { width: 100%; height: 100%; border: 0; display: block; }
+  #twinTabs button { padding: 0 2px; font-size: 13px; }
   #surveyView iframe { width: 100%; height: 100%; border: 0; display: block; background: #ffffff; }
   body.pip #surveyView { display: none !important; }
   .ftx-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 4px 0; }
@@ -866,7 +873,7 @@
   <button id="tabRoads">Roads</button>
 </div>
 <div id="violetView"></div>
-<div id="surveyView"><div class="sv-bar"><button class="secondary" id="svBack">Back to Field Twin</button><span id="svTitle"></span></div><div class="sv-frame"></div></div>
+<div id="surveyView"><div class="sv-bar"><button class="secondary" id="svBack">Back to Field Twin</button><button class="secondary sv-app" id="svRtss">RTSS</button><button class="secondary sv-app" id="svRdss">RDSS</button><span id="svTitle"></span></div><div class="sv-frame"></div></div>
 
 <div id="actionBar">
   <div class="radar" id="radar">
@@ -919,7 +926,7 @@
   <h3>Traffic cameras</h3>
   <button class="secondary" id="camerasBtn">Cameras</button>
   <h3>Other apps</h3>
-  <div class="ext-row"><button class="ext" id="openCqBtn">Field Twin Glaucous</button><button class="ext" id="openVioletBtn">Field Twin Violet</button><button class="ext" id="openRtssBtn">RTSS, technology site survey</button><button class="ext" id="openRdssBtn">RDSS, design and setup survey</button><button class="ext" id="openSitesBtn">Survey sites</button></div>
+  <div class="ext-row"><button class="ext" id="openCqBtn">Field Twin Glaucous</button><button class="ext" id="openVioletBtn">Field Twin Violet</button><button class="ext" id="openRtssBtn">RTSS, technology site survey</button><button class="ext" id="openRdssBtn">RDSS, design and setup survey</button></div>
   <h3>Your data</h3>
   <button class="secondary" id="accountBtn">Account and profile</button>
   <button class="secondary" id="exportBtn">Export</button>
@@ -950,8 +957,8 @@
     <button class="secondary" id="camKeyBtn">Service address</button>
     <button class="secondary" id="checkBtn">Service check</button>
   </div>
-  <h3>Color key</h3>
-  <div id="legendRows"></div>
+  <button class="secondary" id="legendBtn" aria-expanded="false"><span>Color key</span><i class="chev" aria-hidden="true"></i></button>
+  <div id="legendRows" hidden></div>
 </div>
 
 <div id="mapFilterBar"><span id="mapFilterText"></span><button class="secondary" id="mapFilterClear" style="padding:8px 10px;font-size:11px;">Show all</button></div>
@@ -4999,8 +5006,10 @@ function showInfo() {
   html += '<div>In the phone app, leaving Field Twin while a route is running shrinks it into a small floating window over your other apps. Only the map and the next turn show, centered on you, and the page keeps running so the route and your position stay live. Open Field Twin again and it goes back to full size.</div>';
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
-  html += '<div class="question">RTSS and RDSS</div>';
-  html += '<div>RTSS, the technology site survey, and RDSS, the design and setup survey, open inside Field Twin from Other apps in the menu, from a site on the Sites tab, or from the Survey site row on a log form or an entry. They open over the map with Back to Field Twin at the top, so a form you were filling stays as it was. When no survey site is near the stop, Start an RTSS and RDSS site here makes one from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop, and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and each one goes into the RTSS visit log only when you tap Add to visit log. The survey server is open to anyone with a link, so your stops, dates and notes stay off it unless you add them. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with this same email and password. Every save to the survey server is marked with the account that made it.</div>';
+  html += '<div class="question">Sites, RTSS and RDSS</div>';
+  html += '<div>The Sites tab lists every survey site on the survey server, nearest first, with a search box. Each site shows its RTSS and RDSS progress and its pin on the map. RTSS is the technology site survey and RDSS is the design and setup survey, and both open inside Field Twin from a site on the Sites tab, from Other apps in the menu, or from the Survey site row on a log form or an entry. They open over the map, and the bar at the top holds Back to Field Twin plus RTSS and RDSS buttons that switch between the two surveys on the same site. A form you were filling stays as it was underneath, and the menu still opens on top. When no survey site is near the stop, Start an RTSS and RDSS site here makes one on the survey server from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and a stop goes into the RTSS visit log only when you tap Add to visit log. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with the same email and password. The survey server marks every save with the account that made it. It is still open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
+  html += '<div class="question">Dash cam</div>';
+  html += '<div>The Dash cam tab opens Field Twin Viridian inside Field Twin. It runs the camera, motion sensors and location together, reads plates, shows the reader status including while parked, and keeps plate sightings with a best photo and a page for each plate. The camera runs only while the Dash cam tab is open, and moving to another tab turns it off.</div>';
   html += '<div class="question">Wireless survey</div>';
   html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. When a WiGLE account is connected on the Field Twin server, each scan also goes up to that account as a small WiGLE file holding the radio list, the time and where the phone stood, and nothing about the locker. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
@@ -5024,11 +5033,11 @@ function showInfo() {
   html += '<div class="question">Entries</div>';
   html += '<div>Tap a sign to open it. Edit changes anything, Delete is on the Edit screen, and the four arrows button moves the pin.</div>';
   html += '<div class="question">Menu</div>';
-  html += '<div>Search, Day log, History, Spend and Mileage look back over your entries. Cameras shows Nevada highway cameras. Lockers holds the All lockers switch and the locker list. Quality and Heat map draw road roughness and how often you travel a road. Crashes, Construction and Crash history show road hazards, and Settings picks how far back and how wide an area. Switches stay the way you leave them.</div>';
+  html += '<div>Search, Day log, History, Spend and Mileage look back over your entries. Cameras shows Nevada highway cameras. Lockers holds the All lockers switch and the locker list. Color key opens the list of place signs. Quality and Heat map draw road roughness and how often you travel a road. Crashes, Construction and Crash history show road hazards, and Settings picks how far back and how wide an area. Switches stay the way you leave them.</div>';
   html += '<div class="question">Road hazards</div>';
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
-  html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between all three, and the same tabs sit at the top of the other two. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The blue buttons under Other apps open the other two in a new page.</div>';
+  html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between Field map, Inventory, Roads, Sites and Dash cam, and the same first three tabs sit at the top of Violet and Glaucous. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The buttons under Other apps open Glaucous, Violet, RTSS and RDSS.</div>';
   html += '<div class="question">Timeline</div>';
   html += '<div>New in version 1.0.12. Timeline in the menu splits a day into half hour blocks. Each block says how many reports came in and from which phones, then sums up what happened: where you were parked and for how long, how far you drove, odometer readings, receipts and anything you logged. When two or three phones park at the same spot at the same time, the stop is kept once and lists every phone that saw it, so extra phones back each other up instead of piling up copies. Tap a line to open that entry.</div>';
   html += '<div class="question">Battery saving with the motion sensor</div>';
@@ -5513,6 +5522,11 @@ async function init() {
     const box = document.getElementById('settingsBox');
     box.hidden = !box.hidden;
     document.getElementById('settingsBtn').setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+  });
+  document.getElementById('legendBtn').addEventListener('click', () => {
+    const box = document.getElementById('legendRows');
+    box.hidden = !box.hidden;
+    document.getElementById('legendBtn').setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
   });
   initHere();
   initRoadButtons();
@@ -8280,7 +8294,9 @@ function ftxOpenApp(app, siteId) {
   f.title = a.name;
   f.allow = 'camera; geolocation; clipboard-write';
   box.appendChild(f);
-  document.getElementById('svTitle').textContent = a.name + (s ? ', ' + s.name : '');
+  document.getElementById('svTitle').textContent = s ? s.name : '';
+  document.getElementById('svRtss').classList.toggle('on', app === 'rtss');
+  document.getElementById('svRdss').classList.toggle('on', app === 'rdss');
   view.classList.add('open');
   const ov = document.getElementById('menuOverlay');
   if (ov && document.getElementById('sideMenu').classList.contains('open')) ov.click();
@@ -8294,6 +8310,47 @@ function ftxCloseApp() {
   ftxLoad().then(() => { ftxPins(); });
 }
 document.getElementById('svBack').addEventListener('click', ftxCloseApp);
+// Switch between RTSS and RDSS on the same site without going back to the map
+document.getElementById('svRtss').addEventListener('click', () => ftxOpenApp('rtss', ftxOpenSite));
+document.getElementById('svRdss').addEventListener('click', () => ftxOpenApp('rdss', ftxOpenSite));
+
+// ---- Dash cam tab: Field Twin Viridian, the camera, motion and plate reader app, opened in place ----
+// The camera runs only while this tab is open. Leaving the tab closes the page, which turns the camera off.
+const VIRIDIAN_SITE = 'https://field-twin-viridian.vercel.app/';
+(function () {
+  const tabs = document.getElementById('twinTabs');
+  const btn = document.createElement('button');
+  btn.id = 'tabCam';
+  btn.textContent = 'Dash cam';
+  tabs.appendChild(btn);
+  const view = document.createElement('div');
+  view.id = 'camView';
+  document.getElementById('violetView').after(view);
+  function close() {
+    if (!view.classList.contains('open')) return;
+    view.classList.remove('open');
+    view.innerHTML = '';
+    btn.classList.remove('on');
+    if (!tabs.querySelector('button.on')) {
+      const inv = document.getElementById('violetView').classList.contains('open');
+      document.getElementById(inv ? 'tabViolet' : 'tabTeal').classList.add('on');
+    }
+  }
+  btn.addEventListener('click', () => {
+    if (view.classList.contains('open')) return;
+    const f = document.createElement('iframe');
+    f.src = VIRIDIAN_SITE;
+    f.title = 'Field Twin Viridian dash cam';
+    f.allow = 'camera; microphone; geolocation; accelerometer; gyroscope; magnetometer; clipboard-write';
+    view.appendChild(f);
+    view.classList.add('open');
+    tabs.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  });
+  ['tabTeal', 'tabViolet', 'tabRoads', 'tabSites'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener('click', close);
+  });
+})();
 
 // The survey site at or near a spot: a place tied to a site within 80 meters.
 function ftxSiteNear(lat, lon) {
@@ -8436,7 +8493,6 @@ async function ftxMakeAt(entry) {
   const near = () => { const me = mySpot(); const p = me ? ftxSiteNear(me.lat, me.lon) : null; return p ? p.site.rie : ''; };
   document.getElementById('openRtssBtn').addEventListener('click', () => ftxOpenApp('rtss', near()));
   document.getElementById('openRdssBtn').addEventListener('click', () => ftxOpenApp('rdss', near()));
-  document.getElementById('openSitesBtn').addEventListener('click', () => { const ov = document.getElementById('menuOverlay'); if (ov) ov.click(); showSites(); });
   if (!ftxSites.length) ftxLoad();
 })();
 </script>
