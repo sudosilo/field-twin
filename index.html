@@ -7563,16 +7563,62 @@ setTimeout(() => { setToggle('fieldChatBtn', fcAlerts); if (fcAlerts) fcStart();
   navStart = async function (dest) { ftpBump(dest, 'searches'); return start(dest); };
   navEnd = function (note) { if (note === 'Arrived.' && navState) ftpBump(navState.dest, 'arrivals'); return end(note); };
   const pull = cloudPull;
-  cloudPull = async function () { const r = await pull.apply(this, arguments); await ftpPull(); ftpSeedLockers(); await ftphPull(); return r; };
+  cloudPull = async function () { const r = await pull.apply(this, arguments); await ftpPull(); ftpSeedLockers(); await ftpDedupe(); await ftphPull(); return r; };
 })();
 setTimeout(ftpSeedLockers, 2500);
+
+// Merges duplicate lockers: the same name in any letter case within a mile, or any two lockers within sixty meters.
+// The kept locker takes the name, site details, visit counts and photos of the ones folded into it.
+function ftpNorm(n) { return String(n || '').toLowerCase().replace(/^locker\s+/, '').replace(/[^a-z0-9]/g, ''); }
+async function ftpDedupe() {
+  const lockers = ftPlaces.filter(p => p.kind === 'locker');
+  const gone = new Set();
+  const rank = p => (p.nameSet ? 4 : 0) + (p.site ? 2 : 0) + (p.name ? 1 : 0) + (p.arrivals || 0) / 1000;
+  const keptChanged = new Set();
+  for (let i = 0; i < lockers.length; i++) {
+    const a = lockers[i];
+    if (gone.has(a.id)) continue;
+    for (let j = i + 1; j < lockers.length; j++) {
+      const b = lockers[j];
+      if (gone.has(b.id)) continue;
+      const d = ftpDist(a.lat, a.lon, b.lat, b.lon);
+      const na = ftpNorm(a.name), nb = ftpNorm(b.name);
+      if (!((na && na === nb && d <= 1600) || d <= 60)) continue;
+      const keep = rank(b) > rank(a) ? b : a, drop = keep === a ? b : a;
+      if (!keep.name && drop.name) keep.name = drop.name;
+      if (!keep.address && drop.address) keep.address = drop.address;
+      if (!keep.site && drop.site) keep.site = drop.site;
+      if (drop.notes && String(keep.notes || '').indexOf(drop.notes) === -1) keep.notes = [keep.notes, drop.notes].filter(Boolean).join(' ');
+      keep.arrivals = (keep.arrivals || 0) + (drop.arrivals || 0);
+      keep.searches = (keep.searches || 0) + (drop.searches || 0);
+      if (String(drop.last_at || '') > String(keep.last_at || '')) keep.last_at = drop.last_at;
+      if (typeof ftPhotos !== 'undefined') ftPhotos.forEach(ph => { if (ph.place_id === drop.id) ph.place_id = keep.id; });
+      if (typeof ftTickets !== 'undefined') ftTickets.forEach(t => { if (t.place_id === drop.id) t.place_id = keep.id; });
+      gone.add(drop.id);
+      keptChanged.add(keep);
+      if (drop === a) break;
+    }
+  }
+  if (!gone.size) return 0;
+  ftPlaces = ftPlaces.filter(p => !gone.has(p.id));
+  ftpSaveLocal();
+  if (typeof cloudReady === 'function' && cloudReady()) {
+    try { await sb.from('field_twin_photos').update({ place_id: null }).in('place_id', Array.from(gone)); } catch (e) {}
+    try { await sb.from('field_twin_places').delete().in('id', Array.from(gone)); } catch (e) {}
+  }
+  for (const p of keptChanged) await ftpPush(p);
+  if (typeof ftLockerPins === 'function') ftLockerPins();
+  return gone.size;
+}
 
 function ftpStopsAt(p) {
   return entries.filter(e => hasPos(e) && ftpDist(p.lat, p.lon, e.lat, e.lon) <= 80 && e.category !== 'odometer' && e.category !== 'mileday')
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
-function showLockers() {
+async function showLockers() {
   ftpSeedLockers();
+  const merged = await ftpDedupe();
+  if (merged) setStatus('merged ' + merged + ' duplicate ' + (merged === 1 ? 'locker' : 'lockers'));
   const panel = document.getElementById('panel');
   const list = ftPlaces.filter(p => p.kind === 'locker');
   let html = '<h2>Lockers</h2><div class="meta-line">Lockers you logged, plus any loaded from the team list or open map data. Tap one to name it and see its visits and photos.</div>';
@@ -8591,20 +8637,25 @@ function ftkLocalInput(d) {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
-// Finds the saved locker that best matches the site name or address the reader saw.
+// Finds the saved locker for a ticket. The site name is compared with locker names only, and the address only counts
+// when the house number and the street name both match, so city and state words never pick a locker by themselves.
+const FTK_GENERIC = ['amazon', 'at', 'the', 'hub', 'locker', 'lockers', 'counter', 'inc', 'llc', 'store', 'and'];
 function ftkMatchPlace(site, address) {
-  const words = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2 && FTP_SKIP.indexOf(w) === -1);
-  const want = words(site).concat(words(address));
-  if (!want.length) return null;
+  const words = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 1 && FTK_GENERIC.indexOf(w) === -1);
+  const siteWords = words(site);
+  const am = String(address || '').toLowerCase().match(/(\d+)\s+(?:[nsew]\s+)?([a-z]+)/);
   let best = null, bestScore = 0;
   ftPlaces.filter(p => p.kind === 'locker').forEach(p => {
-    const have = words(p.name).concat(words(p.address));
     let score = 0;
-    want.forEach(w => { if (have.indexOf(w) !== -1) score += /^\d+$/.test(w) ? 2 : 1; });
-    if (p.name && String(site || '').toLowerCase().indexOf(String(p.name).toLowerCase()) !== -1) score += 3;
+    const nameWords = words(p.name);
+    if (nameWords.length && nameWords.every(w => siteWords.indexOf(w) !== -1)) score += 3;
+    if (am) {
+      const pa = String(p.address || '').toLowerCase();
+      if (new RegExp('(^|\\D)' + am[1] + '(\\D|$)').test(pa) && pa.indexOf(am[2]) !== -1) score += 3;
+    }
     if (score > bestScore) { bestScore = score; best = p; }
   });
-  return bestScore >= 2 ? best : null;
+  return bestScore >= 3 ? best : null;
 }
 
 // Drive times. One road table call covers you and every open ticket. Straight line distance at forty miles an hour,

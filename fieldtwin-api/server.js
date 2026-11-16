@@ -234,7 +234,7 @@ const TICKET_PROMPT = [
   '"summary":string|null}],"screen_time":string|null,"confidence":"high"|"medium"|"low"}',
   'ticket is the ticket or work order number. site is the site, store or locker name as shown.',
   'opened and due as YYYY-MM-DDTHH:MM in 24 hour local time when a date is visible, or HH:MM when only a time is visible.',
-  'due is the SLA deadline, response by, or resolve by time; null when it says not provided. sla_hours is a stated SLA length in hours when no due time is shown.',
+  'due is the date and time printed under the label SLA. Copy it even when it is in the past or on an earlier day. It is never the appointment time. due is null only when the SLA line says not provided or no SLA. sla_hours is a stated SLA length in hours when no due time is shown.',
   'appt_start and appt_end are the appointment window in the same time format. duration_min is the estimated call duration in minutes.',
   'address is the full street address with city, state and zip when shown.',
   'screen_time is the clock shown in the phone status bar, HH:MM, so relative times can be placed.',
