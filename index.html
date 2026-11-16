@@ -8583,7 +8583,7 @@ function ftkDueFrom(r) {
   if (due) return due;
   const opened = ftkParseWhen(r.opened);
   if (opened && r.sla_hours) return new Date(opened.getTime() + Number(r.sla_hours) * 3600000);
-  return null;
+  return ftkParseWhen(r.appt_end);
 }
 function ftkLocalInput(d) {
   if (!d) return '';
@@ -8806,7 +8806,7 @@ function showTicketConfirm(idx) {
   html += '<div class="question">SLA due</div><input type="datetime-local" id="tkDue" value="' + ftkLocalInput(due) + '">';
   html += '<div class="question">Priority</div><input type="text" id="tkPri" value="' + escapeHtml(r.priority || '') + '">';
   html += '<div class="question">Problem</div><input type="text" id="tkSum" value="' + escapeHtml(r.summary || '') + '">';
-  html += '<div class="question">Where</div><select id="tkWhere"><option value="">pick a locker</option><option value="here">where I am now</option>'
+  html += '<div class="question">Where</div><select id="tkWhere"><option value="">pick a locker</option>' + (r.address ? '<option value="addr"' + (match ? '' : ' selected') + '>the address on the ticket</option>' : '') + '<option value="here">where I am now</option>'
     + (r.lat && !r.place_id ? '<option value="keep" selected>keep the saved spot</option>' : '')
     + lockers.map(p => '<option value="' + p.id + '"' + (match && match.id === p.id ? ' selected' : '') + '>' + escapeHtml(ftpLabel(p)) + '</option>').join('') + '</select>';
   html += '<div class="meta-line">' + (match ? 'Matched to ' + escapeHtml(ftpLabel(match)) + ' from the site name.' : 'No locker matched the site name.') + '</div>';
@@ -8825,6 +8825,15 @@ function showTicketConfirm(idx) {
     t.address = r.address || t.address || '';
     t.due_at = dueVal ? new Date(dueVal).toISOString() : null;
     if (where === 'here') { const me = mySpot(); if (me) { t.lat = me.lat; t.lon = me.lon; t.place_id = null; } }
+    else if (where === 'addr' && t.address) {
+      setStatus('finding the ticket address');
+      try {
+        const g = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(t.address));
+        const j = await g.json();
+        if (j && j[0]) { t.lat = Number(j[0].lat); t.lon = Number(j[0].lon); t.place_id = null; const near = ftpNear(t.lat, t.lon, 150, 'locker'); if (near) t.place_id = near.id; }
+        else setStatus('address not found, open the ticket and pick a locker');
+      } catch (e) { setStatus('address lookup failed, open the ticket and pick a locker'); }
+    }
     else if (where && where !== 'keep') { const p = ftPlaces.find(x => x.id === where); if (p) { t.lat = p.lat; t.lon = p.lon; t.place_id = p.id; if (!t.address) t.address = p.address || ''; } }
     if (!old) ftTickets.push(t);
     await ftkPush(t);
@@ -8834,24 +8843,39 @@ function showTicketConfirm(idx) {
   });
 }
 
-async function startTicketScan(file) {
+// A ticket often needs two photos, the SLA at the top and the address further down. Each photo waits here
+// until Read now sends them all in one call.
+let ftkShots = [];
+async function addTicketShot(file) {
+  const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
+  ftkShots.push(await shrinkDataUrl(data, 1400, 0.7));
+  const panel = document.getElementById('panel');
+  let html = '<h2>Ticket photos</h2><div class="meta-line">' + ftkShots.length + (ftkShots.length === 1 ? ' photo' : ' photos') + ' of this ticket. Scroll the work phone and add the part with the address, or read now.</div>';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">' + ftkShots.map(u => '<img src="' + u + '" style="width:72px;height:110px;object-fit:cover;border:1px solid var(--line);">').join('') + '</div>';
+  html += '<div class="ftx-row">' + (ftkShots.length < 4 ? '<button class="secondary" id="ftkMore">Add photo</button>' : '') + '<button id="ftkRead">Read now</button></div>';
+  html += '<div id="ftkMsg" class="meta-line"></div><div class="panel-actions"><button class="secondary" id="ftkDrop">Cancel</button></div>';
+  panel.innerHTML = html; panel.scrollTop = 0; panel.classList.add('open');
+  if (document.getElementById('ftkMore')) document.getElementById('ftkMore').addEventListener('click', () => document.getElementById('ticketFile').click());
+  document.getElementById('ftkRead').addEventListener('click', () => { const shots = ftkShots; ftkShots = []; document.getElementById('ftkRead').disabled = true; startTicketScan(shots); });
+  document.getElementById('ftkDrop').addEventListener('click', () => { ftkShots = []; showTickets(); });
+}
+async function startTicketScan(shots) {
   setStatus('reading the ticket screen');
   const msg = document.getElementById('ftkMsg');
   if (msg) msg.textContent = 'Reading the ticket screen. This takes a few seconds.';
   try {
-    const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
-    const small = await shrinkDataUrl(data, 1400, 0.7);
+    const small = shots;
     const base = getApiBase().replace(/\/+$/, '');
     const headers = { 'Content-Type': 'application/json' };
     let how = await apiAuthHeaders(headers);
     let res = null, lastErr = null;
     for (const wait of [0, 1500, 3000, 6000]) {
       if (wait) await new Promise(r => setTimeout(r, wait));
-      try { res = await fetch(base + '/tickets/extract', { method: 'POST', headers: headers, body: JSON.stringify({ image: small }) }); break; }
+      try { res = await fetch(base + '/tickets/extract', { method: 'POST', headers: headers, body: JSON.stringify({ images: small }) }); break; }
       catch (e) { lastErr = e; }
     }
     if (!res) throw new Error('the Field Twin service did not answer, ' + (lastErr ? lastErr.message : 'no signal'));
-    if (res.status === 401 && how !== 'token') { const h2 = { 'Content-Type': 'application/json' }; if (await apiAuthHeaders(h2, true) !== 'none') res = await fetch(base + '/tickets/extract', { method: 'POST', headers: h2, body: JSON.stringify({ image: small }) }); }
+    if (res.status === 401 && how !== 'token') { const h2 = { 'Content-Type': 'application/json' }; if (await apiAuthHeaders(h2, true) !== 'none') res = await fetch(base + '/tickets/extract', { method: 'POST', headers: h2, body: JSON.stringify({ images: small }) }); }
     if (res.status === 401) throw new Error('sign in under Account and profile so the reader knows it is you');
     if (res.status === 404) throw new Error('the Field Twin service is running an old build without the ticket reader');
     let j = {};
@@ -8869,7 +8893,7 @@ async function startTicketScan(file) {
 
 (function () {
   const inp = document.getElementById('ticketFile');
-  if (inp) inp.addEventListener('change', e => { if (e.target.files[0]) startTicketScan(e.target.files[0]); e.target.value = ''; });
+  if (inp) inp.addEventListener('change', e => { if (e.target.files[0]) addTicketShot(e.target.files[0]); e.target.value = ''; });
   const dock = document.getElementById('ticketDockBtn');
   if (dock) dock.addEventListener('click', showTickets);
   const mb = document.getElementById('ticketsBtn');

@@ -119,9 +119,10 @@ let visionLast = { model: '', status: 0, at: null, error: '' };
 
 // One shared photo reader for receipts and work tickets. Returns parsed json or throws with a readable reason.
 async function visionJson(image, prompt) {
-  const match = String(image).match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
-  const mediaType = match ? match[1].replace('image/jpg', 'image/jpeg') : 'image/jpeg';
-  const b64 = match ? match[2] : image;
+  const imgs = (Array.isArray(image) ? image : [image]).slice(0, 4).map(one => {
+    const match = String(one).match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
+    return { type: 'image', source: { type: 'base64', media_type: match ? match[1].replace('image/jpg', 'image/jpeg') : 'image/jpeg', data: match ? match[2] : one } };
+  });
   let lastReason = 'no model answered';
   for (const model of VISION_CHAIN) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -133,10 +134,7 @@ async function visionJson(image, prompt) {
           body: JSON.stringify({
             model: model,
             max_tokens: 6000,
-            messages: [{ role: 'user', content: [
-              { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
-              { type: 'text', text: prompt }
-            ] }]
+            messages: [{ role: 'user', content: imgs.concat([{ type: 'text', text: prompt }]) }]
           })
         });
       } catch (e) { lastReason = 'could not reach the model, ' + e.message; continue; }
@@ -228,14 +226,17 @@ app.post('/receipts/extract', async (req, res) => {
 });
 
 const TICKET_PROMPT = [
-  'This is a photo of a work phone screen showing one or more field service tickets.',
+  'These are photos of a work phone screen showing field service tickets. Several photos may be the same ticket scrolled to different parts; merge them into one ticket when the site or appointment matches.',
   'Return ONLY a JSON object, no markdown fences and no commentary, in this exact shape:',
   '{"tickets":[{"ticket":string|null,"site":string|null,"address":string|null,"city":string|null,',
   '"priority":string|null,"status":string|null,"opened":string|null,"due":string|null,"sla_hours":number|null,',
+  '"appt_start":string|null,"appt_end":string|null,"duration_min":number|null,',
   '"summary":string|null}],"screen_time":string|null,"confidence":"high"|"medium"|"low"}',
   'ticket is the ticket or work order number. site is the site, store or locker name as shown.',
   'opened and due as YYYY-MM-DDTHH:MM in 24 hour local time when a date is visible, or HH:MM when only a time is visible.',
-  'due is the SLA deadline, response by, or resolve by time. sla_hours is a stated SLA length in hours when no due time is shown.',
+  'due is the SLA deadline, response by, or resolve by time; null when it says not provided. sla_hours is a stated SLA length in hours when no due time is shown.',
+  'appt_start and appt_end are the appointment window in the same time format. duration_min is the estimated call duration in minutes.',
+  'address is the full street address with city, state and zip when shown.',
   'screen_time is the clock shown in the phone status bar, HH:MM, so relative times can be placed.',
   'summary is the problem in under ten words.',
   'Privacy rule: never return person names, phone numbers, email addresses, customer or account numbers, or notes about people. Leave them out entirely.',
@@ -247,8 +248,8 @@ app.post('/tickets/extract', async (req, res) => {
   const required = process.env.API_TOKEN || '';
   if (required && token !== required && !(await isSignedInUser(token))) return res.sendStatus(401);
   if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'vision key not configured' });
-  const image = req.body && req.body.image;
-  if (!image || typeof image !== 'string') return res.status(400).json({ error: 'image required as a data url or base64 string' });
+  const image = req.body && (req.body.images || req.body.image);
+  if (!image || !(typeof image === 'string' || (Array.isArray(image) && image.length))) return res.status(400).json({ error: 'image or images required as data urls' });
   try {
     const out = await visionJson(image, TICKET_PROMPT);
     const list = Array.isArray(out.parsed.tickets) ? out.parsed.tickets : [];
