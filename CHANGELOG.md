@@ -1,5 +1,7 @@
 Field Twin changelog
 
+2026-11-21, v2026.11.21. Added a Charging station place type with its own sign and its own form.
+
 2026-11-16, v2026.11.16. Added Tickets. Scan ticket screen reads work tickets from a photo of the work phone, a check screen fixes misreads and picks the locker, and each open ticket shows on the map as a countdown ring. Best next and the fork card rank stops by SLA slack after drive time, and closes inside SLA earn points. The receipt and ticket readers now share one photo reader that falls back through newer models, and Service check shows the reader key and the last reader error.
 
 2026-11-15, v2026.11.15. Added a Sites tab that puts the RTSS and RDSS survey sites on the map, with the surveys, visit log, stops, notes and photos for each place. RTSS and RDSS now open inside Field Twin and share site details. A Field Twin account works in both survey tools, and the survey server records who saved. A color key now drops down, there is a new Dash cam tab, and an RTSS and RDSS switch sits above the surveys.
