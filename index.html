@@ -5028,7 +5028,7 @@ function showInfo() {
   html += '<div class="question">Lockers</div>';
   html += '<div>Every stop logged as a parcel locker becomes a locker, named from its notes when a name is in there, such as locker Lasso. Any entry can become one with Make locker. Lockers in the menu lists them all with a search box, and each locker has its own page with its name, address, every stop logged there, all its photos, Go here, and Add photo of this locker. Add lockers from open map data finds Amazon lockers in free open map data within about a hundred miles and adds the ones you do not have. The All lockers switch loads every locker anyone on Field Twin has mapped into your list, shares the name, spot and address of yours back, and shows every locker as a pin. It works even for a coworker on his own account. Only the locker itself is shared: never who added it, when, or your stops and visits.</div>';
   html += '<div class="question">Sites, RTSS and RDSS</div>';
-  html += '<div>The Sites tab lists every survey site on the survey server, nearest first, with a search box. Each site shows its RTSS and RDSS progress and its pin on the map. RTSS is the technology site survey and RDSS is the design and setup survey, and both open inside Field Twin from a site on the Sites tab, from Other apps in the menu, or from the Survey site row on a log form or an entry. They open over the map, and the bar at the top holds Back to Field Twin plus RTSS and RDSS buttons that switch between the two surveys on the same site. A form you were filling stays as it was underneath, and the menu still opens on top. When no survey site is near the stop, Start an RTSS and RDSS site here makes one on the survey server from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and a stop goes into the RTSS visit log only when you tap Add to visit log. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with the same email and password. The survey server marks every save with the account that made it. It is still open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
+  html += '<div>The Site survey tab lists every survey site on the survey server, nearest first, with a search box. Each site shows its RTSS and RDSS progress and its pin on the map. RTSS is the technology site survey and RDSS is the design and setup survey, and both open inside Field Twin from a site on the Site survey tab, from Other apps in the menu, or from the Survey site row on a log form or an entry. They open over the map, and the bar at the top holds Back to Field Twin plus RTSS and RDSS buttons that switch between the two surveys on the same site. A form you were filling stays as it was underneath, and the menu still opens on top. When no survey site is near the stop, Start an RTSS and RDSS site here makes one on the survey server from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and a stop goes into the RTSS visit log only when you tap Add to visit log. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with the same email and password. The survey server marks every save with the account that made it. It is still open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
   html += '<div class="question">Dash cam</div>';
   html += '<div>The Dash cam tab opens Field Twin Viridian inside Field Twin. It runs the camera, motion sensors and location together, reads plates, shows the reader status including while parked, and keeps plate sightings with a best photo and a page for each plate. The camera runs only while the Dash cam tab is open, and moving to another tab turns it off.</div>';
   html += '<div class="question">Wireless survey</div>';
@@ -5058,7 +5058,7 @@ function showInfo() {
   html += '<div class="question">Road hazards</div>';
   html += '<div>Crashes and construction come from the Nevada and Arizona road departments, saved every few minutes by the Field Twin server, so history builds from the day collection started. Crash history is fatal crashes from federal records, which run about a year behind.</div>';
   html += '<div class="question">Your account and the other apps</div>';
-  html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between Field map, Inventory, Roads, Sites and Dash cam, and the same first three tabs sit at the top of Violet and Glaucous. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The buttons under Other apps open Glaucous, Violet, RTSS and RDSS.</div>';
+  html += '<div>Field Twin Violet (Inventory) and Field Twin Glaucous (Roads, first built as Chassisquiver) are separate apps that feed this map. The tabs under the title move between Field map, Inventory, Roads, Site survey and Dash cam, and the same first three tabs sit at the top of Violet and Glaucous. Field Twin and Field Twin Violet share one Supabase project and one account, the same email and password, not any outside sign in service. Field Twin Glaucous runs on its own Supabase project with its own account, and this map reads the road runs shared there. The buttons under Other apps open Glaucous, Violet, RTSS and RDSS.</div>';
   html += '<div class="question">Timeline</div>';
   html += '<div>New in version 1.0.12. Timeline in the menu splits a day into half hour blocks. Each block says how many reports came in and from which phones, then sums up what happened: where you were parked and for how long, how far you drove, odometer readings, receipts and anything you logged. When two or three phones park at the same spot at the same time, the stop is kept once and lists every phone that saw it, so extra phones back each other up instead of piling up copies. Tap a line to open that entry.</div>';
   html += '<div class="question">Battery saving with the motion sensor</div>';
@@ -6819,13 +6819,14 @@ function openGoogleMaps(dest) {
   if (!w) window.location.href = url;
 }
 
+const NAV_ZOOM = 17;
 async function navStart(dest) {
   closePanel();
   const me = mySpot();
   if (!me) { setStatus('no location yet, turn on Location and try again'); return; }
   navEnd();
   navState = { dest: dest, off: 0, lastRoute: 0, layer: L.layerGroup().addTo(map), watch: null, timer: null, follow: true };
-  try { await navDraw(me); } catch (e) { setStatus(e.message); navEnd(); return; }
+  try { await navDraw(me, true); } catch (e) { setStatus(e.message); navEnd(); return; }
   navBanner();
   if (navigator.geolocation) {
     try { navState.watch = navigator.geolocation.watchPosition(p => navTick({ lat: p.coords.latitude, lon: p.coords.longitude }), () => {}, { enableHighAccuracy: true, maximumAge: 2000 }); } catch (e) {}
@@ -6834,15 +6835,23 @@ async function navStart(dest) {
   map.on('dragstart', navUnfollow);
 }
 function navUnfollow() { if (navState) navState.follow = false; }
-async function navDraw(from) {
+async function navDraw(from, first) {
   const r = await navRoute(from, navState.dest);
   navState.route = r; navState.next = 1; navState.lastRoute = Date.now(); navState.off = 0;
   navState.layer.clearLayers();
   L.polyline(r.line, { color: '#1265c9', weight: 7, opacity: 0.85 }).addTo(navState.layer);
   L.circleMarker([navState.dest.lat, navState.dest.lon], { radius: 9, color: '#0a1b2e', fillColor: '#2e9e4f', fillOpacity: 1, weight: 3 }).addTo(navState.layer);
-  map.fitBounds(L.latLngBounds(r.line), { padding: [40, 40] });
-  const first = r.steps[1] || r.steps[0];
-  navSay('Route ready, ' + Math.round(r.miles) + ' miles. ' + (first ? first.text : ''));
+  // A new route shows the whole trip for a moment, then the map closes in on me and follows.
+  // A reroute, or the floating window, stays on me the whole time.
+  if (first && !ftPipOn) {
+    map.fitBounds(L.latLngBounds(r.line), { padding: [40, 40] });
+    navState.overview = Date.now() + 4000;
+    setTimeout(() => { const s = mySpot(); if (navState && navState.follow && s) map.setView([s.lat, s.lon], NAV_ZOOM, { animate: true }); }, 4000);
+  } else if (navState.follow) {
+    map.setView([from.lat, from.lon], Math.max(map.getZoom(), NAV_ZOOM), { animate: false });
+  }
+  const step1 = r.steps[1] || r.steps[0];
+  navSay('Route ready, ' + Math.round(r.miles) + ' miles. ' + (step1 ? step1.text : ''));
 }
 // Floating window (picture in picture) for the phone app: only the map and the next turn show while it floats.
 function ftEnterPip() {
@@ -6885,7 +6894,7 @@ function ftPipCenter() {
   if (ftPipOn) ftPipSize();
   try { map.invalidateSize({ pan: false }); } catch (e) {}
   const s = mySpot();
-  if (s && (ftPipOn || (navState && navState.follow))) map.setView([s.lat, s.lon], ftPipOn ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: false });
+  if (s && (ftPipOn || (navState && navState.follow))) map.setView([s.lat, s.lon], ftPipOn ? Math.max(map.getZoom(), NAV_ZOOM) : map.getZoom(), { animate: false });
   navBanner();
 }
 window.addEventListener('resize', () => { if (document.body.classList.contains('pip')) ftPipCenter(); });
@@ -6931,7 +6940,10 @@ function navLineMeters(p, line) {
 async function navTick(p) {
   if (!navState || !navState.route || navState.busy) return;
   const r = navState.route;
-  if (navState.follow) map.panTo([p.lat, p.lon], { animate: true });
+  if (navState.follow && !(navState.overview > Date.now())) {
+    if (map.getZoom() < NAV_ZOOM - 1) map.setView([p.lat, p.lon], NAV_ZOOM, { animate: true });
+    else map.panTo([p.lat, p.lon], { animate: true });
+  }
   if (navMeters(p, navState.dest) < 60) { navSay('You have arrived.'); navEnd('Arrived.'); return; }
   const st = r.steps[navState.next];
   if (st) {
@@ -7430,7 +7442,7 @@ window.ftCompanionIn = function (kind, text) {
     return phoneSpot();
   };
   const draw = navDraw;
-  navDraw = async function (from) { const r = await draw(from); ftcSendRoute(); return r; };
+  navDraw = async function (from, first) { const r = await draw(from, first); ftcSendRoute(); return r; };
   const end2 = navEnd;
   navEnd = function (note) { ftcSend('X'); return end2(note); };
   const banner = navBanner;
@@ -8178,7 +8190,7 @@ async function showSites() {
       : '<div class="meta-line">No sites yet. Start one here, or create one in RTSS or RDSS.</div>';
     box.querySelectorAll('[data-sx]').forEach(el => el.addEventListener('click', () => showSite(el.getAttribute('data-sx'))));
   };
-  let html = '<h2>Sites</h2><div class="meta-line">Every place surveyed in RTSS and RDSS. Pin one to the map and its visits and photos collect here over time.</div>';
+  let html = '<h2>Site survey</h2><div class="meta-line">Every place surveyed in RTSS and RDSS. Pin one to the map and its visits and photos collect here over time.</div>';
   html += '<input type="text" id="ftxFind" autocomplete="off" placeholder="Site name or street">';
   html += '<button id="ftxNew" style="width:100%;margin:6px 0;">Start a site here</button>';
   html += '<div id="ftxRows"><div class="meta-line">Loading sites.</div></div>';
@@ -8332,7 +8344,7 @@ async function ftxSurveyBox(id, p, s) {
   const tabs = document.getElementById('twinTabs');
   const btn = document.createElement('button');
   btn.id = 'tabSites';
-  btn.textContent = 'Sites';
+  btn.textContent = 'Site survey';
   tabs.appendChild(btn);
   btn.addEventListener('click', showSites);
   setTimeout(ftxPins, 3000);
