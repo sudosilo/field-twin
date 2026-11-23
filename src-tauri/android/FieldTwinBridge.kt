@@ -218,6 +218,41 @@ class FieldTwinBridge(private val activity: Activity) {
   fun lastError(): String = FieldTwinState.prefs(activity).getString("lastError", "") ?: ""
 
   // Opens a link in the app that owns it, such as Google Maps for a driving route.
+  // Screen turning from the app's own button: "landscape" holds it sideways, "portrait" holds it upright, anything else turns with the phone.
+  @JavascriptInterface
+  fun setRotation(mode: String) {
+    activity.runOnUiThread {
+      activity.requestedOrientation = when (mode) {
+        "landscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        "portrait" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+      }
+    }
+  }
+
+  // Dark screen for the dash cam: the display drops to the lowest brightness the phone allows and stays on,
+  // so the camera and plate reader keep running. Turning the screen fully off would make Android stop the camera.
+  @Volatile private var darkOn = false
+  @Volatile private var awakeOn = false
+  private fun applyScreen() {
+    activity.runOnUiThread {
+      try {
+        val w = activity.window
+        val lp = w.attributes
+        lp.screenBrightness = if (darkOn) 0.0f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        w.attributes = lp
+        if (darkOn || awakeOn) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+      } catch (e: Exception) {}
+    }
+  }
+
+  @JavascriptInterface
+  fun setDark(on: Boolean) { darkOn = on; applyScreen() }
+
+  @JavascriptInterface
+  fun keepAwake(on: Boolean) { awakeOn = on; applyScreen() }
+
   @JavascriptInterface
   fun enterPip(): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false

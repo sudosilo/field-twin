@@ -5030,7 +5030,7 @@ function showInfo() {
   html += '<div class="question">Sites, RTSS and RDSS</div>';
   html += '<div>The Site survey tab lists every survey site on the survey server, nearest first, with a search box. Each site shows its RTSS and RDSS progress and its pin on the map. RTSS is the technology site survey and RDSS is the design and setup survey, and both open inside Field Twin from a site on the Site survey tab, from Other apps in the menu, or from the Survey site row on a log form or an entry. They open over the map, and the bar at the top holds Back to Field Twin plus RTSS and RDSS buttons that switch between the two surveys on the same site. A form you were filling stays as it was underneath, and the menu still opens on top. When no survey site is near the stop, Start an RTSS and RDSS site here makes one on the survey server from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and a stop goes into the RTSS visit log only when you tap Add to visit log. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with the same email and password. The survey server marks every save with the account that made it. It is still open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
   html += '<div class="question">Dash cam</div>';
-  html += '<div>The Dash cam tab opens Field Twin Viridian inside Field Twin. It runs the camera, motion sensors and location together, reads plates, shows the reader status including while parked, and keeps plate sightings with a best photo and a page for each plate. The camera runs only while the Dash cam tab is open, and moving to another tab turns it off.</div>';
+  html += '<div>The Dash cam tab opens Field Twin Viridian inside Field Twin. It runs the camera, motion sensors and location together, reads plates, shows the reader status including while parked, and keeps plate sightings with a best photo and a page for each plate. The camera runs only while the Dash cam tab is open, and moving to another tab turns it off. The phone button in the dash cam holds the screen sideways or upright without the Android rotate button, and sideways puts the camera on the left. The moon button darkens the screen and keeps it on so the camera and plate reader keep running on less battery; tap the screen to wake it.</div>';
   html += '<div class="question">Wireless survey</div>';
   html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. When a WiGLE account is connected on the Field Twin server, each scan also goes up to that account as a small WiGLE file holding the radio list, the time and where the phone stood, and nothing about the locker. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
@@ -8396,6 +8396,14 @@ document.getElementById('svRdss').addEventListener('click', () => ftxOpenApp('rd
 // ---- Dash cam tab: Field Twin Viridian, the camera, motion and plate reader app, opened in place ----
 // The camera runs only while this tab is open. Leaving the tab closes the page, which turns the camera off.
 const VIRIDIAN_SITE = 'https://field-twin-viridian.vercel.app/';
+// The dash cam asks the phone to turn the screen, go dark, or stay awake. Only these three, and only from the dash cam page.
+window.addEventListener('message', ev => {
+  const f = document.querySelector('#camView iframe');
+  const m = ev.data && ev.data.viridianPhone;
+  if (!m || !f || ev.source !== f.contentWindow || ev.origin !== new URL(VIRIDIAN_SITE).origin) return;
+  if (['setRotation', 'setDark', 'keepAwake'].indexOf(m.cmd) < 0) return;
+  try { if (window.FieldTwinNative && typeof window.FieldTwinNative[m.cmd] === 'function') window.FieldTwinNative[m.cmd](m.cmd === 'setRotation' ? String(m.arg) : !!m.arg); } catch (e) {}
+});
 (function () {
   const tabs = document.getElementById('twinTabs');
   const btn = document.createElement('button');
@@ -8407,6 +8415,7 @@ const VIRIDIAN_SITE = 'https://field-twin-viridian.vercel.app/';
   document.getElementById('violetView').after(view);
   function close() {
     if (!view.classList.contains('open')) return;
+    try { if (window.FieldTwinNative) { window.FieldTwinNative.setDark(false); window.FieldTwinNative.keepAwake(false); } } catch (e) {}
     view.classList.remove('open');
     view.innerHTML = '';
     btn.classList.remove('on');
