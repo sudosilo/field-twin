@@ -8,8 +8,18 @@ alter table public.hire_portal_admins enable row level security;
 drop policy if exists hire_portal_admins_self on public.hire_portal_admins;
 create policy hire_portal_admins_self on public.hire_portal_admins for select to authenticated using (user_id = auth.uid());
 grant select on public.hire_portal_admins to authenticated;
--- Every account that already exists in this project is an owner account, so each one becomes a Hire Portal admin.
-insert into public.hire_portal_admins (user_id) select id from auth.users on conflict do nothing;
+-- Admins join by signing in and entering the owner code once. Only the code's hash lives here.
+delete from public.hire_portal_admins where added_at < '2026-11-24 00:20:00+00';
+create or replace function public.hire_portal_claim_admin(code text)
+returns boolean language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if auth.uid() is null then return false; end if;
+  if encode(extensions.digest(code, 'sha256'), 'hex') <> 'c3ec47944237b7404b22c92c594ae561dad753e07bafbf2d995c316a433ba6ed' then return false; end if;
+  insert into public.hire_portal_admins (user_id) values (auth.uid()) on conflict do nothing;
+  return true;
+end $$;
+revoke all on function public.hire_portal_claim_admin(text) from public;
+grant execute on function public.hire_portal_claim_admin(text) to authenticated;
 
 create table if not exists public.hire_portal_applications (
   id text primary key,
