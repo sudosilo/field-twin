@@ -53,4 +53,5 @@ $$;
 revoke all on function public.hire_portal_set_photo(text, text) from public;
 grant execute on function public.hire_portal_set_photo(text, text) to anon, authenticated;
 
+delete from public.hire_portal_applications where name = 'Claude Test Run';
 select (select count(*) from public.hire_portal_admins) as admins, (select count(*) from public.hire_portal_applications) as applications;
