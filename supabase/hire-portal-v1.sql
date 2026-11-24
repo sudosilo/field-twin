@@ -9,7 +9,7 @@ drop policy if exists hire_portal_admins_self on public.hire_portal_admins;
 create policy hire_portal_admins_self on public.hire_portal_admins for select to authenticated using (user_id = auth.uid());
 grant select on public.hire_portal_admins to authenticated;
 -- Admins join by signing in and entering the owner code once. Only the code's hash lives here.
-delete from public.hire_portal_admins where added_at < '2026-11-24 00:20:00+00';
+delete from public.hire_portal_admins where added_at < '2026-11-24 00:15:40+00';
 create or replace function public.hire_portal_claim_admin(code text)
 returns boolean language plpgsql security definer set search_path = public, extensions as $$
 begin
