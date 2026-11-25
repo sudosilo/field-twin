@@ -8,6 +8,4 @@ Live at field-twin-teal.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-11-21, v2026.11.21. Added a Charging station place type with its own sign and its own form.
-
 Full history is in CHANGELOG.md.
