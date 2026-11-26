@@ -1,0 +1,62 @@
+name: Hub View worker
+
+# Every few minutes, builds any queued Hub View scans: downloads manuals and diagrams, extracts parts,
+# builds the 3D parts list, checks it against the sources and publishes it to the shared library.
+# The worker code lives in sudosilo/2026-11-22-orange-hubview under 2026-11-22-orange-hubview-backend.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/hubview-worker-v1.yml']
+
+concurrency:
+  group: hubview-worker
+  cancel-in-progress: false
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Get the service key
+        id: key
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -e
+          [ -n "$TOKEN" ] || { echo "SUPABASE_ACCESS_TOKEN secret is not set"; exit 1; }
+          k=$(curl -s "https://api.supabase.com/v1/projects/zasyjjoypkpvyqdueums/api-keys?reveal=true" -H "Authorization: Bearer $TOKEN" | jq -r '[.[] | select(.name=="service_role" or .type=="secret")][0].api_key // empty')
+          [ -n "$k" ] || { echo "no service key returned"; exit 1; }
+          echo "::add-mask::$k"
+          echo "sk=$k" >> "$GITHUB_OUTPUT"
+      - name: Look for queued scans
+        id: look
+        env:
+          SK: ${{ steps.key.outputs.sk }}
+        run: |
+          n=$(curl -s "https://zasyjjoypkpvyqdueums.supabase.co/rest/v1/hv_jobs?status=eq.queued&select=id&limit=1" -H "apikey: $SK" -H "Authorization: Bearer $SK" | jq 'length')
+          echo "queued: $n"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+      - name: Get the worker
+        if: steps.look.outputs.n != '0'
+        uses: actions/checkout@v4
+        with:
+          repository: sudosilo/2026-11-22-orange-hubview
+          sparse-checkout: 2026-11-22-orange-hubview-backend
+          path: hubview
+      - name: Install PDF tools
+        if: steps.look.outputs.n != '0'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils qpdf
+      - uses: actions/setup-node@v4
+        if: steps.look.outputs.n != '0'
+        with:
+          node-version: 20
+      - name: Run the worker
+        if: steps.look.outputs.n != '0'
+        env:
+          SB_URL: https://zasyjjoypkpvyqdueums.supabase.co
+          SB_KEY: ${{ steps.key.outputs.sk }}
+          SHARED: https://shared-server-azure.vercel.app/api/shared-server-v1-claude
+        run: node hubview/2026-11-22-orange-hubview-backend/hubview-worker-v1.mjs
