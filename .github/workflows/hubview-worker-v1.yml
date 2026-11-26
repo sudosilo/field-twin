@@ -36,7 +36,7 @@ jobs:
         env:
           SK: ${{ steps.key.outputs.sk }}
         run: |
-          n=$(curl -s "https://zasyjjoypkpvyqdueums.supabase.co/rest/v1/hv_jobs?status=eq.queued&select=id&limit=1" -H "apikey: $SK" -H "Authorization: Bearer $SK" | jq 'length')
+          n=$(curl -s "https://zasyjjoypkpvyqdueums.supabase.co/rest/v1/hv_jobs?status=eq.queued&select=id&limit=1" -H "apikey: $SK" -H "Authorization: Bearer $SK" | jq 'if type=="array" then length else 0 end')
           echo "queued: $n"
           echo "n=$n" >> "$GITHUB_OUTPUT"
       - name: Get the worker
