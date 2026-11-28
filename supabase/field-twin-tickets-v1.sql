@@ -22,3 +22,10 @@ alter table public.field_twin_tickets enable row level security;
 drop policy if exists field_twin_tickets_own on public.field_twin_tickets;
 create policy field_twin_tickets_own on public.field_twin_tickets for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 grant select, insert, update, delete on public.field_twin_tickets to authenticated;
+-- Ticket clock: time on site at the ticket's spot. visits holds each stay there as {a, l} in milliseconds, l empty while still there.
+alter table public.field_twin_tickets add column if not exists arrived_at timestamptz;
+alter table public.field_twin_tickets add column if not exists left_at timestamptz;
+alter table public.field_twin_tickets add column if not exists onsite_min integer not null default 0;
+alter table public.field_twin_tickets add column if not exists on_site boolean not null default false;
+alter table public.field_twin_tickets add column if not exists visits jsonb not null default '[]'::jsonb;
+notify pgrst, 'reload schema';

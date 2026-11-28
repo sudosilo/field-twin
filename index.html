@@ -5031,6 +5031,8 @@ function showInfo() {
   html += '<div>The Site survey tab lists every survey site on the survey server, nearest first, with a search box. Each site shows its RTSS and RDSS progress and its pin on the map. RTSS is the technology site survey and RDSS is the design and setup survey, and both open inside Field Twin from a site on the Site survey tab, from Other apps in the menu, or from the Survey site row on a log form or an entry. They open over the map, and the bar at the top holds Back to Field Twin plus RTSS and RDSS buttons that switch between the two surveys on the same site. A form you were filling stays as it was underneath, and the menu still opens on top. When no survey site is near the stop, Start an RTSS and RDSS site here makes one on the survey server from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and a stop goes into the RTSS visit log only when you tap Add to visit log. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with the same email and password. The survey server marks every save with the account that made it. It is still open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
   html += '<div class="question">Dash cam</div>';
   html += '<div>The Dash cam tab opens Field Twin Viridian inside Field Twin. It runs the camera, motion sensors and location together, reads plates, shows the reader status including while parked, and keeps plate sightings with a best photo and a page for each plate. The camera runs only while the Dash cam tab is open, and moving to another tab turns it off. The phone button in the dash cam holds the screen sideways or upright without the Android rotate button, and sideways puts the camera on the left. The moon button darkens the screen and keeps it on so the camera and plate reader keep running on less battery; tap the screen to wake it.</div>';
+  html += '<div class="question">Ticket clock</div>';
+  html += '<div>Standing within about a block of an open ticket\'s spot clocks you into that ticket. Field Twin keeps each visit\'s arrival and leaving time, and the ticket carries the first arrival, the last leaving, total minutes on site and whether you are there right now, all saved with the ticket so other apps reading your tickets see it. Stepping away for a couple of minutes does not end a visit, and closing the ticket ends it. The phone app\'s stop tracker fills in visits from times the screen was off, using the real arrival time. The ticket page lists every visit.</div>';
   html += '<div class="question">Wireless survey</div>';
   html += '<div>Each locker page has a Wireless survey section. Stand at the locker and tap Scan Wi-Fi and Bluetooth. In about ten seconds the phone app lists every Wi-Fi network and every Bluetooth device it can hear there, strongest first, with the band, channel and signal strength of each. The summary line says how crowded the 2.4 band is, which is the band Bluetooth lockers use, and how the Wi-Fi networks spread across its low, middle and high channels. The latest scan stays on the locker with a short history of earlier ones, syncs to your other phones, and is never shared on the team list. When a WiGLE account is connected on the Field Twin server, each scan also goes up to that account as a small WiGLE file holding the radio list, the time and where the phone stood, and nothing about the locker. The scan only listens. It runs in the phone app, because a web browser is not allowed to list Wi-Fi networks.</div>';
   html += '<div class="question">Locker site for Parcelsun</div>';
@@ -5748,6 +5750,7 @@ window.fieldTwinReady = init();
       let stays = [];
       try { stays = JSON.parse(N.getStays() || '[]'); } catch (e) { stays = []; }
       if (!stays.length) return;
+      try { if (typeof window.ftkFromStays === 'function') window.ftkFromStays(stays); } catch (e) {}
       const have = new Set(entries.map(e => e.id));
       const done = [];
       let added = 0;
@@ -8599,7 +8602,9 @@ function ftkRow(t) {
   return { id: t.id, ticket: t.ticket || '', site: t.site || '', address: t.address || '', place_id: t.place_id || null,
     lat: t.lat, lon: t.lon, priority: t.priority || '', summary: t.summary || '', opened_at: t.opened_at || null,
     due_at: t.due_at, status: t.status, closed_at: t.closed_at || null, made_sla: t.made_sla === undefined ? null : t.made_sla,
-    points: t.points || 0, updated_at: t.updated_at };
+    points: t.points || 0, updated_at: t.updated_at,
+    arrived_at: t.arrived_at || null, left_at: t.left_at || null, onsite_min: t.onsite_min || 0, on_site: !!t.on_site,
+    visits: Array.isArray(t.visits) ? t.visits : [] };
 }
 async function ftkPush(t) {
   t.updated_at = new Date().toISOString();
@@ -8851,6 +8856,7 @@ function showTicket(id) {
   html += '<div class="meta-line">' + escapeHtml(t.site || '') + (t.address ? ', ' + escapeHtml(t.address) : '') + '</div>';
   if (t.summary) html += '<div class="meta-line">' + escapeHtml(t.summary) + '</div>';
   if (t.due_at) html += '<div class="question" style="color:' + ftkColor(slack) + ';">' + (t.status === 'open' ? ftkClock(slack) + ' to SLA, before driving' : (t.made_sla ? 'Closed inside SLA, ' + t.points + ' points' : 'Closed after SLA')) + '</div>';
+  html += ftkSiteLine(t);
   html += '<div class="panel-actions">';
   if (t.status === 'open') html += '<button id="ftkDone">Closed now</button><button class="secondary" id="ftkGo">Go</button>';
   html += '<button class="secondary" id="ftkEdit">Edit</button><button class="secondary" id="ftkDel">Delete</button><button class="secondary" id="ftkBack">Back</button></div>';
@@ -8865,6 +8871,7 @@ function showTicket(id) {
   if (t.status === 'open') {
     document.getElementById('ftkDone').addEventListener('click', async () => {
       t.status = 'closed'; t.closed_at = new Date().toISOString();
+      { const v = t.visits || []; const last = v[v.length - 1]; if (last && last.l == null) last.l = Date.now(); ftkSummarize(t); }
       t.made_sla = t.due_at ? new Date(t.closed_at) <= new Date(t.due_at) : null;
       t.points = ftkPoints(t);
       await ftkPush(t); ftkPins();
@@ -8986,7 +8993,122 @@ async function startTicketScan(shots) {
   if (mb) mb.addEventListener('click', () => { document.getElementById('sideMenu').classList.remove('open'); document.getElementById('menuOverlay').classList.remove('open'); showTickets(); });
   setTimeout(() => { ftkPins(); ftkPull(); }, 3500);
   setInterval(ftkPull, 5 * 60000);
+  setTimeout(ftkClockTick, 6000);
+  setInterval(ftkClockTick, 30000);
 })();
+
+// ---- Ticket clock: time on site is time on the ticket ----
+// Being within FTK_SITE_M of a ticket's spot clocks you into that ticket. Each visit keeps its arrival and leaving
+// time, and the ticket carries the first arrival, the last leaving, the total minutes on site and whether you are
+// there right now, so anything reading the tickets table sees it. The phone app's stop tracker runs with the screen
+// off, so its stops fill in visits the page missed, with the true arrival time.
+const FTK_SITE_M = 150;          // how close counts as on site
+const FTK_LEAVE_MS = 3 * 60000;  // outside this long before a visit ends, so a walk to the truck does not split it
+const FTK_JOIN_MS = 10 * 60000;  // visits closer together than this merge into one
+function ftkMeters(aLat, aLon, bLat, bLon) {
+  const r = 6371000, k = Math.PI / 180;
+  const dLat = (bLat - aLat) * k, dLon = (bLon - aLon) * k;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * k) * Math.cos(bLat * k) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(x));
+}
+function ftkNear(t, lat, lon) { return isFinite(t.lat) && isFinite(t.lon) && isFinite(lat) && ftkMeters(t.lat, t.lon, lat, lon) <= FTK_SITE_M; }
+// Visits are { a: arrived ms, l: left ms or null while still there }.
+function ftkAddVisit(t, a, l) {
+  const v = Array.isArray(t.visits) ? t.visits.slice() : [];
+  const end = x => (x.l == null ? Infinity : x.l);
+  let merged = false;
+  for (const x of v) {
+    if (a <= end(x) + FTK_JOIN_MS && (l == null ? Infinity : l) >= x.a - FTK_JOIN_MS) {
+      x.a = Math.min(x.a, a);
+      x.l = (x.l == null || l == null) ? null : Math.max(x.l, l);
+      merged = true;
+      break;
+    }
+  }
+  if (!merged) v.push({ a, l });
+  v.sort((p, q) => p.a - q.a);
+  t.visits = v.map(x => ({ a: x.a, l: x.l }));
+}
+function ftkSummarize(t) {
+  const v = Array.isArray(t.visits) ? t.visits : [];
+  const now = Date.now();
+  t.arrived_at = v.length ? new Date(v[0].a).toISOString() : null;
+  const last = v[v.length - 1];
+  t.on_site = !!(last && last.l == null);
+  t.left_at = last && last.l != null ? new Date(last.l).toISOString() : null;
+  t.onsite_min = Math.round(v.reduce((m, x) => m + ((x.l == null ? now : x.l) - x.a), 0) / 60000);
+}
+// A ticket can take time from when it was opened (or first seen) until a little after it closed.
+function ftkWindow(t) {
+  const from = t.opened_at ? new Date(t.opened_at).getTime() - 12 * 3600000 : 0;
+  const to = t.closed_at ? new Date(t.closed_at).getTime() + 5 * 60000 : Infinity;
+  return [from, to];
+}
+// Finished stops from the phone app, before they are handed to the stop log.
+window.ftkFromStays = function (stays) {
+  let changed = [];
+  for (const st of stays || []) {
+    for (const t of ftTickets) {
+      if (!ftkNear(t, st.lat, st.lon)) continue;
+      const [from, to] = ftkWindow(t);
+      if (st.leftAt < from || st.arrivedAt > to) continue;
+      const before = JSON.stringify(t.visits || []);
+      ftkAddVisit(t, st.arrivedAt, Math.min(st.leftAt, to));
+      // the live visit for this same stop closes at the stop's real leaving time
+      const v = t.visits; const last = v[v.length - 1];
+      if (last && last.l == null && st.leftAt >= last.a - FTK_JOIN_MS) last.l = Math.min(st.leftAt, to);
+      if (JSON.stringify(t.visits) !== before) changed.push(t);
+    }
+  }
+  changed = Array.from(new Set(changed));
+  changed.forEach(t => { ftkSummarize(t); ftkPush(t); });
+};
+let ftkLastPush = {};
+function ftkClockTick() {
+  const me = mySpot();
+  const now = Date.now();
+  // the phone app's open stop gives the real arrival time even if the page was asleep when you pulled in
+  let openStay = null;
+  try { if (window.FieldTwinNative) openStay = JSON.parse(window.FieldTwinNative.openStay() || 'null'); } catch (e) { openStay = null; }
+  const fresh = me && (!me.t || now - me.t < 5 * 60000);
+  for (const t of ftTickets) {
+    if (!isFinite(t.lat)) continue;
+    const v = Array.isArray(t.visits) ? t.visits : (t.visits = []);
+    const live = v.length && v[v.length - 1].l == null ? v[v.length - 1] : null;
+    const here = fresh && ftkNear(t, me.lat, me.lon);
+    let changed = false;
+    if (here && t.status === 'open') {
+      if (!live) {
+        const a = openStay && ftkNear(t, openStay.lat, openStay.lon) ? openStay.arrivedAt : now;
+        ftkAddVisit(t, a, null);
+        t._outSince = 0;
+        changed = true;
+        setStatus('on site for ticket ' + (t.ticket || t.site || '') + ', clock started');
+      } else t._outSince = 0;
+    } else if (live) {
+      const closedAt = t.closed_at ? new Date(t.closed_at).getTime() : 0;
+      if (t.status !== 'open' && closedAt) { live.l = Math.max(live.a, closedAt); changed = true; }
+      else if (fresh) {
+        if (!t._outSince) t._outSince = now;
+        else if (now - t._outSince >= FTK_LEAVE_MS) { live.l = Math.max(live.a, t._outSince); t._outSince = 0; changed = true; }
+      }
+    }
+    if (changed || (live && now - (ftkLastPush[t.id] || 0) > 5 * 60000)) {
+      ftkSummarize(t);
+      ftkLastPush[t.id] = now;
+      ftkPush(t);
+    }
+  }
+}
+function ftkSiteLine(t) {
+  ftkSummarize(t);
+  const v = t.visits || [];
+  if (!v.length) return '';
+  const tm = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  let out = '<div class="question">' + (t.on_site ? 'On site now, ' : 'Time on site, ') + ftkClock(t.onsite_min * 60000) + '</div>';
+  out += v.map(x => '<div class="meta-line">' + tm(x.a) + ' to ' + (x.l == null ? 'now' : tm(x.l)) + '</div>').join('');
+  return out;
+}
 </script>
   <!-- =====================================================================
        MOHAVE TECHNOLOGY GROUP // CREATOR SEAL
