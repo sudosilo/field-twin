@@ -5031,6 +5031,8 @@ function showInfo() {
   html += '<div>The Site survey tab lists every survey site on the survey server, nearest first, with a search box. Each site shows its RTSS and RDSS progress and its pin on the map. RTSS is the technology site survey and RDSS is the design and setup survey, and both open inside Field Twin from a site on the Site survey tab, from Other apps in the menu, or from the Survey site row on a log form or an entry. They open over the map, and the bar at the top holds Back to Field Twin plus RTSS and RDSS buttons that switch between the two surveys on the same site. A form you were filling stays as it was underneath, and the menu still opens on top. When no survey site is near the stop, Start an RTSS and RDSS site here makes one on the survey server from the map address. Opened from Field Twin, the survey fills its blank name, address, city, state and location from the stop and never changes anything already answered. RTSS also lists your Field Twin stops at that site in a From Field Twin card, and a stop goes into the RTSS visit log only when you tap Add to visit log. RTSS and RDSS use this same Field Twin account. Opened from Field Twin they are signed in already, and opened on their own you sign in from their menu with the same email and password. The survey server marks every save with the account that made it. It is still open to anyone with a link, so your stops, dates and notes stay off it unless you add them.</div>';
   html += '<div class="question">Dash cam</div>';
   html += '<div>The Dash cam tab opens Field Twin Viridian inside Field Twin. It runs the camera, motion sensors and location together, reads plates, shows the reader status including while parked, and keeps plate sightings with a best photo and a page for each plate. The camera runs only while the Dash cam tab is open, and moving to another tab turns it off. The phone button in the dash cam holds the screen sideways or upright without the Android rotate button, and sideways puts the camera on the left. The moon button darkens the screen and keeps it on so the camera and plate reader keep running on less battery; tap the screen to wake it.</div>';
+  html += '<div class="question">Work clock</div>';
+  html += '<div>Sitting at any locker on your map is work, so Field Twin logs it on its own with no ticket needed. Pull up to a locker and the clock starts, using the real arrival time from the phone app. Leave for more than a few minutes and the visit closes with its minutes. Every visit is saved to your account in the work visits list, with the locker, arrival, leaving, minutes and whether you are there now, so other apps can read it. If an open ticket sits at that locker, the visit carries the ticket number too. Each locker page lists its recent visits.</div>';
   html += '<div class="question">Ticket clock</div>';
   html += '<div>Standing within about a block of an open ticket\'s spot clocks you into that ticket. Field Twin keeps each visit\'s arrival and leaving time, and the ticket carries the first arrival, the last leaving, total minutes on site and whether you are there right now, all saved with the ticket so other apps reading your tickets see it. Stepping away for a couple of minutes does not end a visit, and closing the ticket ends it. The phone app\'s stop tracker fills in visits from times the screen was off, using the real arrival time. The ticket page lists every visit.</div>';
   html += '<div class="question">Wireless survey</div>';
@@ -5751,6 +5753,7 @@ window.fieldTwinReady = init();
       try { stays = JSON.parse(N.getStays() || '[]'); } catch (e) { stays = []; }
       if (!stays.length) return;
       try { if (typeof window.ftkFromStays === 'function') window.ftkFromStays(stays); } catch (e) {}
+      try { if (typeof window.ftwFromStays === 'function') window.ftwFromStays(stays); } catch (e) {}
       const have = new Set(entries.map(e => e.id));
       const done = [];
       let added = 0;
@@ -7689,6 +7692,7 @@ function showLocker(p) {
   html += '<div class="question">Locker name</div><input type="text" id="lockerName" autocomplete="off" placeholder="Name, like Lasso" value="' + escapeHtml(p.name || '').replace(/"/g, '&quot;') + '">';
   html += '<div class="question">Locker notes</div><textarea id="lockerNotes" rows="3" placeholder="Gate code, where to park, which bank">' + escapeHtml(p.notes || '') + '</textarea>';
   html += '<div style="display:flex;gap:10px;margin:10px 0;"><button id="lockerSave" style="flex:1;">Save</button><button class="secondary" id="lockerGo" style="flex:1;">Go here</button></div>';
+  html += (typeof ftwHtml === 'function' ? ftwHtml(p) : '');
   html += ftsSiteHtml(p);
   html += ftrHtml(p);
   const extra = ftphAt(p);
@@ -9100,6 +9104,113 @@ function ftkClockTick() {
     }
   }
 }
+// ---- Work clock: sitting at any known locker is work, logged on its own ----
+// No ticket needed. Each visit to a locker on the map becomes a row in field_twin_work_visits with arrival,
+// leaving, minutes and whether you are there now. When an open ticket sits at that locker, the visit carries it.
+let ftWork = [];
+try { ftWork = JSON.parse(localStorage.getItem('ftWorkVisits') || '[]') || []; } catch (e) { ftWork = []; }
+function ftwSave() {
+  const cut = Date.now() - 60 * 86400000;
+  ftWork = ftWork.filter(v => v.a > cut);
+  try { localStorage.setItem('ftWorkVisits', JSON.stringify(ftWork)); } catch (e) {}
+}
+function ftwLockers() { return (typeof ftPlaces !== 'undefined' ? ftPlaces : []).filter(p => p.kind === 'locker' && isFinite(p.lat) && isFinite(p.lon)); }
+function ftwNearest(lat, lon) {
+  let best = null, bd = FTK_SITE_M;
+  for (const p of ftwLockers()) { const d = ftkMeters(p.lat, p.lon, lat, lon); if (d <= bd) { bd = d; best = p; } }
+  return best;
+}
+function ftwTicketFor(p, at) {
+  return ftTickets.find(t => ftkNear(t, p.lat, p.lon) && (() => { const [f, to] = ftkWindow(t); return at >= f && at <= to; })()) || null;
+}
+function ftwRow(v) {
+  const end = v.l == null ? Date.now() : v.l;
+  return { id: v.id, place_id: v.place || null, locker: v.name || '', address: v.address || '', lat: v.lat, lon: v.lon,
+    arrived_at: new Date(v.a).toISOString(), left_at: v.l == null ? null : new Date(v.l).toISOString(),
+    minutes: Math.max(0, Math.round((end - v.a) / 60000)), on_site: v.l == null, ticket_id: v.ticketId || null,
+    ticket: v.ticket || '', source: v.src || 'auto', updated_at: new Date().toISOString() };
+}
+async function ftwPush(v) {
+  ftwSave();
+  if (typeof cloudReady !== 'function' || !cloudReady()) { v.dirty = true; ftwSave(); return; }
+  try { const r = await sb.from('field_twin_work_visits').upsert(ftwRow(v), { onConflict: 'id' }); v.dirty = !!r.error; } catch (e) { v.dirty = true; }
+  ftwSave();
+}
+function ftwLink(v, p) {
+  const t = ftwTicketFor(p, v.a);
+  if (t) { v.ticketId = t.id; v.ticket = t.ticket || ''; }
+}
+// Start or extend a visit at locker p. Visits at the same locker closer than FTK_JOIN_MS join into one.
+function ftwVisit(p, a, l, src) {
+  const near = ftWork.find(v => v.place === p.id && a <= (v.l == null ? Infinity : v.l) + FTK_JOIN_MS && (l == null ? Infinity : l) >= v.a - FTK_JOIN_MS);
+  if (near) {
+    near.a = Math.min(near.a, a);
+    if (near.l != null) near.l = l == null ? null : Math.max(near.l, l);
+    if (!near.ticketId) ftwLink(near, p);
+    return near;
+  }
+  const v = { id: 'wv-' + a.toString(36) + '-' + String(p.id).slice(-6), place: p.id, name: ftpLabel(p), address: p.address || '',
+    lat: p.lat, lon: p.lon, a, l, src: src || 'auto' };
+  ftwLink(v, p);
+  ftWork.push(v);
+  ftWork.sort((x, y) => x.a - y.a);
+  return v;
+}
+// Finished stops from the phone app's tracker, which runs with the screen off.
+window.ftwFromStays = function (stays) {
+  const touched = new Set();
+  for (const st of stays || []) {
+    const p = ftwNearest(st.lat, st.lon);
+    if (!p) continue;
+    const v = ftwVisit(p, st.arrivedAt, st.leftAt, 'phone stop');
+    if (v.l == null && st.leftAt >= v.a) v.l = st.leftAt;
+    touched.add(v);
+  }
+  touched.forEach(v => ftwPush(v));
+};
+let ftwOut = 0, ftwPushedAt = 0;
+function ftwTick() {
+  const me = mySpot();
+  const now = Date.now();
+  if (!me || (me.t && now - me.t > 5 * 60000)) return;
+  const live = ftWork.find(v => v.l == null);
+  const p = ftwNearest(me.lat, me.lon);
+  if (p && live && live.place === p.id) {
+    ftwOut = 0;
+    if (now - ftwPushedAt > 5 * 60000) { ftwPushedAt = now; ftwPush(live); }
+    return;
+  }
+  if (live) {
+    if (!ftwOut) ftwOut = now;
+    if (now - ftwOut < FTK_LEAVE_MS && !p) return;
+    live.l = Math.max(live.a, ftwOut); ftwOut = 0;
+    ftwPush(live);
+    setStatus('left ' + (live.name || 'the locker') + ', ' + Math.round((live.l - live.a) / 60000) + ' min logged');
+  }
+  if (p) {
+    let openStay = null;
+    try { if (window.FieldTwinNative) openStay = JSON.parse(window.FieldTwinNative.openStay() || 'null'); } catch (e) { openStay = null; }
+    const a = openStay && ftkMeters(p.lat, p.lon, openStay.lat, openStay.lon) <= FTK_SITE_M ? openStay.arrivedAt : now;
+    const v = ftwVisit(p, a, null, 'auto');
+    v.l = null;
+    ftwPushedAt = now;
+    ftwPush(v);
+    setStatus('at ' + (v.name || 'a locker') + ', work clock running' + (v.ticket ? ' on ticket ' + v.ticket : ''));
+  }
+}
+async function ftwFlush() { for (const v of ftWork.filter(x => x.dirty)) await ftwPush(v); }
+setTimeout(ftwTick, 7000);
+setInterval(ftwTick, 30000);
+setInterval(ftwFlush, 5 * 60000);
+function ftwHtml(p) {
+  const v = ftWork.filter(x => x.place === p.id).slice(-8).reverse();
+  if (!v.length) return '';
+  const tm = ms => new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return '<div class="question">Work visits here</div>' + v.map(x => '<div class="meta-line">' + tm(x.a) + ' to ' +
+    (x.l == null ? 'now' : new Date(x.l).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + ', ' +
+    Math.round(((x.l == null ? Date.now() : x.l) - x.a) / 60000) + ' min' + (x.ticket ? ', ticket ' + escapeHtml(x.ticket) : '') + '</div>').join('');
+}
+
 function ftkSiteLine(t) {
   ftkSummarize(t);
   const v = t.visits || [];

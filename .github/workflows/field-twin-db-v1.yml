@@ -18,7 +18,7 @@ jobs:
         run: |
           set -e
           [ -n "$TOKEN" ] || { echo "SUPABASE_ACCESS_TOKEN secret is not set"; exit 1; }
-          for f in supabase/field-twin-places-v1.sql supabase/field-twin-photos-v1.sql supabase/field-twin-team-lockers-v1.sql supabase/field-twin-tickets-v1.sql; do
+          for f in supabase/field-twin-places-v1.sql supabase/field-twin-photos-v1.sql supabase/field-twin-team-lockers-v1.sql supabase/field-twin-tickets-v1.sql supabase/field-twin-work-visits-v1.sql; do
             jq -Rs '{query: .}' "$f" > body.json
             out=$(curl -s -w '\n%{http_code}' -X POST https://api.supabase.com/v1/projects/zasyjjoypkpvyqdueums/database/query -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary @body.json)
             code=$(echo "$out" | tail -n1)
