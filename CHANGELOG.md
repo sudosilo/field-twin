@@ -1,5 +1,11 @@
 Field Twin changelog
 
+2026-11-27, v2026.11.27. Added a ticket clock that logs time on site on the ticket and syncs it. Added a work clock, so every locker visit logs itself with no ticket needed.
+
+2026-11-25, v2026.11.25. Added shared Hub View library tables and a worker schedule. The Hub View worker now runs only when its queue holds jobs.
+
+2026-11-23, v2026.11.23. The route view now follows you up close, the floating window stays on you, and the Sites tab is now called Site survey. The phone app can rotate, dim the screen, and stay awake for the dash cam. Hire Portal got shared tables, admins who join with an owner code, and a cleanup for test applications.
+
 2026-11-21, v2026.11.21. Added a Charging station place type with its own sign and its own form.
 
 2026-11-16, v2026.11.16. Added Tickets. Scan ticket screen reads work tickets from a photo of the work phone, a check screen fixes misreads and picks the locker, and each open ticket shows on the map as a countdown ring. Best next and the fork card rank stops by SLA slack after drive time, and closes inside SLA earn points. The receipt and ticket readers now share one photo reader that falls back through newer models, and Service check shows the reader key and the last reader error.
